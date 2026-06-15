@@ -90,6 +90,15 @@ export const PRIMARY_MARKET_QUERIES = [
   "Sony",
   "Nintendo",
   "Toyota",
+  // テーマ拡充
+  "Japan LDP",
+  "Japan GDP",
+  "Japan interest rate",
+  "SoftBank",
+  "Japan AI",
+  "Japan baseball",
+  "Asia",
+  "China Japan",
 ];
 
 export const GLOBAL_MARKET_QUERIES = [
@@ -117,4 +126,32 @@ export const GLOBAL_MARKET_QUERIES = [
   "Ukraine",
   "oil",
   "gold",
+  // テーマ拡充: 企業・株式・経済
+  "Apple",
+  "Tesla",
+  "Microsoft",
+  "Google",
+  "stock market",
+  "S&P 500",
+  "recession",
+  "unemployment",
+  // 地政学・各国
+  "China",
+  "Taiwan",
+  "Israel",
+  "Russia",
+  "India",
+  "United Kingdom",
+  "European Union",
+  // スポーツ・エンタメ・科学
+  "Premier League",
+  "Champions League",
+  "Super Bowl",
+  "Olympics",
+  "Formula 1",
+  "SpaceX",
+  "Oscars",
+  "box office",
+  "climate",
+  "weather",
 ];

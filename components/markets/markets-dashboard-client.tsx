@@ -13,19 +13,23 @@ import { groupMarkets } from "@/lib/market-groups";
 import type { MarketsResponse } from "@/lib/types";
 import { cn, formatDateTime, formatUsd } from "@/lib/utils";
 import { fetchLocalApi, isSnapshotMode } from "@/src/lib/localApiClient";
+import { loadMarketsClient } from "@/src/lib/staticDataSource";
 import { AskConciergeButton } from "@/src/components/ai/AskConciergeButton";
 
 export function MarketsDashboardClient({ initialData }: { initialData: MarketsResponse }) {
   const [data, setData] = useState(initialData);
   const [bridgeError, setBridgeError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [snapshot, setSnapshot] = useState(false);
   const mountedRef = useRef(true);
 
   const refreshMarkets = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) setRefreshing(true);
     try {
-      const payload = await fetchLocalApi<MarketsResponse>("/api/markets");
+      // 公開（静的）版は CORS 許可された Polymarket 公開API をブラウザから直接取得してライブ表示する。
+      // ローカル版は同梱の /api 経由で取得する。
+      const payload = isSnapshotMode()
+        ? await loadMarketsClient()
+        : await fetchLocalApi<MarketsResponse>("/api/markets");
       if (!mountedRef.current) return;
       setData(payload);
       setBridgeError(false);
@@ -38,15 +42,10 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
 
   useEffect(() => {
     mountedRef.current = true;
-    // 静的スナップショット（公開版でAPI未接続）では自動更新せず、ビルド時点のデータを表示する。
-    if (isSnapshotMode()) {
-      setSnapshot(true);
-      return () => {
-        mountedRef.current = false;
-      };
-    }
+    // 公開（静的）版はブラウザ直取得のためリクエスト数が多い。負荷を抑えるため自動更新の間隔を長くする。
+    const liveViaBrowser = isSnapshotMode();
     void refreshMarkets({ silent: true });
-    const timer = window.setInterval(() => void refreshMarkets({ silent: true }), 30_000);
+    const timer = window.setInterval(() => void refreshMarkets({ silent: true }), liveViaBrowser ? 120_000 : 30_000);
     return () => {
       mountedRef.current = false;
       window.clearInterval(timer);
@@ -70,22 +69,16 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
       <div className="grid gap-4 rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5 md:gap-5 md:p-7">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={snapshot ? data.status : bridgeError ? "error" : data.status} />
+            <StatusBadge status={bridgeError ? "error" : data.status} />
             <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
               <RefreshCcw className="h-4 w-4" />
-              {snapshot
-                ? `スナップショット（${formatDateTime(data.updatedAt)} 時点）`
-                : bridgeError
-                  ? "更新を確認できません"
-                  : `最終更新 ${formatDateTime(data.updatedAt)}`}
+              {bridgeError ? "更新を確認できません" : `最終更新 ${formatDateTime(data.updatedAt)}`}
             </span>
           </div>
-          {snapshot ? null : (
-            <Button type="button" variant="outline" size="sm" onClick={() => void refreshMarkets()} disabled={refreshing}>
-              <RefreshCcw className={cn("h-4 w-4", refreshing ? "animate-spin" : "")} />
-              手動更新
-            </Button>
-          )}
+          <Button type="button" variant="outline" size="sm" onClick={() => void refreshMarkets()} disabled={refreshing}>
+            <RefreshCcw className={cn("h-4 w-4", refreshing ? "animate-spin" : "")} />
+            手動更新
+          </Button>
         </div>
         <div className="grid gap-4 md:flex md:items-end md:justify-between">
           <div className="grid gap-2">

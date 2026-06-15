@@ -130,7 +130,7 @@ export async function fetchMarkets(): Promise<{
       .filter((market): market is NormalizedMarket => Boolean(market))
       .filter(isRelevantMarket)
       .filter((market) => !market.endDate || new Date(market.endDate).getTime() > Date.now() - 1000 * 60 * 60 * 24 * 60);
-    const selectedJapanMarkets = selectDiverseMarkets(japanMarkets, 36);
+    const selectedJapanMarkets = selectDiverseMarkets(japanMarkets, 48);
 
     if (japanMarkets.length === 0 && normalizedGlobalMarkets.length === 0) {
       sourceStatuses.push({
@@ -302,9 +302,9 @@ async function fetchGlobalMarkets() {
       .filter((market): market is NormalizedMarket => Boolean(market))
       .filter((market) => !market.endDate || new Date(market.endDate).getTime() > Date.now() - 1000 * 60 * 60 * 24 * 3)
       .sort((a, b) => marketPriority(b) - marketPriority(a))
-      .slice(0, 36);
+      .slice(0, 48);
     const searchedMarkets = await fetchGlobalMarketsBySearch().catch(() => []);
-    return selectDiverseMarkets(dedupeMarkets([...topMarkets, ...searchedMarkets]), 48);
+    return selectDiverseMarkets(dedupeMarkets([...topMarkets, ...searchedMarkets]), 64);
   } catch {
     return fetchGlobalMarketsBySearch();
   }
@@ -326,22 +326,22 @@ async function fetchGlobalMarketsBySearch() {
     results
       .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
       .flatMap((event) => (event.markets ?? []).map((market) => normalizeMarket(market, event, "global"))),
-  ).filter((market): market is NormalizedMarket => Boolean(market)), 36);
+  ).filter((market): market is NormalizedMarket => Boolean(market)), 48);
 }
 
 function selectDiverseMarkets(markets: NormalizedMarket[], limit: number) {
   const sorted = [...markets].sort((a, b) => marketPriority(b) - marketPriority(a));
   const selected = new Map<string, NormalizedMarket>();
   const categoryTargets = [
-    ["イベント", 6],
-    ["暗号資産", 6],
-    ["テック", 5],
-    ["金融", 5],
-    ["為替", 5],
-    ["日銀", 5],
-    ["政治", 5],
-    ["選挙", 5],
-    ["規制", 5],
+    ["イベント", 9],
+    ["暗号資産", 8],
+    ["テック", 8],
+    ["金融", 7],
+    ["為替", 6],
+    ["日銀", 6],
+    ["政治", 8],
+    ["選挙", 6],
+    ["規制", 6],
   ] as const;
 
   for (const [category, target] of categoryTargets) {

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DataStatus, RateResponse } from "@/lib/types";
 import { formatJpy, formatUsd } from "@/lib/utils";
 import { fetchLocalApi, isSnapshotMode } from "@/src/lib/localApiClient";
+import { loadUsdJpyClient } from "@/src/lib/staticDataSource";
 
 export function CalculatorClient({
   initialUsdJpy,
@@ -28,12 +29,11 @@ export function CalculatorClient({
   const [side, setSide] = useState<"YES" | "NO">("YES");
 
   useEffect(() => {
-    // 静的スナップショット（公開版でAPI未接続）では為替の自動取得をしない（初期値を使用）。
-    if (isSnapshotMode()) return;
     let cancelled = false;
     async function refreshRate() {
       try {
-        const payload = await fetchLocalApi<RateResponse>("/api/fx");
+        // 公開（静的）版は CORS 許可の Frankfurter から直接、ローカル版は /api/fx 経由で取得。
+        const payload = isSnapshotMode() ? await loadUsdJpyClient() : await fetchLocalApi<RateResponse>("/api/fx");
         if (!cancelled) {
           setUsdJpy(payload.usdJpy);
           setCurrentRateStatus(payload.status);
