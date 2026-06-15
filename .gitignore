@@ -4,6 +4,13 @@
 !.env.example
 dist/
 build/
+out/
+.next/
 node_modules/
 coverage/
 .cache/
+tsconfig.tsbuildinfo
+dev.db
+dev.db-journal
+prisma/dev.db
+prisma/dev.db-journal
