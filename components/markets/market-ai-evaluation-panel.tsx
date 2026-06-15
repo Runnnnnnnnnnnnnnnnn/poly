@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { MarketAiEvaluation, MarketAiEvaluationsResponse } from "@/lib/types";
 import { cn, formatDateTime, formatPercent } from "@/lib/utils";
-import { fetchLocalApi, isSnapshotMode } from "@/src/lib/localApiClient";
+import { fetchAi, isAiAvailable } from "@/src/lib/localApiClient";
 
 const HISTORY_KEY = "polymarket-watch.ai-evaluation-history";
 const HISTORY_LIMIT = 40;
@@ -31,7 +31,7 @@ export function MarketAiEvaluationPanel() {
   const refresh = useCallback(async (silent = true) => {
     if (!silent) setLoading(true);
     try {
-      const payload = await fetchLocalApi<MarketAiEvaluationsResponse>("/api/ai/evaluations");
+      const payload = await fetchAi<MarketAiEvaluationsResponse>("/api/ai/evaluations");
       if (!mountedRef.current) return;
       setData(payload);
       setError("");
@@ -46,8 +46,8 @@ export function MarketAiEvaluationPanel() {
   useEffect(() => {
     mountedRef.current = true;
     setHistory(readHistory());
-    // 静的スナップショット（公開版でAPI未接続）ではAI評価を取得しない。
-    if (isSnapshotMode()) {
+    // AIバックエンドが無い（公開版でプロキシ未設定）ときはAI評価を取得せず案内を出す。
+    if (!isAiAvailable()) {
       setSnapshot(true);
       return () => {
         mountedRef.current = false;

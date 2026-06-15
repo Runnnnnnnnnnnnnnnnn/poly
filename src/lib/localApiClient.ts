@@ -54,8 +54,57 @@ export function isSnapshotMode() {
   return process.env.NEXT_PUBLIC_STATIC_EXPORT === "1" && getLocalApiBase() === "";
 }
 
+/**
+ * AI（チャット/評価）専用の接続先。
+ * 鍵を持つ別ホスト（このアプリをデプロイしたバックエンド）のURLを
+ * NEXT_PUBLIC_AI_API_BASE に設定すると、公開（静的）版でも鍵を露出せずにAIを利用できる。
+ * `?aiApi=` パラメータでも上書きできる（検証用）。未設定なら "".
+ */
+export function aiApiBase() {
+  const fromEnv = (process.env.NEXT_PUBLIC_AI_API_BASE ?? "").trim().replace(/\/$/, "");
+  if (typeof window === "undefined") return fromEnv;
+  const param = new URLSearchParams(window.location.search).get("aiApi");
+  if (param) return param.trim().replace(/\/$/, "");
+  return fromEnv;
+}
+
+/** AIエンドポイントのURL。AI専用ベースがあればそれを、無ければローカル /api を使う。 */
+export function aiEndpoint(path: string) {
+  const base = aiApiBase();
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return base ? `${base}${suffix}` : localApiUrl(path);
+}
+
+/**
+ * AIが実際に呼び出せるか。
+ * - AI専用ベースが設定されていれば常に利用可能（公開版でもプロキシ経由で動作）。
+ * - そうでなければ、ローカル /api がある（=スナップショットでない）場合のみ利用可能。
+ */
+export function isAiAvailable() {
+  return aiApiBase() !== "" || !isSnapshotMode();
+}
+
 export async function fetchLocalApi<T>(path: string, init: RequestInit = {}) {
   const response = await fetch(localApiUrl(path), {
+    ...init,
+    cache: "no-store",
+    headers: {
+      "content-type": "application/json",
+      ...init.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`${response.status} ${response.statusText}: ${text.slice(0, 180)}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+/** AIエンドポイント（aiApiBase 優先）に対する GET。 */
+export async function fetchAi<T>(path: string, init: RequestInit = {}) {
+  const response = await fetch(aiEndpoint(path), {
     ...init,
     cache: "no-store",
     headers: {

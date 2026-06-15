@@ -17,7 +17,7 @@ import {
   OPEN_CONCIERGE_EVENT,
   type ConciergeOpenContext,
 } from "@/src/lib/ai/concierge-context";
-import { isSnapshotMode, localApiUrl } from "@/src/lib/localApiClient";
+import { aiEndpoint, isAiAvailable } from "@/src/lib/localApiClient";
 
 type ChatResponse = {
   status: "live" | "fallback" | "error" | "guarded";
@@ -44,7 +44,8 @@ export function ConciergeDrawer() {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setSnapshot(isSnapshotMode());
+    // AIが利用できない（公開版でAIバックエンド未設定）ときだけ案内を出す。
+    setSnapshot(!isAiAvailable());
   }, []);
 
   const pathMarketId = useMemo(() => {
@@ -92,8 +93,8 @@ export function ConciergeDrawer() {
     setInput("");
     setOpen(true);
 
-    // 静的スナップショット（公開版でAPI未接続）ではAIを呼び出せないため、案内を返す。
-    if (isSnapshotMode()) {
+    // AIバックエンドが無い（公開版でプロキシ未設定）ときだけ案内を返す。
+    if (!isAiAvailable()) {
       setMessages((current) => [
         ...current,
         {
@@ -109,7 +110,7 @@ export function ConciergeDrawer() {
     setLoading(true);
 
     try {
-      const response = await fetch(localApiUrl("/api/ai/chat"), {
+      const response = await fetch(aiEndpoint("/api/ai/chat"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
