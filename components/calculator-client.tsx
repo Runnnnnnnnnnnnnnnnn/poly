@@ -140,7 +140,8 @@ function NumberField({
         max={max}
         step={step}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        // 16px未満だと iOS でフォーカス時に自動ズームするため text-base を維持
+        className="h-11 rounded-md border border-input bg-white px-3 text-base outline-none focus:ring-2 focus:ring-ring"
       />
     </label>
   );

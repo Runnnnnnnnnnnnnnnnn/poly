@@ -50,6 +50,11 @@ const outlookRefs = [
   findRef("coincheck.com"),
 ].filter(Boolean) as ReferenceLink[];
 
+// 各セクションの参照元をまとめてページ最下部に表示する（重複はURLで除去）。
+const allCitedRefs = Array.from(
+  new Map([...basicsRefs, ...outlookRefs, ...allReferenceLinks].map((ref) => [ref.url, ref])).values(),
+);
+
 const tocItems = [
   { id: "basics", label: "Polymarketとは", icon: BookOpen },
   { id: "how-to-use", label: "このサイトの使い方", icon: Layers3 },
@@ -225,8 +230,6 @@ export default function OnboardingPage() {
               </p>
             </CardContent>
           </Card>
-
-          <CitationList title="このセクションの引用・参照元" links={basicsRefs} />
         </section>
 
         {/* 02 使い方 */}
@@ -313,8 +316,6 @@ export default function OnboardingPage() {
               </ol>
             </CardContent>
           </Card>
-
-          <CitationList title="このセクションの引用・参照元" links={outlookRefs} />
         </section>
 
         {/* 注意点 */}
@@ -332,6 +333,9 @@ export default function OnboardingPage() {
             </p>
           </div>
         </section>
+
+        {/* 引用・参照元（ページ全体・最下部にまとめて掲載） */}
+        <CitationList title="引用・参照元" links={allCitedRefs} />
       </article>
     </AppShell>
   );

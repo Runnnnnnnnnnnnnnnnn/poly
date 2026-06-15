@@ -40,7 +40,12 @@ export function ConciergeDrawer() {
     },
   ]);
   const [sources, setSources] = useState<SourceCard[]>([]);
+  const [snapshot, setSnapshot] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSnapshot(isSnapshotMode());
+  }, []);
 
   const pathMarketId = useMemo(() => {
     const match = pathname.match(/^\/markets\/([^/]+)/);
@@ -206,13 +211,19 @@ export function ConciergeDrawer() {
             </div>
 
             <div className="border-t border-border bg-white p-4">
+              {snapshot ? (
+                <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                  公開版（スナップショット）では、AIとのリアルタイム対話は利用できません。表示中のデータの読み方は下の例から確認できます。
+                </p>
+              ) : null}
               <SuggestedQuestions questions={suggestedQuestions} onSelect={(question) => void sendMessage(question)} />
               <form onSubmit={onSubmit} className="mt-3 flex gap-2">
                 <input
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
                   placeholder={conciergeInputPlaceholder(activeContext)}
-                  className="h-10 min-w-0 flex-1 rounded-md border border-input px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  // text-base(16px)未満だと iOS Safari がフォーカス時に自動ズームするため 16px を維持する
+                  className="h-11 min-w-0 flex-1 rounded-md border border-input px-3 text-base outline-none focus:ring-2 focus:ring-ring"
                 />
                 <Button type="submit" size="icon" disabled={loading || !input.trim()} aria-label="送信">
                   <Send className="h-4 w-4" />
