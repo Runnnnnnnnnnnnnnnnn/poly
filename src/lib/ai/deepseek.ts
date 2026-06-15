@@ -177,6 +177,6 @@ function fallbackAnswer(question: string, contextPack: Awaited<ReturnType<typeof
   }
 
   return applyAnswerGuardrails(
-    `結論: Japan Market Watchは、日本関連のPolymarket市場を市場価格と一次情報で整理する読み取り専用ダッシュボードです。\n\n根拠:\n- 市場価格は期待確率の目安として扱います。\n- 公式情報、報道、市場情報を区別します。\n- 現在の市場データ状態は ${contextPack.dataStatus} です。\n\n質問: ${question}`,
+    `結論: Polymarket Watchは、世界と日本のPolymarketテーマを市場価格と関連情報で整理するダッシュボードです。\n\n根拠:\n- 市場価格は期待確率の目安として扱います。\n- 公式情報、報道、市場情報を区別します。\n- 現在の市場データ状態は ${contextPack.dataStatus} です。\n\n質問: ${question}`,
   );
 }

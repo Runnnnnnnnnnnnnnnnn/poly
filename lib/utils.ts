@@ -81,7 +81,7 @@ export async function fetchWithTimeout(
       ...cacheOptions,
       signal: controller.signal,
       headers: {
-        "user-agent": "JapanMarketWatch/0.1 readonly research dashboard",
+        "user-agent": "PolymarketWatch/0.1 readonly research dashboard",
         accept: "application/json, application/xml, text/xml, text/html;q=0.8",
         ...init.headers,
       },

@@ -75,7 +75,9 @@ export function CalculatorClient({ initialUsdJpy, rateStatus }: { initialUsdJpy:
           <NumberField label="手数料 %" value={feeRate} min={0} step={0.1} onChange={setFeeRate} />
           <div className="text-sm text-muted-foreground">
             為替レート:{" "}
-            <Badge variant={currentRateStatus === "live" ? "live" : "fallback"}>{currentRateStatus === "live" ? "Live" : "Fallback"}</Badge>
+            <Badge variant={currentRateStatus === "live" ? "live" : "fallback"}>
+              {currentRateStatus === "live" ? "リアルタイム" : "参考レート"}
+            </Badge>
           </div>
         </CardContent>
       </Card>

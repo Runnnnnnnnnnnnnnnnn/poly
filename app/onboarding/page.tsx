@@ -23,14 +23,14 @@ const cards = [
     body: "YES価格が0.42なら、市場価格としては約42%の見方として読めます。",
   },
   {
-    title: "日本語情報を使う強み",
+    title: "世界と日本を分けて確認",
     icon: BookOpen,
-    body: "国会、日銀、e-Govなどの一次情報を市場の論点と並べて確認できます。",
+    body: "世界で盛り上がるテーマと、日本に関係するテーマを同じ画面で比較できます。",
   },
   {
-    title: "このツールでできること",
+    title: "Polymarket Watchでできること",
     icon: Info,
-    body: "日本関連市場の探索、詳細確認、公式情報の確認、収益シナリオの試算ができます。",
+    body: "注目テーマの確認、関連情報の整理、価格と確率の読み取り、参考シナリオの試算ができます。",
   },
   {
     title: "注意点",
@@ -44,7 +44,7 @@ export default function OnboardingPage() {
     <AppShell>
       <section className="grid gap-8">
         <div className="grid gap-5 rounded-lg border border-border bg-white p-6 shadow-sm md:p-8">
-          <p className="text-sm font-bold text-primary">社内デモ / 読み取り専用</p>
+          <p className="text-sm font-bold text-primary">情報整理に特化した予測テーマダッシュボード</p>
           <div className="grid gap-4 lg:grid-cols-[1fr_0.55fr] lg:items-end">
             <div className="grid gap-4">
               <h1 className="text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">Polymarketって何？</h1>
@@ -53,14 +53,14 @@ export default function OnboardingPage() {
                 たとえば「日銀は次回会合で利上げする？」という市場があり、YESの価格が0.42なら、市場参加者はおおよそ42%程度の確率として見ている、という意味になります。
               </p>
               <p className="max-w-3xl text-base leading-8 text-muted-foreground">
-                このダッシュボードでは、日本に関係する予測市場を探し、関連する日本語の一次情報やニュースと一緒に確認できます。
-                取引を推奨するものではなく、情報収集と市場理解のための社内デモです。
+                Polymarket Watchでは、世界で注目されているテーマと日本に関係するテーマを分けて確認できます。
+                市場価格は参加者の見方を知るための参考情報であり、売買を推奨するものではありません。
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
               <Button asChild size="lg">
                 <Link href="/markets">
-                  ダッシュボードを見る <ArrowRight className="h-4 w-4" />
+                  注目テーマを見る <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
               <Button asChild size="lg" variant="outline">

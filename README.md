@@ -1,6 +1,6 @@
-# Japan Market Watch
+# Polymarket Watch
 
-日本関連の Polymarket 予測市場と、日本語の一次情報を並べて確認する社内デモ用ダッシュボードです。読み取り専用で、自動売買、注文送信、ウォレット接続、秘密鍵入力、署名処理は実装していません。
+世界で注目されている Polymarket テーマと、日本に関係するテーマを見やすく整理するダッシュボードです。情報提供に特化しており、自動売買、注文送信、ウォレット接続、秘密鍵入力、署名処理は実装していません。
 
 ## Stack
 
@@ -76,7 +76,7 @@ DEEPSEEK_MODEL="deepseek-v4-flash"
 
 ## DeepSeek AI Concierge
 
-The app includes `Japan Market Concierge`, a read-only research assistant. It can explain Polymarket, summarize selected markets, organize official sources, explain price/probability, and draft a short boss-facing summary.
+The app includes `Polymarket Concierge`, a read-only research assistant. It can explain Polymarket, summarize selected themes, organize official sources, explain price/probability, and draft a short executive-facing summary.
 
 It cannot provide investment advice, order instructions, wallet connection guidance, secret-key handling, automatic trading, VPN bypass, or geographic restriction bypass.
 
@@ -98,7 +98,7 @@ For GitHub Pages, `npm run build:pages` generates a static UI snapshot in `out/`
 - No order placement endpoints are used.
 - No wallet connection or signature flow is implemented.
 - No VPN or geographic restriction bypass is implemented.
-- API failures fall back to sample data and display `Live`, `Fallback`, or `取得失敗` in the UI.
+- API failures fall back to sample data and display natural Japanese status labels in the UI.
 
 ## Future Extensions
 

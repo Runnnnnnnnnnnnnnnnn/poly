@@ -27,7 +27,7 @@ export function ConciergeDrawer() {
     {
       role: "assistant",
       content:
-        "Japan Market Conciergeです。Polymarketの見方、日本関連市場、公式情報、収益試算を読み取り専用で説明します。",
+        "Polymarket Conciergeです。世界と日本の注目テーマ、確率の見方、関連情報、参考試算を分かりやすく説明します。",
       status: "fallback",
     },
   ]);
@@ -127,7 +127,7 @@ export function ConciergeDrawer() {
                   <Bot className="h-5 w-5" />
                 </span>
                 <div>
-                  <h2 className="font-bold">Japan Market Concierge</h2>
+                  <h2 className="font-bold">Polymarket Concierge</h2>
                   <p className="text-xs text-muted-foreground">投資助言ではありません / 自動売買機能はありません</p>
                 </div>
               </div>

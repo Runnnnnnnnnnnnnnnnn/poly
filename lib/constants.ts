@@ -43,6 +43,8 @@ export const JAPAN_KEYWORDS_JA = [
 
 export const MARKET_FILTERS = [
   "すべて",
+  "世界",
+  "日本",
   "政治",
   "金融",
   "規制",
@@ -80,4 +82,17 @@ export const PRIMARY_MARKET_QUERIES = [
   "Tokyo",
   "Osaka",
   "Nikkei",
+];
+
+export const GLOBAL_MARKET_QUERIES = [
+  "United States",
+  "Trump",
+  "Fed",
+  "Bitcoin",
+  "crypto",
+  "AI",
+  "election",
+  "World Cup",
+  "interest rates",
+  "geopolitics",
 ];

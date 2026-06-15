@@ -1,12 +1,12 @@
 {
-  "name": "japan-market-watch",
+  "name": "polymarket-watch",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "build": "DATABASE_URL=${DATABASE_URL:-file:./dev.db} prisma generate && next build",
+    "build": "DATABASE_URL=${DATABASE_URL:-file:./dev.db} SKIP_TITLE_AI=1 prisma generate && SKIP_TITLE_AI=1 next build",
     "build:pages": "node scripts/build-pages.mjs",
     "dev:remote": "next dev --hostname 0.0.0.0 --port 3000"
   },

@@ -1,4 +1,5 @@
 export type DataStatus = "live" | "fallback" | "error";
+export type MarketScope = "global" | "japan";
 
 export type MarketCategory =
   | "政治"
@@ -30,6 +31,9 @@ export type MarketSummary = {
   title: string;
   originalTitle: string;
   summaryJa: string;
+  scope: MarketScope;
+  imageUrl: string;
+  themeLabel: string;
   category: MarketCategory;
   probability: number;
   yesPrice: number;
@@ -66,6 +70,8 @@ export type MarketsResponse = {
   status: DataStatus;
   updatedAt: string;
   markets: MarketSummary[];
+  globalMarkets: MarketSummary[];
+  japanMarkets: MarketSummary[];
   sourceStatuses: SourceStatus[];
 };
 

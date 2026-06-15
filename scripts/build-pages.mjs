@@ -44,6 +44,7 @@ try {
     NEXT_PUBLIC_STATIC_EXPORT: "1",
     GITHUB_PAGES: "true",
     GITHUB_PAGES_REPO: process.env.GITHUB_PAGES_REPO || "poly",
+    SKIP_TITLE_AI: "1",
   };
 
   const prisma = spawnSync("npx", ["prisma", "generate"], { cwd: root, env, stdio: "inherit" });

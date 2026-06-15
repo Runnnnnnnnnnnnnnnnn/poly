@@ -40,7 +40,7 @@
 
 - 外部 API 取得は `lib/adapters/*` と Next.js route handler に閉じ込める。
 - 画面側は直接外部 API を叩かない。
-- 失敗時は `lib/sample-data.ts` の fallback を返し、画面に `Live`、`Fallback`、`取得失敗` を表示する。
+- 失敗時は `lib/sample-data.ts` の fallback を返し、画面には自然な日本語のステータスを表示する。
 - 取引、注文、ウォレット接続、秘密鍵入力、署名、地理制限回避は実装対象外。
 - GitHub Pages は runtime server route を実行できない。GitHub Pages で公開する場合は静的 export 用のデータ生成に切り替える必要がある。
 

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Japan Market Watch",
-  description: "日本関連の予測市場と一次情報を読むための社内デモ用ダッシュボード",
+  title: "Polymarket Watch",
+  description: "世界と日本の予測テーマを見やすく整理するダッシュボード",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

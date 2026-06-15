@@ -2,16 +2,18 @@ import { z } from "zod";
 
 import {
   CATEGORY_KEYWORDS,
+  GLOBAL_MARKET_QUERIES,
   JAPAN_KEYWORDS_EN,
   JAPAN_KEYWORDS_JA,
   PRIMARY_MARKET_QUERIES,
 } from "@/lib/constants";
-import { fallbackDetail, fallbackMarkets } from "@/lib/sample-data";
+import { fallbackDetail, fallbackGlobalMarkets, fallbackMarkets } from "@/lib/sample-data";
 import type {
   ChartPoint,
   DataStatus,
   MarketCategory,
   MarketDetail,
+  MarketScope,
   MarketSummary,
   NewsItem,
   SourceStatus,
@@ -30,6 +32,8 @@ const gammaMarketSchema = z
     resolutionSource: z.string().nullable().optional(),
     endDate: z.string().nullable().optional(),
     updatedAt: z.string().nullable().optional(),
+    image: z.string().nullable().optional(),
+    icon: z.string().nullable().optional(),
     outcomes: z.unknown().optional(),
     outcomePrices: z.unknown().optional(),
     clobTokenIds: z.unknown().optional(),
@@ -55,6 +59,8 @@ const gammaEventSchema = z
     description: z.string().nullable().optional(),
     endDate: z.string().nullable().optional(),
     updatedAt: z.string().nullable().optional(),
+    image: z.string().nullable().optional(),
+    icon: z.string().nullable().optional(),
     markets: z.array(gammaMarketSchema).optional(),
     tags: z.array(z.object({ label: z.string().optional(), slug: z.string().optional() }).passthrough()).optional(),
   })
@@ -63,6 +69,8 @@ const gammaEventSchema = z
 const publicSearchSchema = z.object({
   events: z.array(gammaEventSchema).default([]),
 });
+
+const gammaMarketsSchema = z.array(gammaMarketSchema).default([]);
 
 const spreadSchema = z.object({
   spread: z.union([z.string(), z.number()]).optional(),
@@ -86,6 +94,18 @@ const priceHistorySchema = z.object({
     .default([]),
 });
 
+const titleTranslationSchema = z.object({
+  translations: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string().min(1),
+    }),
+  ),
+});
+
+const titleTranslationCache = new Map<string, string>();
+const titleTranslationSkipCache = new Set<string>();
+
 type GammaMarket = z.infer<typeof gammaMarketSchema>;
 type GammaEvent = z.infer<typeof gammaEventSchema>;
 
@@ -98,16 +118,20 @@ type NormalizedMarket = MarketSummary & {
 
 export async function fetchJapanMarkets(): Promise<{
   markets: MarketSummary[];
+  globalMarkets: MarketSummary[];
+  japanMarkets: MarketSummary[];
   status: DataStatus;
   sourceStatuses: SourceStatus[];
 }> {
   const sourceStatuses: SourceStatus[] = [];
 
   try {
-    const events = await fetchSearchEvents();
-    const normalized = dedupeMarkets(
+    const [globalResult, japanEvents] = await Promise.allSettled([fetchGlobalMarkets(), fetchSearchEvents()]);
+    const normalizedGlobalMarkets = globalResult.status === "fulfilled" && globalResult.value.length > 0 ? globalResult.value : [];
+    const events = japanEvents.status === "fulfilled" ? japanEvents.value : [];
+    const japanMarkets = dedupeMarkets(
       events.flatMap((event) =>
-        (event.markets ?? []).map((market) => normalizeMarket(market, event)),
+        (event.markets ?? []).map((market) => normalizeMarket(market, event, "japan")),
       ),
     )
       .filter(Boolean)
@@ -117,33 +141,41 @@ export async function fetchJapanMarkets(): Promise<{
       .sort((a, b) => marketPriority(b) - marketPriority(a))
       .slice(0, 18);
 
-    if (normalized.length === 0) {
+    if (japanMarkets.length === 0 && normalizedGlobalMarkets.length === 0) {
       sourceStatuses.push({
         source: "Polymarket Gamma API",
         status: "fallback",
-        message: "日本関連の live 市場が見つからなかったため fallback を表示",
+        message: "公開市場データを取得できなかったためサンプルを表示",
       });
+      const fallbackAll = [...fallbackGlobalMarkets, ...fallbackMarkets];
       return {
-        markets: fallbackMarkets,
+        markets: fallbackAll,
+        globalMarkets: fallbackGlobalMarkets,
+        japanMarkets: fallbackMarkets,
         status: "fallback",
         sourceStatuses,
       };
     }
 
-    const enriched = await enrichMarketsWithClob(normalized);
+    const enrichedGlobal = normalizedGlobalMarkets.length > 0 ? await enrichMarketsWithClob(normalizedGlobalMarkets.slice(0, 12)) : [];
+    const enrichedJapan = await enrichMarketsWithClob(japanMarkets);
+    const globalSummaries = await translateMarketTitles(enrichedGlobal.length > 0 ? enrichedGlobal.map(stripDetailFields) : fallbackGlobalMarkets);
+    const japanSummaries = await translateMarketTitles(enrichedJapan.length > 0 ? enrichedJapan.map(stripDetailFields) : fallbackMarkets);
     sourceStatuses.push({
       source: "Polymarket Gamma API",
       status: "live",
-      message: `${normalized.length} markets`,
+      message: `${globalSummaries.length + japanSummaries.length} markets`,
     });
     sourceStatuses.push({
       source: "Polymarket CLOB public read endpoints",
-      status: enriched.some((market) => market.spread !== null) ? "live" : "fallback",
+      status: [...globalSummaries, ...japanSummaries].some((market) => market.spread !== null) ? "live" : "fallback",
       message: "spread/book enrichment",
     });
 
     return {
-      markets: enriched.map(stripDetailFields),
+      markets: [...globalSummaries, ...japanSummaries],
+      globalMarkets: globalSummaries,
+      japanMarkets: japanSummaries,
       status: "live",
       sourceStatuses,
     };
@@ -153,8 +185,11 @@ export async function fetchJapanMarkets(): Promise<{
       status: "error",
       message: error instanceof Error ? error.message : "unknown error",
     });
+    const fallbackAll = [...fallbackGlobalMarkets, ...fallbackMarkets];
     return {
-      markets: fallbackMarkets,
+      markets: fallbackAll,
+      globalMarkets: fallbackGlobalMarkets,
+      japanMarkets: fallbackMarkets,
       status: "fallback",
       sourceStatuses,
     };
@@ -178,9 +213,11 @@ export async function fetchMarketDetail(
       description: parsed.description,
       endDate: parsed.endDate,
       updatedAt: parsed.updatedAt,
+      image: parsed.image,
+      icon: parsed.icon,
       markets: [parsed],
       tags: [],
-    });
+    }, inferScope(parsed.question ?? parsed.description ?? ""));
 
     if (!normalized) throw new Error("market payload could not be normalized");
 
@@ -197,7 +234,7 @@ export async function fetchMarketDetail(
     return {
       market: {
         ...stripDetailFields(enriched),
-        description: enriched.description,
+        description: buildResolutionSummary(enriched),
         resolutionSource: enriched.resolutionSource,
         clobTokenIds: enriched.clobTokenIds,
         outcomes: enriched.outcomes,
@@ -239,7 +276,68 @@ async function fetchSearchEvents() {
   return results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
 }
 
-function normalizeMarket(market: GammaMarket, event: GammaEvent): NormalizedMarket | null {
+async function fetchGlobalMarkets() {
+  try {
+    const url = new URL(`${GAMMA_API}/markets`);
+    url.searchParams.set("active", "true");
+    url.searchParams.set("closed", "false");
+    url.searchParams.set("limit", "48");
+    url.searchParams.set("order", "volume24hr");
+    url.searchParams.set("ascending", "false");
+    const response = await fetchWithTimeout(url.toString());
+    if (!response.ok) throw new Error(`global markets ${response.status}`);
+    return gammaMarketsSchema
+      .parse(await response.json())
+      .map((market) =>
+        normalizeMarket(
+          market,
+          {
+            id: market.id,
+            title: market.question,
+            slug: market.slug,
+            description: market.description,
+            endDate: market.endDate,
+            updatedAt: market.updatedAt,
+            image: market.image,
+            icon: market.icon,
+            markets: [market],
+            tags: [],
+          },
+          "global",
+        ),
+      )
+      .filter((market): market is NormalizedMarket => Boolean(market))
+      .filter((market) => !market.endDate || new Date(market.endDate).getTime() > Date.now() - 1000 * 60 * 60 * 24 * 3)
+      .sort((a, b) => marketPriority(b) - marketPriority(a))
+      .slice(0, 18);
+  } catch {
+    return fetchGlobalMarketsBySearch();
+  }
+}
+
+async function fetchGlobalMarketsBySearch() {
+  const results = await Promise.allSettled(
+    GLOBAL_MARKET_QUERIES.map(async (query) => {
+      const url = new URL(`${GAMMA_API}/public-search`);
+      url.searchParams.set("q", query);
+      url.searchParams.set("limit", "8");
+      const response = await fetchWithTimeout(url.toString());
+      if (!response.ok) throw new Error(`public-search ${query}: ${response.status}`);
+      return publicSearchSchema.parse(await response.json()).events;
+    }),
+  );
+
+  return dedupeMarkets(
+    results
+      .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
+      .flatMap((event) => (event.markets ?? []).map((market) => normalizeMarket(market, event, "global"))),
+  )
+    .filter((market): market is NormalizedMarket => Boolean(market))
+    .sort((a, b) => marketPriority(b) - marketPriority(a))
+    .slice(0, 18);
+}
+
+function normalizeMarket(market: GammaMarket, event: GammaEvent, scope: MarketScope): NormalizedMarket | null {
   const outcomes = safeJsonArray(market.outcomes);
   const prices = safeJsonArray(market.outcomePrices).map((price) => toNumber(price));
   const clobTokenIds = safeJsonArray(market.clobTokenIds);
@@ -258,9 +356,12 @@ function normalizeMarket(market: GammaMarket, event: GammaEvent): NormalizedMark
   return {
     id: String(market.id),
     slug: market.slug || String(market.id),
-    title: toJapaneseTitle(originalTitle, category),
+    title: toJapaneseTitle(originalTitle, category, scope),
     originalTitle,
-    summaryJa: buildSummaryJa(originalTitle, category),
+    summaryJa: buildSummaryJa(originalTitle, category, scope),
+    scope,
+    imageUrl: market.image || market.icon || event.image || event.icon || themeImage(category, scope),
+    themeLabel: `${scope === "global" ? "世界" : "日本"}・${themeLabel(category)}`,
     category,
     probability: yesPrice,
     yesPrice,
@@ -413,6 +514,112 @@ function buildWatchPoints(market: MarketSummary) {
   return points;
 }
 
+function buildResolutionSummary(market: NormalizedMarket) {
+  const endDate = market.endDate ? formatEnglishDate(market.endDate) : "期日";
+  const outcomeText = market.outcomes.length ? market.outcomes.join(" / ") : "YES / NO";
+  return [
+    `${market.title}について、Polymarket上の市場ルールに従って判定されます。`,
+    `主な選択肢は ${outcomeText} です。期日は ${endDate} です。`,
+    "市場ごとに判定条件や参照先が異なるため、詳細な条件はPolymarketの市場ページで確認してください。",
+  ].join("\n");
+}
+
+async function translateMarketTitles(markets: MarketSummary[]) {
+  if (process.env.SKIP_TITLE_AI === "1" || !process.env.DEEPSEEK_API_KEY || markets.length === 0) return markets;
+
+  const pending = markets
+    .filter((market) => !titleTranslationCache.has(translationCacheKey(market)) && !titleTranslationSkipCache.has(translationCacheKey(market)))
+    .slice(0, 30)
+    .map((market) => ({
+      id: market.id,
+      title: market.originalTitle,
+      currentJapaneseTitle: market.title,
+      category: market.category,
+      scope: market.scope === "global" ? "世界" : "日本",
+    }));
+
+  if (pending.length > 0) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(`${(process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Polymarketの市場タイトルを、上司向けダッシュボードに載せる自然な日本語タイトルへ翻訳してください。売買推奨や投資助言はしない。英語の原題は残さない。固有名詞は一般的な日本語表記にし、分からない固有名詞はカタカナまたは原語の短い固有名詞だけ残す。必ずJSONだけで返す。",
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                format: { translations: [{ id: "string", title: "自然な日本語タイトル" }] },
+                rules: [
+                  "疑問形の市場は日本語でも疑問形にする",
+                  "タイトルは40文字以内を目安にする",
+                  "「取引」「買う」「売る」は使わない",
+                  "日付がある場合は日本語の日付にする",
+                ],
+                markets: pending,
+              }),
+            },
+          ],
+        }),
+      });
+
+      if (response.ok) {
+        const payload = await response.json();
+        const content = payload?.choices?.[0]?.message?.content;
+        const parsed = titleTranslationSchema.parse(JSON.parse(extractJsonObject(String(content ?? "{}"))));
+        for (const item of parsed.translations) {
+          const market = markets.find((candidate) => candidate.id === item.id);
+          const title = normalizeTranslatedTitle(item.title);
+          if (market && !hasUntranslatedEnglish(title)) {
+            titleTranslationCache.set(translationCacheKey(market), title);
+          } else if (market) {
+            titleTranslationSkipCache.add(translationCacheKey(market));
+          }
+        }
+      }
+    } catch {
+      // Heuristic titles remain available when translation fails.
+      pending.forEach((market) => titleTranslationSkipCache.add(`${market.id}:${market.title}`));
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return markets.map((market) => ({
+    ...market,
+    title: titleTranslationCache.get(translationCacheKey(market)) ?? market.title,
+  }));
+}
+
+function translationCacheKey(market: MarketSummary) {
+  return `${market.id}:${market.originalTitle}`;
+}
+
+function extractJsonObject(value: string) {
+  const start = value.indexOf("{");
+  const end = value.lastIndexOf("}");
+  if (start < 0 || end < start) return "{}";
+  return value.slice(start, end + 1);
+}
+
+function hasUntranslatedEnglish(value: string) {
+  const allowed = /\b(AI|FRB|FOMC|NVIDIA|Tesla|S&P|NBA|NFL|FIFA|ETF|BTC|ETH|USD|JPY)\b/gi;
+  return value.replace(allowed, "").split(/\s+/).some((part) => /[A-Za-z]{3,}/.test(part));
+}
+
 function marketPriority(market: MarketSummary) {
   const categoryWeight: Record<MarketCategory, number> = {
     日銀: 900,
@@ -435,6 +642,9 @@ function stripDetailFields(market: NormalizedMarket): MarketSummary {
     title: market.title,
     originalTitle: market.originalTitle,
     summaryJa: market.summaryJa,
+    scope: market.scope,
+    imageUrl: market.imageUrl,
+    themeLabel: market.themeLabel,
     category: market.category,
     probability: market.probability,
     yesPrice: market.yesPrice,
@@ -485,26 +695,248 @@ function estimateRelatedNewsCount(category: MarketCategory, text: string) {
   return Math.min(8, base + keywordBonus);
 }
 
-function toJapaneseTitle(title: string, category: MarketCategory) {
-  if (/[\u3040-\u30ff\u3400-\u9fff]/.test(title)) return title;
-  if (category === "日銀" && /bank of japan|boj/i.test(title)) return `日銀関連: ${title}`;
-  if (category === "為替" && /yen|jpy/i.test(title)) return `円・為替関連: ${title}`;
-  if (category === "選挙" && /election/i.test(title)) return `日本選挙関連: ${title}`;
-  if (category === "規制" && /regulation|tax|law|crypto/i.test(title)) return `日本規制関連: ${title}`;
-  return title;
+function inferScope(text: string): MarketScope {
+  const normalized = text.toLowerCase();
+  return [...JAPAN_KEYWORDS_EN.map((keyword) => keyword.toLowerCase()), ...JAPAN_KEYWORDS_JA].some((keyword) =>
+    normalized.includes(keyword.toLowerCase()),
+  )
+    ? "japan"
+    : "global";
 }
 
-function buildSummaryJa(title: string, category: MarketCategory) {
-  const categoryCopy: Record<MarketCategory, string> = {
-    政治: "日本政治のイベントや政策判断に関係する市場です。",
-    金融: "金利、物価、金融環境に関係する市場です。",
-    規制: "法改正、規制、行政判断に関係する市場です。",
-    テック: "日本企業、技術政策、デジタル領域に関係する市場です。",
-    イベント: "日本で発生するイベントや社会的テーマに関係する市場です。",
-    日銀: "日本銀行の政策判断や金融政策イベントに関係する市場です。",
-    為替: "円相場、USD/JPY、為替水準に関係する市場です。",
-    暗号資産: "暗号資産、ステーブルコイン、Web3規制に関係する市場です。",
-    選挙: "国政選挙、内閣、政党勢力に関係する市場です。",
-  };
-  return `${categoryCopy[category]} 元タイトル: ${title}`;
+function toJapaneseTitle(title: string, category: MarketCategory, scope: MarketScope) {
+  if (/[\u3040-\u30ff\u3400-\u9fff]/.test(title)) return title;
+  const normalized = title.replace(/\s+/g, " ").replace(/\?+$/, "").trim();
+  const knownTitle = knownJapaneseTitle(normalized);
+  if (knownTitle) return knownTitle;
+  const dateMatch = normalized.match(/\bby ([A-Z][a-z]+ \d{1,2}, \d{4})$/);
+  const dateText = dateMatch ? `${formatEnglishDate(dateMatch[1])}までに` : "";
+  const withoutDate = dateMatch ? normalized.replace(/\s+by [A-Z][a-z]+ \d{1,2}, \d{4}$/, "") : normalized;
+  const phrase = translatePhrase(withoutDate)
+    .replace(/^Will\s+/i, "")
+    .replace(/^Who will win\s+/i, "")
+    .replace(/^Which .* will win\s+/i, "")
+    .trim()
+    .replace(/\s+/g, " ");
+
+  if (/^World Cup Winner/i.test(normalized)) return "2026年ワールドカップの優勝国は？";
+  if (/^Who will win/i.test(normalized)) return `${translatePhrase(normalized.replace(/^Who will win\s+/i, ""))}の勝者は？`;
+  if (/^Will /i.test(normalized)) return `${phrase}は${dateText}実現する？`;
+  if (/price|above|below|cross/i.test(normalized)) return `${phrase}の価格水準は注目ラインを超える？`;
+  if (/winner|win/i.test(normalized)) return `${phrase}の勝者は？`;
+
+  const prefix = scope === "global" ? "世界で注目される" : "日本関連の";
+  return `${prefix}${themeLabel(category)}テーマ: ${phrase}`;
 }
+
+function knownJapaneseTitle(title: string) {
+  if (/Iranian regime fall|regime fall.*Iran/i.test(title)) return "イランの政権は6月30日までに崩壊する？";
+
+  const fedChange = title.match(/Fed (increase|decrease|cut)s? (?:interest )?rates by (\d+)(\+)? bps after (?:the )?([A-Za-z]+ \d{4}) meeting/i);
+  if (fedChange) {
+    const direction = fedChange[1].toLowerCase() === "increase" ? "利上げ" : "利下げ";
+    return `FRBは${formatMeetingMonth(fedChange[4])}会合後に${fedChange[2]}bp${fedChange[3] ? "以上" : ""}の${direction}をする？`;
+  }
+
+  const fedNoChange = title.match(/(?:there be )?no change in Fed (?:interest )?rates after (?:the )?([A-Za-z]+ \d{4}) meeting/i);
+  if (fedNoChange) return `FRBは${formatMeetingMonth(fedNoChange[1])}会合後に金利を据え置く？`;
+
+  const recession = title.match(/Japan recession in (\d{4})/i);
+  if (recession) return `日本は${recession[1]}年に景気後退入りする？`;
+
+  const bojHike = title.match(/Bank of Japan increase(?:s)? (?:interest )?rates by (\d+)(\+)? bps after (?:the )?([A-Za-z]+ \d{4}) meeting/i);
+  if (bojHike) return `日銀は${formatMeetingMonth(bojHike[3])}会合後に${bojHike[1]}bp${bojHike[2] ? "以上" : ""}の利上げをする？`;
+
+  const bojNoChange = title.match(/(?:there be )?No change in Bank of Japan.?s (?:interest )?rates after (?:the )?([A-Za-z]+ \d{4}) meeting/i);
+  if (bojNoChange) return `日銀は${formatMeetingMonth(bojNoChange[1])}会合後に金利を据え置く？`;
+
+  const bojCut = title.match(/Bank of Japan (?:cuts|decreases?) (?:interest )?rates(?: by (\d+)(\+)? bps)? after (?:the )?([A-Za-z]+ \d{4}) meeting/i);
+  if (bojCut) return `日銀は${formatMeetingMonth(bojCut[3])}会合後に${bojCut[1] ? `${bojCut[1]}bp${bojCut[2] ? "以上" : ""}の` : ""}利下げをする？`;
+
+  if (/Trump say "crypto" or "Bitcoin" during events with Xi Jinping/i.test(title)) {
+    return "トランプ氏は習近平氏との会談で暗号資産に言及する？";
+  }
+
+  if (/Trump say "Japan" or "Korea" during events with Xi Jinping/i.test(title)) {
+    return "トランプ氏は習近平氏との会談で日本または韓国に言及する？";
+  }
+
+  if (/Japan declassifies new UFO files in 2026/i.test(title)) {
+    return "日本は2026年にUFO関連の新資料を公開する？";
+  }
+
+  const worldCup = title.match(/Will ([A-Za-z .'-]+) win the 2026 FIFA World Cup/i);
+  if (worldCup) return `${translateCountry(worldCup[1])}は2026年FIFAワールドカップで優勝する？`;
+
+  const hormuz = title.match(/Strait of Hormuz traffic returns to normal by (.+)$/i);
+  if (hormuz) return `ホルムズ海峡の船舶通行は${translateShortDate(hormuz[1])}までに正常化する？`;
+
+  return null;
+}
+
+function normalizeTranslatedTitle(value: string) {
+  return value
+    .replace(/ベーシスポイント/g, "bp")
+    .replace(/５０/g, "50")
+    .replace(/２５/g, "25")
+    .trim();
+}
+
+function translatePhrase(value: string) {
+  return Object.entries(translationGlossary)
+    .reduce(
+    (text, [english, japanese]) => text.replace(glossaryRegExp(english), japanese),
+    value,
+    )
+    .replace(/\b(the|a|an)\b/gi, "")
+    .replace(/\s+の\s+/g, "の")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function translateCountry(value: string) {
+  return countryGlossary[value.trim()] ?? translatePhrase(value.trim());
+}
+
+function translateShortDate(value: string) {
+  const normalized = value.replace(/\?+$/, "").trim();
+  if (/end of June/i.test(normalized)) return "6月末";
+  const monthDay = normalized.match(/June (\d{1,2})/i);
+  if (monthDay) return `6月${monthDay[1]}日`;
+  return normalized;
+}
+
+function formatEnglishDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long", day: "numeric" }).format(date);
+}
+
+function formatMeetingMonth(value: string) {
+  const date = new Date(`${value} 1`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long" }).format(date);
+}
+
+function buildSummaryJa(title: string, category: MarketCategory, scope: MarketScope) {
+  const categoryCopy: Record<MarketCategory, string> = {
+    政治: "政治や国際情勢の変化を市場参加者がどう見ているかを確認できます。",
+    金融: "金利、物価、金融環境への見方を価格と出来高から確認できます。",
+    規制: "法改正、規制、行政判断に関する期待を整理できます。",
+    テック: "テクノロジーや企業ニュースへの市場の反応を確認できます。",
+    イベント: "スポーツ、社会イベント、注目ニュースへの見方を追えます。",
+    日銀: "日本銀行の政策判断や金融政策イベントへの見方を確認できます。",
+    為替: "円相場や主要通貨の水準に関する市場の見方を確認できます。",
+    暗号資産: "暗号資産やWeb3関連テーマへの期待を確認できます。",
+    選挙: "選挙や政党勢力に関する見方を整理できます。",
+  };
+  const region = scope === "global" ? "世界の注目テーマ" : "日本関連テーマ";
+  return `${region}です。${categoryCopy[category]}`;
+}
+
+function themeLabel(category: MarketCategory) {
+  const labels: Record<MarketCategory, string> = {
+    政治: "政治・地政学",
+    金融: "金融",
+    規制: "規制",
+    テック: "テック",
+    イベント: "イベント",
+    日銀: "日銀",
+    為替: "為替",
+    暗号資産: "暗号資産",
+    選挙: "選挙",
+  };
+  return labels[category];
+}
+
+function themeImage(category: MarketCategory, scope: MarketScope) {
+  const images: Record<MarketCategory, string> = {
+    政治: "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?auto=format&fit=crop&w=900&q=80",
+    金融: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=900&q=80",
+    規制: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=900&q=80",
+    テック: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=900&q=80",
+    イベント: "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=80",
+    日銀: "https://images.unsplash.com/photo-1542051841857-5f90071e7989?auto=format&fit=crop&w=900&q=80",
+    為替: "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&w=900&q=80",
+    暗号資産: "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=900&q=80",
+    選挙: "https://images.unsplash.com/photo-1540910419892-4a36d2c3266c?auto=format&fit=crop&w=900&q=80",
+  };
+  return scope === "japan" && category === "イベント"
+    ? "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=900&q=80"
+    : images[category];
+}
+
+const translationGlossary: Record<string, string> = {
+  "US x Iran": "米国とイランの",
+  "United States": "米国",
+  "US": "米国",
+  Iran: "イラン",
+  China: "中国",
+  Russia: "ロシア",
+  Ukraine: "ウクライナ",
+  Israel: "イスラエル",
+  Japan: "日本",
+  Japanese: "日本",
+  "permanent peace deal": "恒久的な和平合意",
+  "peace deal": "和平合意",
+  "ceasefire": "停戦",
+  "World Cup Winner": "ワールドカップ優勝国",
+  "World Cup": "ワールドカップ",
+  "presidential election": "大統領選挙",
+  election: "選挙",
+  "rate cut": "利下げ",
+  "cut interest rates": "利下げ",
+  "cut rates": "利下げ",
+  "rate hike": "利上げ",
+  "interest rates": "金利",
+  "Federal Reserve": "FRB",
+  Fed: "FRB",
+  "Bank of Japan": "日本銀行",
+  BOJ: "日銀",
+  Yen: "円",
+  JPY: "円",
+  Bitcoin: "ビットコイン",
+  BTC: "ビットコイン",
+  Ethereum: "イーサリアム",
+  crypto: "暗号資産",
+  "artificial intelligence": "AI",
+  AI: "AI",
+  Nvidia: "NVIDIA",
+  Tesla: "テスラ",
+  Trump: "トランプ",
+  Biden: "バイデン",
+  "S&P 500": "S&P 500",
+  inflation: "インフレ",
+  CPI: "消費者物価指数",
+  "oil": "原油",
+  gold: "金",
+  above: "上回る",
+  below: "下回る",
+  cross: "超える",
+  by: "までに",
+};
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function glossaryRegExp(value: string) {
+  const escaped = escapeRegExp(value);
+  return /^[A-Za-z0-9 /'-]+$/.test(value) ? new RegExp(`\\b${escaped}\\b`, "gi") : new RegExp(escaped, "gi");
+}
+
+const countryGlossary: Record<string, string> = {
+  Spain: "スペイン",
+  Mexico: "メキシコ",
+  Germany: "ドイツ",
+  Turkiye: "トルコ",
+  Turkey: "トルコ",
+  Sweden: "スウェーデン",
+  Austria: "オーストリア",
+  Brazil: "ブラジル",
+  Argentina: "アルゼンチン",
+  France: "フランス",
+  England: "イングランド",
+  Portugal: "ポルトガル",
+  Japan: "日本",
+};

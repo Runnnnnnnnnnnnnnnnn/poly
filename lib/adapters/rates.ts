@@ -26,7 +26,7 @@ export async function fetchUsdJpy(): Promise<RateResponse> {
       status: "fallback",
       updatedAt: new Date().toISOString(),
       usdJpy: 160.33,
-      source: "Fallback rate",
+      source: "参考レート",
     };
   }
 }

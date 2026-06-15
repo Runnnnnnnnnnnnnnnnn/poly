@@ -21,8 +21,7 @@ export function ConciergeMessage({ message }: { message: ConciergeChatMessage })
         <div className="whitespace-pre-line">{message.content}</div>
         {!isUser && message.status ? (
           <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-            {message.status === "guarded" ? <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold">Guarded</span> : <StatusBadge status={message.status} />}
-            {message.model ? <span>{message.model}</span> : null}
+            {message.status === "guarded" ? <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold">安全確認済み</span> : <StatusBadge status={message.status} />}
           </div>
         ) : null}
       </div>

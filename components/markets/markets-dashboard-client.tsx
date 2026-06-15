@@ -1,18 +1,20 @@
 "use client";
 
+import type React from "react";
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { Globe2, Landmark, RefreshCcw } from "lucide-react";
 
 import { MarketTable } from "@/components/markets/market-table";
-import { SourceStatusList } from "@/components/source-status-list";
 import { StatusBadge } from "@/components/status-badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { MarketsResponse } from "@/lib/types";
+import { Card, CardContent } from "@/components/ui/card";
+import type { MarketsResponse, MarketSummary } from "@/lib/types";
 import { formatDateTime, formatPercent, formatUsd } from "@/lib/utils";
 import { fetchLocalApi } from "@/src/lib/localApiClient";
 
 export function MarketsDashboardClient({ initialData }: { initialData: MarketsResponse }) {
   const [data, setData] = useState(initialData);
-  const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [bridgeError, setBridgeError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -22,12 +24,10 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
         const payload = await fetchLocalApi<MarketsResponse>("/api/markets");
         if (!cancelled) {
           setData(payload);
-          setBridgeError(null);
+          setBridgeError(false);
         }
-      } catch (error) {
-        if (!cancelled) {
-          setBridgeError(error instanceof Error ? error.message : "ローカルAPIに接続できませんでした");
-        }
+      } catch {
+        if (!cancelled) setBridgeError(true);
       }
     }
 
@@ -39,7 +39,10 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
     };
   }, []);
 
-  const topMarket = data.markets[0];
+  const globalMarkets = data.globalMarkets?.length ? data.globalMarkets : data.markets.filter((market) => market.scope === "global");
+  const japanMarkets = data.japanMarkets?.length ? data.japanMarkets : data.markets.filter((market) => market.scope === "japan");
+  const featured = globalMarkets[0] ?? japanMarkets[0] ?? data.markets[0];
+
   const totals = useMemo(
     () => ({
       volume: data.markets.reduce((sum, market) => sum + market.volume, 0),
@@ -49,55 +52,77 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
   );
 
   return (
-    <section className="grid gap-6">
-      <div className="grid gap-4 md:flex md:items-end md:justify-between">
-        <div className="grid gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={bridgeError ? "error" : data.status} />
-            <span className="text-sm text-muted-foreground">最終更新 {formatDateTime(data.updatedAt)}</span>
-            {bridgeError ? <span className="text-sm text-muted-foreground">静的データを表示中</span> : null}
+    <section className="grid gap-8">
+      <div className="grid gap-5 rounded-lg border border-border bg-white p-5 shadow-sm md:p-7">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={bridgeError ? "error" : data.status} />
+          <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+            <RefreshCcw className="h-4 w-4" />
+            {bridgeError ? "更新を確認できません" : `最終更新 ${formatDateTime(data.updatedAt)}`}
+          </span>
+        </div>
+        <div className="grid gap-5 lg:grid-cols-[1fr_0.85fr] lg:items-end">
+          <div className="grid gap-3">
+            <p className="text-sm font-bold text-primary">世界と日本の予測テーマ</p>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-5xl">世界と日本の注目テーマを一画面で把握</h1>
+            <p className="max-w-3xl text-base leading-8 text-muted-foreground">
+              世界で取引が集まっているテーマと、日本に関係するテーマを分けて表示します。市場価格は参加者の期待確率の目安として読み、投資判断ではなく情報整理に使います。
+            </p>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">日本関連の予測市場</h1>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-            Polymarketの公開市場データを読み取り、日本関連キーワードで抽出しています。
-          </p>
+          {featured ? <FeaturedTheme market={featured} /> : null}
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard title="検出市場" value={`${data.markets.length}件`} />
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard title="世界テーマ" value={`${globalMarkets.length}件`} icon={<Globe2 className="h-4 w-4" />} />
+        <MetricCard title="日本テーマ" value={`${japanMarkets.length}件`} icon={<Landmark className="h-4 w-4" />} />
         <MetricCard title="合計出来高" value={formatUsd(totals.volume)} />
         <MetricCard title="合計流動性" value={formatUsd(totals.liquidity)} />
       </div>
 
-      {topMarket ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>高注目市場</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
-            <div>
-              <p className="font-semibold">{topMarket.title}</p>
-              <p className="text-sm text-muted-foreground">{topMarket.summaryJa}</p>
-            </div>
-            <div className="text-2xl font-bold text-primary">{formatPercent(topMarket.probability)}</div>
-          </CardContent>
-        </Card>
-      ) : null}
+      <MarketTable
+        markets={globalMarkets}
+        title="世界で注目されているテーマ"
+        description="出来高と流動性の大きいテーマを中心に、国際情勢、金融、暗号資産、スポーツなどを表示します。"
+        showFilters={false}
+      />
 
-      <SourceStatusList items={data.sourceStatuses} />
-      <MarketTable markets={data.markets} />
+      <MarketTable
+        markets={japanMarkets}
+        title="日本に関係するテーマ"
+        description="日銀、円相場、選挙、規制、暗号資産など、日本語の一次情報と合わせて確認しやすいテーマです。"
+        showFilters={false}
+      />
     </section>
   );
 }
 
-function MetricCard({ title, value }: { title: string; value: string }) {
+function FeaturedTheme({ market }: { market: MarketSummary }) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="relative aspect-[16/9] bg-slate-100">
+        <Image src={market.imageUrl} alt="" fill priority sizes="(min-width: 1024px) 38vw, 100vw" className="object-cover" />
+      </div>
+      <CardContent className="grid gap-3 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-bold text-primary">{market.themeLabel}</span>
+          <span className="text-2xl font-bold text-primary">{formatPercent(market.probability)}</span>
+        </div>
+        <p className="line-clamp-2 text-base font-bold leading-snug text-slate-950">{market.title}</p>
+        <p className="text-sm leading-6 text-muted-foreground">{market.summaryJa}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetricCard({ title, value, icon }: { title: string; value: string; icon?: React.ReactNode }) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
+      <CardContent className="grid gap-2 p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+          {icon}
+          {title}
+        </div>
         <p className="text-2xl font-bold text-slate-950">{value}</p>
       </CardContent>
     </Card>

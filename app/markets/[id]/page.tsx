@@ -1,10 +1,10 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { ProbabilityChart, VolumeChart } from "@/components/charts/market-charts";
 import { WatchButton } from "@/components/markets/watch-button";
-import { SourceStatusList } from "@/components/source-status-list";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,35 +32,39 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
           <Button asChild variant="ghost" size="sm">
             <Link href="/markets">
               <ArrowLeft className="h-4 w-4" />
-              市場一覧へ戻る
+              テーマ一覧へ戻る
             </Link>
           </Button>
         </div>
 
-        <div className="grid gap-4 rounded-lg border border-border bg-white p-6 shadow-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={market.status} />
-            <Badge variant="outline">{market.category}</Badge>
-            <span className="text-sm text-muted-foreground">締切 {formatDate(market.endDate)}</span>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
-            <div className="grid gap-3">
-              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">{market.title}</h1>
-              <p className="text-sm text-muted-foreground">Polymarket元タイトル: {market.originalTitle}</p>
-              <p className="max-w-4xl text-sm leading-7 text-muted-foreground">{market.summaryJa}</p>
+        <div className="overflow-hidden rounded-lg border border-border bg-white shadow-sm">
+          <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="relative aspect-[16/10] bg-slate-100 lg:aspect-auto">
+              <Image src={market.imageUrl} alt="" fill priority sizes="(min-width: 1024px) 42vw, 100vw" className="object-cover" />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <WatchButton marketId={market.id} />
-              <Button asChild variant="outline">
-                <a href={market.url} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  Polymarketで確認
-                </a>
-              </Button>
-              <Button asChild variant="secondary">
-                <Link href={`/calculator?market=${market.id}`}>試算する</Link>
-              </Button>
-              <AskConciergeButton />
+            <div className="grid gap-5 p-5 md:p-7">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge status={market.status} />
+                <Badge variant="outline">{market.themeLabel}</Badge>
+                <span className="text-sm text-muted-foreground">締切 {formatDate(market.endDate)}</span>
+              </div>
+              <div className="grid gap-3">
+                <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">{market.title}</h1>
+                <p className="max-w-4xl text-sm leading-7 text-muted-foreground">{market.summaryJa}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <WatchButton marketId={market.id} />
+                <Button asChild variant="outline">
+                  <a href={market.url} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                    Polymarketで確認
+                  </a>
+                </Button>
+                <Button asChild variant="secondary">
+                  <Link href={`/calculator?market=${market.id}`}>試算する</Link>
+                </Button>
+                <AskConciergeButton />
+              </div>
             </div>
           </div>
         </div>
@@ -73,7 +77,7 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
           <Metric title="出来高" value={formatUsd(market.volume)} />
           <Metric title="流動性" value={formatUsd(market.liquidity)} />
           <Metric title="関連ニュース" value={`${market.relatedNews.length}件`} />
-          <Metric title="データ状態" value={market.status === "live" ? "Live" : "Fallback"} />
+          <Metric title="データ状態" value={market.status === "live" ? "リアルタイム" : "参考データ"} />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -102,7 +106,7 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
             </CardHeader>
             <CardContent className="grid gap-4">
               <p className="whitespace-pre-line text-sm leading-7 text-muted-foreground">{market.description}</p>
-              <p className="text-sm font-semibold">Resolution source: {market.resolutionSource || "Polymarket market rule"}</p>
+              <p className="text-sm font-semibold">判定に使われる情報: {market.resolutionSource || "Polymarketの市場ルール"}</p>
             </CardContent>
           </Card>
           <Card>
@@ -148,8 +152,6 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
             ))}
           </CardContent>
         </Card>
-
-        <SourceStatusList items={data.sourceStatuses} />
       </section>
     </AppShell>
   );
