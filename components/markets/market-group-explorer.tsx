@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight, CalendarDays, ChevronRight, ExternalLink, Layers3 } from "lucide-react";
 
+import { MarketImage } from "@/components/markets/market-image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
@@ -17,12 +17,12 @@ import {
   type MarketThemeTabId,
 } from "@/lib/market-groups";
 import type { MarketSummary } from "@/lib/types";
-import { cn, formatDate, formatPercent, formatUsd } from "@/lib/utils";
+import { cn, formatDate, formatPayoutMultiplier, formatPercent, formatUsd } from "@/lib/utils";
 
 export function MarketGroupExplorer({
   markets,
-  title = "テーマ一覧",
-  description = "タブで分類し、似た市場は同じテーマにまとめて表示します。",
+  title = "予測市場一覧",
+  description,
 }: {
   markets: MarketSummary[];
   title?: string;
@@ -42,7 +42,7 @@ export function MarketGroupExplorer({
     );
   }, [groups]);
 
-  const activeDescription = MARKET_THEME_TABS.find((tab) => tab.id === activeTab)?.description ?? description;
+  const activeTabLabel = MARKET_THEME_TABS.find((tab) => tab.id === activeTab)?.label ?? "注目";
 
   return (
     <section className="grid gap-4" aria-labelledby="theme-list-title">
@@ -51,11 +51,11 @@ export function MarketGroupExplorer({
           <h2 id="theme-list-title" className="text-xl font-bold text-slate-950 md:text-2xl">
             {title}
           </h2>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{activeDescription}</p>
+          {description ? <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
         </div>
         <div className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground">
           <Layers3 className="h-4 w-4" />
-          {groups.length}テーマに整理
+          {activeTabLabel}: {visibleGroups.length}件
         </div>
       </div>
 
@@ -99,18 +99,13 @@ export function MarketGroupExplorer({
 function ThemeGroupCard({ group }: { group: MarketThemeGroup }) {
   const primary = group.primaryMarket;
   const secondaryMarkets = group.markets.slice(0, 4);
+  const issues = getThemeIssues(group);
 
   return (
     <article className="overflow-hidden rounded-lg border border-border bg-white shadow-sm transition hover:shadow-md">
-      <div className="grid lg:grid-cols-[260px_1fr]">
-        <Link href={`/markets/${primary.id}`} className="relative block min-h-[190px] bg-slate-100">
-          <Image
-            src={primary.imageUrl}
-            alt=""
-            fill
-            sizes="(min-width: 1024px) 260px, 100vw"
-            className="object-cover"
-          />
+      <div className="grid lg:grid-cols-[220px_1fr]">
+        <Link href={`/markets/${primary.id}`} className="relative block">
+          <MarketImage src={primary.imageUrl} sizes="(min-width: 1024px) 220px, 100vw" aspectRatio="4 / 3" className="h-44 w-full sm:h-56 lg:h-64" />
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/75 to-transparent p-3">
             <Badge variant="secondary" className="bg-white/95 text-slate-800">
               {primary.themeLabel}
@@ -137,15 +132,25 @@ function ThemeGroupCard({ group }: { group: MarketThemeGroup }) {
               <Link href={`/markets/${primary.id}`} className="text-xl font-bold leading-snug text-slate-950 hover:text-primary md:text-2xl">
                 {group.label}
               </Link>
-              <p className="max-w-4xl text-sm leading-6 text-muted-foreground">{group.summary}</p>
+              <div className="grid gap-2">
+                <p className="text-xs font-bold text-muted-foreground">現状の論点</p>
+                <div className="flex flex-wrap gap-2">
+                  {issues.map((issue) => (
+                    <span key={issue} className="rounded-md bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                      {issue}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-5">
             <Metric label="確率レンジ" value={formatProbabilityRange(group)} emphasis />
+            <Metric label="YES倍率" value={formatPayoutMultiplier(primary.yesPrice)} />
+            <Metric label="NO倍率" value={formatPayoutMultiplier(primary.noPrice)} />
             <Metric label="個別市場" value={`${group.markets.length}件`} />
             <Metric label="出来高" value={formatUsd(group.totalVolume)} />
-            <Metric label="流動性" value={formatUsd(group.totalLiquidity)} />
           </div>
 
           <div className="grid gap-2 border-t border-border pt-3">
@@ -157,7 +162,7 @@ function ThemeGroupCard({ group }: { group: MarketThemeGroup }) {
                     {market.title}
                   </Link>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    YES {formatPercent(market.probability)} / 締切 {formatDate(market.endDate)}
+                    確率 {formatPercent(market.probability)} / YES {formatPayoutMultiplier(market.yesPrice)} / NO {formatPayoutMultiplier(market.noPrice)}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -169,7 +174,7 @@ function ThemeGroupCard({ group }: { group: MarketThemeGroup }) {
                   </Button>
                   <Button asChild size="sm" variant="outline">
                     <a href={market.url} target="_blank" rel="noreferrer">
-                      Polymarket
+                      公式
                       <ArrowUpRight className="h-4 w-4" />
                     </a>
                   </Button>
@@ -190,7 +195,7 @@ function ThemeGroupCard({ group }: { group: MarketThemeGroup }) {
             </Button>
             <Button asChild variant="outline">
               <a href={primary.url} target="_blank" rel="noreferrer">
-                Polymarketで確認
+                公式ページを見る
                 <ExternalLink className="h-4 w-4" />
               </a>
             </Button>
@@ -213,4 +218,17 @@ function Metric({ label, value, emphasis = false }: { label: string; value: stri
 function formatProbabilityRange(group: MarketThemeGroup) {
   if (Math.round(group.probabilityMin * 100) === Math.round(group.probabilityMax * 100)) return formatPercent(group.probabilityMax);
   return `${formatPercent(group.probabilityMin)}〜${formatPercent(group.probabilityMax)}`;
+}
+
+function getThemeIssues(group: MarketThemeGroup) {
+  const issues = [];
+  if (group.markets.length > 1) issues.push("条件違いを集約");
+  if (group.totalLiquidity < 10_000) issues.push("流動性に注意");
+  if (group.category === "為替" || group.category === "日銀" || group.category === "金融") issues.push("金利・為替を確認");
+  if (group.category === "政治" || group.category === "選挙" || group.category === "規制") issues.push("判定条件を確認");
+  if (group.category === "イベント") issues.push("締切と対象を確認");
+  if (group.category === "暗号資産") issues.push("価格変動が大きい");
+  if (group.category === "テック") issues.push("関連ニュースを確認");
+  if (issues.length === 0) issues.push("判定条件を確認");
+  return issues.slice(0, 3);
 }

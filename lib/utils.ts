@@ -9,6 +9,12 @@ export function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+export function formatPayoutMultiplier(price: number | null | undefined) {
+  if (!price || price <= 0) return "-";
+  const multiplier = 1 / price;
+  return `${multiplier >= 10 ? multiplier.toFixed(0) : multiplier.toFixed(1)}倍`;
+}
+
 export function formatUsd(value: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

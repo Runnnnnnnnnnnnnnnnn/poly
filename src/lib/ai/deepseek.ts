@@ -189,6 +189,6 @@ function fallbackAnswer(question: string, contextPack: Awaited<ReturnType<typeof
   }
 
   return applyAnswerGuardrails(
-    `結論: Polymarket Watchは、世界と日本のPolymarketテーマを市場価格と関連情報で整理するダッシュボードです。\n\n根拠:\n- 市場価格は期待確率の目安として扱います。\n- 公式情報、報道、市場情報を区別します。\n- 現在の市場データ状態は ${contextPack.dataStatus} です。\n\n質問: ${question}`,
+    `結論: Polymarket Watchでは、予測市場のテーマ、確率、倍率、関連情報を確認できます。\n\n根拠:\n- 市場価格は参加者の見方を表す参考値です。\n- 公式情報、報道、市場データを分けて見ます。\n- 現在の市場データ状態は ${contextPack.dataStatus} です。\n\n質問: ${question}`,
   );
 }

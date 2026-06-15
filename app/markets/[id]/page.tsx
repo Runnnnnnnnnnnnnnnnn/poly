@@ -1,10 +1,10 @@
 import Link from "next/link";
-import Image from "next/image";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { CalculatorClient } from "@/components/calculator-client";
 import { ProbabilityChart, VolumeChart } from "@/components/charts/market-charts";
+import { MarketImage } from "@/components/markets/market-image";
 import { WatchButton } from "@/components/markets/watch-button";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCalculatorDefaults, getMarketDetailDashboard, getMarketsDashboard } from "@/lib/server/dashboard";
 import type { NewsItem } from "@/lib/types";
-import { formatDate, formatPercent, formatUsd } from "@/lib/utils";
+import { formatDate, formatPayoutMultiplier, formatPercent, formatUsd } from "@/lib/utils";
 import { AskConciergeButton } from "@/src/components/ai/AskConciergeButton";
 
 export const dynamicParams = false;
@@ -42,9 +42,7 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
 
         <div className="overflow-hidden rounded-lg border border-border bg-white shadow-sm">
           <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="relative aspect-[16/10] bg-slate-100 lg:aspect-auto">
-              <Image src={market.imageUrl} alt="" fill priority sizes="(min-width: 1024px) 42vw, 100vw" className="object-cover" />
-            </div>
+            <MarketImage src={market.imageUrl} priority sizes="(min-width: 1024px) 42vw, 100vw" aspectRatio="16 / 10" className="h-56 w-full sm:h-72 lg:h-full lg:min-h-[340px]" />
             <div className="grid gap-5 p-5 md:p-7">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={market.status} />
@@ -60,7 +58,7 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
                 <Button asChild variant="outline">
                   <a href={market.url} target="_blank" rel="noreferrer">
                     <ExternalLink className="h-4 w-4" />
-                    Polymarketで確認
+                    公式ページを見る
                   </a>
                 </Button>
                 <AskConciergeButton
@@ -74,7 +72,7 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Metric title="現在確率" value={formatPercent(market.probability)} />
-          <Metric title="YES / NO" value={`${market.yesPrice.toFixed(2)} / ${market.noPrice.toFixed(2)}`} />
+          <Metric title="YES倍率 / NO倍率" value={`${formatPayoutMultiplier(market.yesPrice)} / ${formatPayoutMultiplier(market.noPrice)}`} />
           <Metric title="Best Bid / Ask" value={`${market.bestBid?.toFixed(2) ?? "-"} / ${market.bestAsk?.toFixed(2) ?? "-"}`} />
           <Metric title="スプレッド" value={market.spread === null ? "-" : market.spread.toFixed(3)} />
           <Metric title="出来高" value={formatUsd(market.volume)} />
@@ -89,7 +87,7 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
           </CardHeader>
           <CardContent className="grid gap-4">
             <p className="text-sm leading-6 text-muted-foreground">
-              現在のYES価格を初期値にして、想定売却価格、投資額、USD/JPY、手数料から参考損益を確認できます。
+              現在の市場価格を初期値にして、想定売却価格、投資額、USD/JPY、手数料から参考損益を確認できます。
             </p>
             <CalculatorClient
               initialUsdJpy={rate.usdJpy}

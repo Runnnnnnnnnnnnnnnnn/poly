@@ -501,7 +501,7 @@ function relateNews(market: MarketSummary, items: NewsItem[]) {
 function buildWatchPoints(market: MarketSummary) {
   const points = [
     "解決条件と一次情報の更新タイミングを先に確認する",
-    "YES価格は市場価格であり、実際の発生確率を保証しない",
+    "市場価格は参加者の見方であり、実際の発生確率を保証しない",
   ];
 
   if ((market.spread ?? 0) > 0.04) points.push("スプレッドが広いため、価格の読み取りには注意が必要");
@@ -514,7 +514,7 @@ function buildWatchPoints(market: MarketSummary) {
 
 function buildResolutionSummary(market: NormalizedMarket) {
   const endDate = market.endDate ? formatMarketDate(market.endDate) : "期日";
-  const outcomeText = market.outcomes.length ? market.outcomes.join(" / ") : "YES / NO";
+  const outcomeText = market.outcomes.length ? market.outcomes.join(" / ") : "はい / いいえ";
   return [
     `${market.title}について、Polymarket上の市場ルールに従って判定されます。`,
     `主な選択肢は ${outcomeText} です。期日は ${endDate} です。`,

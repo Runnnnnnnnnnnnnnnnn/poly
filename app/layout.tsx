@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Polymarket Watch",
-  description: "世界と日本の予測テーマを見やすく整理するダッシュボード",
+  description: "予測市場一覧と関連情報を確認するダッシュボード",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

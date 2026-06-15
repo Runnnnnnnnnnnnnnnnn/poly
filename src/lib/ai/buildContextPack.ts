@@ -1,6 +1,6 @@
 import { getMarketDetailDashboard, getMarketsDashboard, getNewsDashboard } from "@/lib/server/dashboard";
 import type { MarketDetail, MarketSummary } from "@/lib/types";
-import { formatDate, formatPercent, formatUsd } from "@/lib/utils";
+import { formatDate, formatPayoutMultiplier, formatPercent, formatUsd } from "@/lib/utils";
 import { newsToSourceCard, type SourceCard } from "@/src/lib/ai/compressSource";
 
 export type MarketBrief = {
@@ -56,7 +56,7 @@ export function marketToBrief(market: MarketDetail, sourceCards: SourceCard[]): 
     originalTitle: market.originalTitle,
     oneLineSummary: market.summaryJa,
     beginnerExplanation: `${market.title} は、Polymarket上で将来の出来事に対する市場参加者の見方を価格として表している市場です。`,
-    currentProbabilityExplanation: `現在のYES価格は ${market.yesPrice.toFixed(2)} で、期待確率の目安としては ${formatPercent(market.probability)} です。`,
+    currentProbabilityExplanation: `現在の確率は ${formatPercent(market.probability)}、YESの参考倍率は ${formatPayoutMultiplier(market.yesPrice)} です。`,
     resolutionConditionSummary: market.description.slice(0, 500),
     mainWatchPoints: market.watchPoints,
     relatedOfficialSources,
@@ -72,7 +72,7 @@ export function marketToBrief(market: MarketDetail, sourceCards: SourceCard[]): 
       "この市場を初心者向けに説明して",
       "解決条件を短く要約して",
       "関連する公式情報だけ教えて",
-      "上司に1分で説明する文面にして",
+      "1分で読める説明文にして",
     ],
   };
 }

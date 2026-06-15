@@ -7,8 +7,9 @@ import { ExternalLink } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { groupMarkets, type MarketThemeGroup } from "@/lib/market-groups";
 import type { MarketSummary, NewsItem } from "@/lib/types";
-import { formatDateTime, formatPercent, formatUsd } from "@/lib/utils";
+import { formatDateTime, formatPayoutMultiplier, formatPercent } from "@/lib/utils";
 
 const filters = ["すべて", "報道", "公式情報", "日銀", "金融", "規制", "政治", "為替", "政策"] as const;
 
@@ -79,17 +80,17 @@ export function NewsList({ items, markets }: { items: NewsItem[]; markets: Marke
 }
 
 function RelatedThemes({ item, markets }: { item: NewsItem; markets: MarketSummary[] }) {
-  const related = useMemo(() => findRelatedMarkets(item, markets), [item, markets]);
+  const related = useMemo(() => findRelatedThemeGroups(item, markets), [item, markets]);
 
   return (
     <aside className="grid gap-2 rounded-md bg-slate-50 p-3">
       <p className="text-xs font-bold text-muted-foreground">関連テーマ</p>
       {related.length > 0 ? (
-        related.map((market) => (
-          <Link key={market.id} href={`/markets/${market.id}`} className="grid gap-1 rounded-md border border-border bg-white p-3 hover:border-primary/40 hover:bg-accent">
-            <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-950">{market.title}</span>
+        related.map((group) => (
+          <Link key={group.id} href={`/markets/${group.primaryMarket.id}`} className="grid gap-1 rounded-md border border-border bg-white p-3 hover:border-primary/40 hover:bg-accent">
+            <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-950">{group.label}</span>
             <span className="text-xs text-muted-foreground">
-              YES {formatPercent(market.probability)} / 出来高 {formatUsd(market.volume)} / {market.themeLabel}
+              確率 {formatProbabilityRange(group)} / YES {formatPayoutMultiplier(group.primaryMarket.yesPrice)} / 個別市場 {group.markets.length}件
             </span>
           </Link>
         ))
@@ -100,25 +101,48 @@ function RelatedThemes({ item, markets }: { item: NewsItem; markets: MarketSumma
   );
 }
 
-function findRelatedMarkets(item: NewsItem, markets: MarketSummary[]) {
+function findRelatedThemeGroups(item: NewsItem, markets: MarketSummary[]) {
   const newsText = normalize([item.title, item.summary, item.relatedMarket ?? "", item.category].join(" "));
-  return markets
-    .map((market) => {
-      const marketText = normalize([market.title, market.originalTitle, market.summaryJa, market.category, market.themeLabel].join(" "));
+  return groupMarkets(markets)
+    .map((group) => {
+      const marketText = normalize([
+        group.label,
+        group.category,
+        group.primaryMarket.title,
+        group.primaryMarket.originalTitle,
+        group.primaryMarket.summaryJa,
+        group.markets.slice(0, 6).map((market) => market.title).join(" "),
+      ].join(" "));
       const relatedMarketText = normalize(item.relatedMarket ?? "");
       let score = 0;
-      if (item.category === market.category) score += 5;
+      const categoryScore = categoryMatchScore(item.category, group);
+      score += categoryScore;
+      if ((item.category === "為替" || item.category === "日銀") && categoryScore === 0) return { group, score: 0 };
       if (relatedMarketText && marketText.includes(relatedMarketText.slice(0, 18))) score += 5;
       for (const token of importantTokens(newsText)) {
         if (marketText.includes(token)) score += token.length > 4 ? 2 : 1;
       }
-      if (item.source.includes("日本") && market.scope === "japan") score += 1;
-      return { market, score };
+      if (item.source.includes("日本") && group.scope === "japan") score += 1;
+      return { group, score };
     })
     .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || b.market.volume + b.market.liquidity - (a.market.volume + a.market.liquidity))
+    .sort((a, b) => b.score - a.score || b.group.totalVolume + b.group.totalLiquidity - (a.group.totalVolume + a.group.totalLiquidity))
     .slice(0, 3)
-    .map((entry) => entry.market);
+    .map((entry) => entry.group);
+}
+
+function categoryMatchScore(category: NewsItem["category"], group: MarketThemeGroup) {
+  if (category === "為替") return group.id === "theme:usd-jpy" ? 24 : 0;
+  if (category === "日銀") return group.id === "theme:boj-policy" ? 24 : 0;
+  if (category === group.category) return 8;
+  if (category === "金融" && group.tags.includes("finance")) return 4;
+  if ((category === "規制" || category === "政治" || category === "政策") && group.tags.includes("politics")) return 4;
+  return 0;
+}
+
+function formatProbabilityRange(group: MarketThemeGroup) {
+  if (Math.round(group.probabilityMin * 100) === Math.round(group.probabilityMax * 100)) return formatPercent(group.probabilityMax);
+  return `${formatPercent(group.probabilityMin)}〜${formatPercent(group.probabilityMax)}`;
 }
 
 function importantTokens(text: string) {

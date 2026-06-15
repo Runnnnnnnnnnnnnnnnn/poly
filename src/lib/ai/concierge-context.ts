@@ -23,16 +23,16 @@ export function inferConciergeContextFromPath(pathname: string, override: Concie
 
 export function conciergeOpeningMessage(context: ConciergeOpenContext) {
   if (context.kind === "home") {
-    return "Polymarket Watchの使い方、予測市場の基本、上司向けに説明する流れを整理できます。まずは市場価格を期待確率の目安として読むところから確認しましょう。";
+    return "Polymarket Watchの使い方、予測市場の基本、関連リンクの読み方を整理できます。まずは市場価格と倍率の見方から確認しましょう。";
   }
   if (context.kind === "markets") {
     return "テーマ一覧に合わせて、国内外の注目テーマ、タグ別の見方、出来高や流動性から見る優先順位を整理できます。";
   }
   if (context.kind === "market-detail") {
-    return `「${context.title ?? "このテーマ"}」について、解決条件、確率の読み方、関連リンク、上司向けの説明文を整理できます。`;
+    return `「${context.title ?? "このテーマ"}」について、解決条件、確率、倍率、関連リンクを整理できます。`;
   }
   if (context.kind === "tutorial") {
-    return "チュートリアルの流れに沿って、初めての人に説明する順番や確認ポイントを整理できます。";
+    return "読み方ガイドの流れに沿って、最初に見るリンク、注意点、確認ポイントを整理できます。";
   }
   if (context.kind === "news") {
     return "公式情報やニュースを、市場価格とは分けて整理できます。出典と日付を確認しながら見ていきます。";
@@ -46,7 +46,7 @@ export function conciergeOpeningMessage(context: ConciergeOpenContext) {
 export function conciergeSuggestedQuestions(context: ConciergeOpenContext) {
   if (context.kind === "home") {
     return [
-      "Polymarketの基本を上司向けに説明して",
+      "Polymarketの基本を短く説明して",
       "このダッシュボードでは何を見るべき？",
       "市場価格と確率の関係を短く教えて",
       "日本テーマを見る順番を教えて",
@@ -57,7 +57,7 @@ export function conciergeSuggestedQuestions(context: ConciergeOpenContext) {
       "今日の注目テーマを分類して",
       "日本国内と国外の見方の違いを整理して",
       "出来高と流動性から優先順位を付けて",
-      "上司に1分で説明する見どころを作って",
+      "1分で読める見どころを作って",
     ];
   }
   if (context.kind === "market-detail") {
@@ -96,10 +96,10 @@ function contextFromPath(pathname: string): ConciergeOpenContext {
   if (detailMatch) {
     return { kind: "market-detail", marketId: decodeURIComponent(detailMatch[1]) };
   }
-  if (pathname.startsWith("/markets")) return { kind: "markets", title: "テーマ一覧" };
+  if (pathname.startsWith("/markets")) return { kind: "markets", title: "予測市場一覧" };
   if (pathname.startsWith("/onboarding") || pathname === "/") return { kind: "home", title: "Polymarket Watch" };
-  if (pathname.startsWith("/tutorial")) return { kind: "tutorial", title: "チュートリアル" };
-  if (pathname.startsWith("/news")) return { kind: "news", title: "公式情報" };
+  if (pathname.startsWith("/tutorial")) return { kind: "tutorial", title: "読み方ガイド" };
+  if (pathname.startsWith("/news")) return { kind: "news", title: "ニュース" };
   if (pathname.startsWith("/calculator")) return { kind: "calculator", title: "収益計算" };
   return {};
 }

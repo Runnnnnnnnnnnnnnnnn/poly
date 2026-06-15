@@ -7,7 +7,7 @@ export const MARKET_THEME_TABS = [
   { id: "sports", label: "スポーツ", description: "大会、試合、優勝予想などのスポーツ市場" },
   { id: "finance", label: "金融・為替", description: "金利、為替、株価指数、インフレ関連" },
   { id: "politics", label: "政治・地政学", description: "選挙、政策、国際情勢、規制関連" },
-  { id: "crypto", label: "暗号資産", description: "Bitcoin、Ethereum、規制、価格帯関連" },
+  { id: "crypto", label: "暗号資産", description: "ビットコイン、イーサリアム、規制、価格帯関連" },
   { id: "tech", label: "テック", description: "AI、半導体、主要テック企業関連" },
   { id: "all", label: "すべて", description: "グループ化した全テーマ" },
 ] as const;
@@ -46,7 +46,7 @@ const KNOWN_GROUP_LABELS: Record<string, string> = {
   "theme:fed-policy": "FRBの金融政策",
   "theme:bitcoin-price": "ビットコインの価格帯",
   "theme:ethereum-price": "イーサリアムの価格帯",
-  "theme:solana-price": "Solanaの価格帯",
+  "theme:solana-price": "ソラナの価格帯",
   "theme:world-cup-2026": "2026年FIFAワールドカップ",
   "theme:us-politics": "米国政治・選挙",
   "theme:iran-geopolitics": "中東・地政学",

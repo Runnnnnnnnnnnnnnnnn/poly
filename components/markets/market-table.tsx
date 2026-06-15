@@ -2,16 +2,16 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { ArrowUpRight, CalendarDays, Eye, Globe2, Landmark } from "lucide-react";
 
+import { MarketImage } from "@/components/markets/market-image";
 import { StatusBadge } from "@/components/status-badge";
 import { WatchButton } from "@/components/markets/watch-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MARKET_FILTERS } from "@/lib/constants";
 import type { MarketSummary } from "@/lib/types";
-import { formatDate, formatPercent, formatUsd } from "@/lib/utils";
+import { formatDate, formatPayoutMultiplier, formatPercent, formatUsd } from "@/lib/utils";
 
 type Filter = (typeof MARKET_FILTERS)[number];
 
@@ -87,8 +87,8 @@ function MarketCard({ market }: { market: MarketSummary }) {
   return (
     <article className="overflow-hidden rounded-lg border border-border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <Link href={`/markets/${market.id}`} className="block">
-        <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
-          <Image src={market.imageUrl} alt="" fill sizes="(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw" className="object-cover" />
+        <div className="relative">
+          <MarketImage src={market.imageUrl} sizes="(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw" aspectRatio="16 / 9" />
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/70 to-transparent p-3">
             <Badge variant="secondary" className="bg-white/92 text-slate-800">
               <RegionIcon className="mr-1 h-3.5 w-3.5" />
@@ -120,8 +120,8 @@ function MarketCard({ market }: { market: MarketSummary }) {
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-sm">
-          <SmallQuote label="YES" value={market.yesPrice.toFixed(2)} />
-          <SmallQuote label="NO" value={market.noPrice.toFixed(2)} />
+          <SmallQuote label="YES倍率" value={formatPayoutMultiplier(market.yesPrice)} />
+          <SmallQuote label="NO倍率" value={formatPayoutMultiplier(market.noPrice)} />
           <SmallQuote label="Bid" value={market.bestBid === null ? "-" : market.bestBid.toFixed(2)} />
           <SmallQuote label="Ask" value={market.bestAsk === null ? "-" : market.bestAsk.toFixed(2)} />
         </div>
@@ -134,7 +134,7 @@ function MarketCard({ market }: { market: MarketSummary }) {
             </Link>
           </Button>
           <WatchButton marketId={market.id} />
-          <Button asChild size="icon" variant="outline" aria-label="Polymarketで確認">
+          <Button asChild size="icon" variant="outline" aria-label="公式ページを見る">
             <a href={market.url} target="_blank" rel="noreferrer">
               <ArrowUpRight className="h-4 w-4" />
             </a>

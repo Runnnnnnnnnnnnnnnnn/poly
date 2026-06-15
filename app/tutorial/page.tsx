@@ -1,19 +1,20 @@
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ExternalLink } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { officialPolymarketLinks, polymarketReferenceLinks } from "@/lib/polymarket-reference-links";
 import { AskConciergeButton } from "@/src/components/ai/AskConciergeButton";
 
 const steps = [
-  "テーマを探す",
-  "確率を見る",
-  "ニュース・一次情報を確認する",
-  "テーマ内で収益計算を試す",
-  "ウォッチリストに追加する",
-  "AIコンシェルジュに質問する",
-  "投資助言ではないことを確認する",
+  "Polymarketの仕組みを確認する",
+  "法規制と注意点を先に読む",
+  "予測市場一覧でテーマを選ぶ",
+  "確率・倍率・出来高を見る",
+  "解決条件と公式ページを確認する",
+  "ニュース・公式情報で背景を見る",
+  "必要ならAI相談で要点を整理する",
 ];
 
 export default function TutorialPage() {
@@ -21,10 +22,10 @@ export default function TutorialPage() {
     <AppShell>
       <section className="grid gap-6">
         <div className="grid gap-2">
-          <p className="text-sm font-bold text-primary">3 minute tutorial</p>
-          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">チュートリアル</h1>
+          <p className="text-sm font-bold text-primary">Guide</p>
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">読み方ガイド</h1>
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-            初めて見る人でも流れが分かるように、確認する順番を短くまとめています。
+            Polymarketの仕組み、法規制、テーマの見方を順番に確認します。
           </p>
         </div>
 
@@ -46,15 +47,32 @@ export default function TutorialPage() {
           ))}
         </div>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>先に読むリンク</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2">
+            {[officialPolymarketLinks[0], polymarketReferenceLinks[0], polymarketReferenceLinks[1], polymarketReferenceLinks[2]].map((item) => (
+              <a key={item.url} href={item.url} target="_blank" rel="noreferrer" className="grid gap-1 rounded-md border border-border p-4 hover:bg-slate-50">
+                <span className="text-xs font-semibold text-muted-foreground">{item.source}</span>
+                <span className="text-sm font-bold text-slate-950">{item.title}</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                  開く <ExternalLink className="h-3.5 w-3.5" />
+                </span>
+              </a>
+            ))}
+          </CardContent>
+        </Card>
+
         <div className="rounded-lg border border-border bg-white p-6 shadow-sm">
           <p className="mb-4 text-sm leading-6 text-muted-foreground">
-            本サービスは投資助言ではありません。市場の読み取り、関連情報の整理、参考計算に用途を限定しています。
+            この画面は情報整理用です。注文、ウォレット接続、自動売買は行いません。
           </p>
-          <Button asChild>
-            <Link href="/markets">テーマ一覧へ進む</Link>
-          </Button>
-          <div className="mt-3">
-            <AskConciergeButton label="チュートリアルについて聞く" context={{ kind: "tutorial", title: "チュートリアル" }} />
+          <div className="flex flex-wrap gap-2">
+            <Button asChild>
+              <Link href="/markets">予測市場一覧へ</Link>
+            </Button>
+            <AskConciergeButton label="読み方を相談" context={{ kind: "tutorial", title: "読み方ガイド" }} />
           </div>
         </div>
       </section>
@@ -64,13 +82,13 @@ export default function TutorialPage() {
 
 function copyForStep(index: number) {
   const copy = [
-    "世界で注目されているテーマと日本に関係するテーマを分けて確認します。",
-    "YES価格を市場参加者の見方として読み、出来高と流動性も合わせて見ます。",
-    "国会、e-Gov、日銀などの公式情報を確認し、価格だけで判断しないようにします。",
-    "テーマ詳細の中で、購入価格、想定売却価格、投資額、為替、手数料から参考損益を試算します。",
-    "気になるテーマをウォッチリストに保存します。",
-    "AIコンシェルジュに、確率の見方や公式情報の整理を質問します。",
-    "注文ボタン、秘密鍵入力、ウォレット署名、自動売買がないことを確認します。",
+    "まず公式ページと日本語の解説記事で、予測市場の基本を確認します。",
+    "日本国内から金銭を賭ける利用には法的リスクがあります。参照記事を先に確認します。",
+    "日本国内、国外、スポーツ、金融・為替などの分類からテーマを探します。",
+    "確率は市場価格から読む見方、倍率は当たった場合の参考倍率として見ます。",
+    "詳細画面からPolymarketの公式市場ページを開き、判定条件を確認します。",
+    "ニュース・公式情報は価格と分けて読み、背景情報として整理します。",
+    "不明点はAI相談で要点、確認ポイント、関連リンクを整理します。",
   ];
   return copy[index];
 }

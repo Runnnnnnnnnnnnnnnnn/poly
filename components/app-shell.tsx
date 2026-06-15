@@ -1,16 +1,16 @@
 import Link from "next/link";
 import type React from "react";
-import { BarChart3, BookOpen, Newspaper, Search } from "lucide-react";
+import { BookOpen, HelpCircle, Newspaper, Search } from "lucide-react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
 import { ConciergeDrawer } from "@/src/components/ai/ConciergeDrawer";
 
 const navItems = [
-  { href: "/onboarding", label: "概要", icon: BookOpen },
-  { href: "/markets", label: "テーマ", icon: Search },
-  { href: "/news", label: "公式情報", icon: Newspaper },
-  { href: "/tutorial", label: "チュートリアル", icon: BarChart3 },
+  { href: "/onboarding", label: "Polymarketとは", icon: BookOpen },
+  { href: "/markets", label: "予測市場一覧", icon: Search },
+  { href: "/news", label: "ニュース", icon: Newspaper },
+  { href: "/tutorial", label: "読み方ガイド", icon: HelpCircle },
 ];
 
 export function AppShell({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -21,14 +21,14 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
           <Link href="/markets" className="flex items-center gap-3">
             <BrandLogo />
           </Link>
-          <nav className="flex gap-1 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0" aria-label="メインナビゲーション">
+          <nav className="grid grid-cols-2 gap-2 md:flex md:flex-wrap" aria-label="メインナビゲーション">
             {navItems.map((item) => {
               const Icon = item.icon;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="inline-flex h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold text-muted-foreground hover:bg-accent hover:text-accent-foreground md:border-transparent md:bg-transparent"
                 >
                   <Icon className="h-4 w-4" />
                   {item.label}
