@@ -6,10 +6,9 @@ import { Bot, History, RefreshCcw } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { MarketAiEvaluation, MarketAiEvaluationsResponse } from "@/lib/types";
 import { cn, formatDateTime, formatPercent } from "@/lib/utils";
-import { fetchLocalApi } from "@/src/lib/localApiClient";
+import { fetchLocalApi, isSnapshotMode } from "@/src/lib/localApiClient";
 
 const HISTORY_KEY = "polymarket-watch.ai-evaluation-history";
 const HISTORY_LIMIT = 40;
@@ -26,6 +25,7 @@ export function MarketAiEvaluationPanel() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [snapshot, setSnapshot] = useState(false);
   const mountedRef = useRef(true);
 
   const refresh = useCallback(async (silent = true) => {
@@ -46,6 +46,13 @@ export function MarketAiEvaluationPanel() {
   useEffect(() => {
     mountedRef.current = true;
     setHistory(readHistory());
+    // 静的スナップショット（公開版でAPI未接続）ではAI評価を取得しない。
+    if (isSnapshotMode()) {
+      setSnapshot(true);
+      return () => {
+        mountedRef.current = false;
+      };
+    }
     void refresh();
     const timer = window.setInterval(() => void refresh(), 60_000);
     return () => {
@@ -54,11 +61,11 @@ export function MarketAiEvaluationPanel() {
     };
   }, [refresh]);
 
-  const latestHistory = useMemo(() => history.slice(0, 8), [history]);
+  const latestHistory = useMemo(() => history.slice(0, 6), [history]);
 
   return (
     <section className="grid gap-4" aria-labelledby="ai-evaluation-title">
-      <div className="grid gap-3 rounded-lg border border-border bg-white p-5 shadow-sm md:p-6">
+      <div className="grid gap-3 rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5 md:p-6">
         <div className="grid gap-3 md:flex md:items-start md:justify-between">
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -70,22 +77,28 @@ export function MarketAiEvaluationPanel() {
                   AI予想
                 </h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  各分類で最も注目度が高いテーマだけを、DeepSeekと市場データで参考評価します。
+                  国内と国外から注目度が高いテーマを1件ずつ選び、DeepSeekと市場データで参考評価します。
                 </p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={error ? "error" : data?.status ?? "fallback"} />
+              <StatusBadge status={snapshot ? "fallback" : error ? "error" : data?.status ?? "fallback"} />
               <span className="text-xs font-semibold text-muted-foreground">
-                {data ? `最終評価 ${formatDateTime(data.updatedAt)} / ${data.model}` : "評価を取得中"}
+                {snapshot
+                  ? "公開版（スナップショット）では非表示"
+                  : data
+                    ? `最終評価 ${formatDateTime(data.updatedAt)} / ${data.model}`
+                    : "評価を取得中"}
               </span>
-              {error ? <span className="text-xs text-muted-foreground">取得失敗: {error}</span> : null}
+              {!snapshot && error ? <span className="text-xs text-muted-foreground">取得失敗: {error}</span> : null}
             </div>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => void refresh(false)} disabled={loading}>
-            <RefreshCcw className={cn("h-4 w-4", loading ? "animate-spin" : "")} />
-            再評価
-          </Button>
+          {snapshot ? null : (
+            <Button type="button" variant="outline" size="sm" onClick={() => void refresh(false)} disabled={loading}>
+              <RefreshCcw className={cn("h-4 w-4", loading ? "animate-spin" : "")} />
+              再評価
+            </Button>
+          )}
         </div>
 
         <div className="grid gap-3 lg:grid-cols-2">
@@ -93,23 +106,21 @@ export function MarketAiEvaluationPanel() {
             <EvaluationCard key={item.id} item={item} previous={previousForItem(item, history)} />
           ))}
           {!data?.items?.length ? (
-            <div className="rounded-md border border-dashed border-border p-5 text-sm text-muted-foreground">
-              AI評価を準備しています。ローカルAPIが起動していれば自動で更新されます。
+            <div className="rounded-md border border-dashed border-border p-5 text-sm leading-6 text-muted-foreground lg:col-span-2">
+              {snapshot
+                ? "この公開版（静的スナップショット）では、AI予想はリアルタイム生成されないため表示していません。最新データに接続したローカル版でご利用いただけます。"
+                : "AI評価を準備しています。ローカルAPIが起動していれば自動で更新されます。"}
             </div>
           ) : null}
         </div>
-      </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <History className="h-5 w-5 text-primary" />
-            <CardTitle>AI評価の成績履歴</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
+        <details className="rounded-md border border-border bg-slate-50 p-3">
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-800">
+            <History className="h-4 w-4 text-primary" />
+            AI評価の履歴
+          </summary>
           {latestHistory.length ? (
-            <div className="grid gap-2">
+            <div className="mt-3 grid gap-2">
               {latestHistory.map((item) => (
                 <div key={`${item.id}-${item.recordedAt}`} className="grid gap-2 rounded-md border border-border p-3 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div className="min-w-0">
@@ -123,12 +134,12 @@ export function MarketAiEvaluationPanel() {
               ))}
             </div>
           ) : (
-            <p className="text-sm leading-6 text-muted-foreground">
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
               評価履歴はこのブラウザに保存されます。解決済み判定が取得できるまでは「検証待ち」として蓄積します。
             </p>
           )}
-        </CardContent>
-      </Card>
+        </details>
+      </div>
     </section>
   );
 }
@@ -145,11 +156,10 @@ function EvaluationCard({ item, previous }: { item: MarketAiEvaluation; previous
         <h3 className="text-lg font-bold leading-snug text-slate-950">{item.title}</h3>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-3 gap-2">
         <SmallMetric label="AI確率" value={formatPercent(item.aiProbability)} emphasis />
         <SmallMetric label="市場確率" value={formatPercent(item.marketProbability)} />
         <SmallMetric label="YES期待" value={formatReturn(item.expectedReturnYes)} />
-        <SmallMetric label="NO期待" value={formatReturn(item.expectedReturnNo)} />
       </div>
 
       {previous ? (
@@ -158,33 +168,37 @@ function EvaluationCard({ item, previous }: { item: MarketAiEvaluation; previous
         </p>
       ) : null}
 
-      <div className="grid gap-2 md:grid-cols-2">
-        <div className="grid gap-2">
-          <p className="text-xs font-bold text-muted-foreground">評価理由</p>
-          <ul className="grid gap-1 text-sm leading-6 text-muted-foreground">
-            {item.reasons.slice(0, 3).map((reason) => (
-              <li key={reason}>{reason}</li>
-            ))}
-          </ul>
+      <details className="rounded-md border border-border bg-white p-3">
+        <summary className="cursor-pointer text-sm font-bold text-slate-800">評価理由と根拠を表示</summary>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="grid gap-2">
+            <p className="text-xs font-bold text-muted-foreground">評価理由</p>
+            <ul className="grid gap-1 text-sm leading-6 text-muted-foreground">
+              {item.reasons.slice(0, 3).map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="grid gap-2">
+            <p className="text-xs font-bold text-muted-foreground">根拠データ</p>
+            <ul className="grid gap-1 text-sm leading-6 text-muted-foreground">
+              {item.evidence.slice(0, 3).map((evidence) => (
+                <li key={evidence}>{evidence}</li>
+              ))}
+              <li>NO期待 {formatReturn(item.expectedReturnNo)}</li>
+            </ul>
+          </div>
         </div>
-        <div className="grid gap-2">
-          <p className="text-xs font-bold text-muted-foreground">根拠データ</p>
-          <ul className="grid gap-1 text-sm leading-6 text-muted-foreground">
-            {item.evidence.slice(0, 3).map((evidence) => (
-              <li key={evidence}>{evidence}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      </details>
     </article>
   );
 }
 
 function SmallMetric({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
   return (
-    <div className="grid min-h-[64px] gap-1 rounded-md bg-white p-3">
-      <span className="text-[11px] font-semibold text-slate-500">{label}</span>
-      <span className={cn("font-bold", emphasis ? "text-xl text-primary" : "text-sm text-slate-950")}>{value}</span>
+    <div className="grid min-h-[58px] gap-1 rounded-md bg-white p-2.5 sm:min-h-[64px] sm:p-3">
+      <span className="text-[11px] font-semibold leading-tight text-slate-500">{label}</span>
+      <span className={cn("break-words font-bold", emphasis ? "text-base text-primary sm:text-xl" : "text-sm text-slate-950")}>{value}</span>
     </div>
   );
 }

@@ -43,6 +43,17 @@ export function localApiUrl(path: string) {
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/**
+ * 静的エクスポート（GitHub Pages など）で、接続先のAPIが設定されていない状態。
+ * このとき `/api/*` は存在しないため、自動更新やAI機能を呼び出さず、
+ * ビルド時点のスナップショットをそのまま表示する。
+ * `?api=` パラメータや NEXT_PUBLIC_LOCAL_API_BASE でAPIを指定した場合は false。
+ */
+export function isSnapshotMode() {
+  if (typeof window === "undefined") return false;
+  return process.env.NEXT_PUBLIC_STATIC_EXPORT === "1" && getLocalApiBase() === "";
+}
+
 export async function fetchLocalApi<T>(path: string, init: RequestInit = {}) {
   const response = await fetch(localApiUrl(path), {
     ...init,

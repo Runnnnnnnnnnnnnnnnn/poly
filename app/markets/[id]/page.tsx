@@ -70,8 +70,8 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Metric title="現在確率" value={formatPercent(market.probability)} />
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 xl:grid-cols-4">
+          <Metric title="現在確率" value={formatPercent(market.probability)} emphasis />
           <Metric title="YES倍率 / NO倍率" value={`${formatPayoutMultiplier(market.yesPrice)} / ${formatPayoutMultiplier(market.noPrice)}`} />
           <Metric title="Best Bid / Ask" value={`${market.bestBid?.toFixed(2) ?? "-"} / ${market.bestAsk?.toFixed(2) ?? "-"}`} />
           <Metric title="スプレッド" value={market.spread === null ? "-" : market.spread.toFixed(3)} />
@@ -191,15 +191,19 @@ function dedupeNews(items: NewsItem[]) {
   });
 }
 
-function Metric({ title, value }: { title: string; value: string }) {
+function Metric({ title, value, emphasis = false }: { title: string; value: string; emphasis?: boolean }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-xl font-bold text-slate-950">{value}</p>
-      </CardContent>
-    </Card>
+    <div className="grid content-start gap-1 rounded-lg border border-border bg-white p-3 shadow-sm sm:p-4">
+      <span className="text-[11px] font-semibold leading-tight text-slate-500 sm:text-xs">{title}</span>
+      <span
+        className={
+          emphasis
+            ? "text-xl font-bold text-primary sm:text-2xl"
+            : "break-words text-base font-bold text-slate-950 sm:text-xl"
+        }
+      >
+        {value}
+      </span>
+    </div>
   );
 }

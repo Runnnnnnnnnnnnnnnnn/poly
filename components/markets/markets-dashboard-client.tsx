@@ -12,13 +12,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { groupMarkets } from "@/lib/market-groups";
 import type { MarketsResponse } from "@/lib/types";
 import { cn, formatDateTime, formatUsd } from "@/lib/utils";
-import { fetchLocalApi } from "@/src/lib/localApiClient";
+import { fetchLocalApi, isSnapshotMode } from "@/src/lib/localApiClient";
 import { AskConciergeButton } from "@/src/components/ai/AskConciergeButton";
 
 export function MarketsDashboardClient({ initialData }: { initialData: MarketsResponse }) {
   const [data, setData] = useState(initialData);
   const [bridgeError, setBridgeError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [snapshot, setSnapshot] = useState(false);
   const mountedRef = useRef(true);
 
   const refreshMarkets = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -37,6 +38,13 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
 
   useEffect(() => {
     mountedRef.current = true;
+    // 静的スナップショット（公開版でAPI未接続）では自動更新せず、ビルド時点のデータを表示する。
+    if (isSnapshotMode()) {
+      setSnapshot(true);
+      return () => {
+        mountedRef.current = false;
+      };
+    }
     void refreshMarkets({ silent: true });
     const timer = window.setInterval(() => void refreshMarkets({ silent: true }), 30_000);
     return () => {
@@ -59,19 +67,25 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
 
   return (
     <section className="grid gap-8">
-      <div className="grid gap-5 rounded-lg border border-border bg-white p-5 shadow-sm md:p-7">
+      <div className="grid gap-4 rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5 md:gap-5 md:p-7">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={bridgeError ? "error" : data.status} />
+            <StatusBadge status={snapshot ? data.status : bridgeError ? "error" : data.status} />
             <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
               <RefreshCcw className="h-4 w-4" />
-              {bridgeError ? "更新を確認できません" : `最終更新 ${formatDateTime(data.updatedAt)}`}
+              {snapshot
+                ? `スナップショット（${formatDateTime(data.updatedAt)} 時点）`
+                : bridgeError
+                  ? "更新を確認できません"
+                  : `最終更新 ${formatDateTime(data.updatedAt)}`}
             </span>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => void refreshMarkets()} disabled={refreshing}>
-            <RefreshCcw className={cn("h-4 w-4", refreshing ? "animate-spin" : "")} />
-            手動更新
-          </Button>
+          {snapshot ? null : (
+            <Button type="button" variant="outline" size="sm" onClick={() => void refreshMarkets()} disabled={refreshing}>
+              <RefreshCcw className={cn("h-4 w-4", refreshing ? "animate-spin" : "")} />
+              手動更新
+            </Button>
+          )}
         </div>
         <div className="grid gap-4 md:flex md:items-end md:justify-between">
           <div className="grid gap-2">
@@ -94,7 +108,7 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
         <MetricCard title="世界テーマ" value={`${globalMarkets.length}件`} icon={<Globe2 className="h-4 w-4" />} />
         <MetricCard title="日本テーマ" value={`${japanMarkets.length}件`} icon={<Landmark className="h-4 w-4" />} />
         <MetricCard title="整理済みテーマ" value={`${themeGroups.length}件`} icon={<Layers3 className="h-4 w-4" />} />
@@ -106,7 +120,8 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
 
       <MarketGroupExplorer
         markets={data.markets}
-        title="予測市場一覧"
+        title="国内・国外のテーマ"
+        description="日本に関係するテーマと、海外・世界のテーマに分けて表示します。下のタブで切り替えてください。"
       />
     </section>
   );
@@ -115,12 +130,12 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
 function MetricCard({ title, value, icon }: { title: string; value: string; icon?: React.ReactNode }) {
   return (
     <Card>
-      <CardContent className="grid gap-2 p-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+      <CardContent className="grid gap-1.5 p-3 sm:gap-2 sm:p-4">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground sm:gap-2 sm:text-sm">
           {icon}
-          {title}
+          <span className="truncate">{title}</span>
         </div>
-        <p className="text-2xl font-bold text-slate-950">{value}</p>
+        <p className="text-xl font-bold text-slate-950 sm:text-2xl">{value}</p>
       </CardContent>
     </Card>
   );

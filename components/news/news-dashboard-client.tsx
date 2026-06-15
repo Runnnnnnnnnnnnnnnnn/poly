@@ -8,13 +8,14 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import type { MarketSummary, MarketsResponse, NewsResponse } from "@/lib/types";
 import { cn, formatDateTime } from "@/lib/utils";
-import { fetchLocalApi } from "@/src/lib/localApiClient";
+import { fetchLocalApi, isSnapshotMode } from "@/src/lib/localApiClient";
 
 export function NewsDashboardClient({ initialData, initialMarkets }: { initialData: NewsResponse; initialMarkets: MarketSummary[] }) {
   const [data, setData] = useState(initialData);
   const [markets, setMarkets] = useState(initialMarkets);
   const [bridgeError, setBridgeError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [snapshot, setSnapshot] = useState(false);
   const mountedRef = useRef(true);
 
   const refresh = useCallback(async (silent = true) => {
@@ -36,6 +37,14 @@ export function NewsDashboardClient({ initialData, initialMarkets }: { initialDa
   useEffect(() => {
     mountedRef.current = true;
 
+    // 静的スナップショット（公開版でAPI未接続）では自動更新しない。
+    if (isSnapshotMode()) {
+      setSnapshot(true);
+      return () => {
+        mountedRef.current = false;
+      };
+    }
+
     void refresh();
     const timer = window.setInterval(() => void refresh(), 30_000);
     return () => {
@@ -49,14 +58,18 @@ export function NewsDashboardClient({ initialData, initialMarkets }: { initialDa
       <div className="grid gap-2">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={bridgeError ? "error" : data.status} />
-            <span className="text-sm text-muted-foreground">最終更新 {formatDateTime(data.updatedAt)}</span>
-            {bridgeError ? <span className="text-sm text-muted-foreground">更新を確認できません</span> : null}
+            <StatusBadge status={snapshot ? data.status : bridgeError ? "error" : data.status} />
+            <span className="text-sm text-muted-foreground">
+              {snapshot ? `スナップショット（${formatDateTime(data.updatedAt)} 時点）` : `最終更新 ${formatDateTime(data.updatedAt)}`}
+            </span>
+            {!snapshot && bridgeError ? <span className="text-sm text-muted-foreground">更新を確認できません</span> : null}
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => void refresh(false)} disabled={refreshing}>
-            <RefreshCcw className={cn("h-4 w-4", refreshing ? "animate-spin" : "")} />
-            手動更新
-          </Button>
+          {snapshot ? null : (
+            <Button type="button" variant="outline" size="sm" onClick={() => void refresh(false)} disabled={refreshing}>
+              <RefreshCcw className={cn("h-4 w-4", refreshing ? "animate-spin" : "")} />
+              手動更新
+            </Button>
+          )}
         </div>
         <h1 className="text-3xl font-bold tracking-tight md:text-4xl">ニュース・公式情報</h1>
         <p className="max-w-3xl text-sm leading-6 text-muted-foreground">

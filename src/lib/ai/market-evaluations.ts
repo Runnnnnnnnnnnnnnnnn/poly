@@ -21,7 +21,7 @@ import type {
 import { clamp, fetchWithTimeout, formatPercent, formatUsd } from "@/lib/utils";
 import { getDeepSeekModel } from "@/src/lib/ai/deepseek";
 
-const EVALUATION_TABS: MarketThemeTabId[] = ["featured", "japan", "finance", "politics", "crypto", "tech", "sports", "global"];
+const EVALUATION_TABS: MarketThemeTabId[] = ["japan", "global"];
 
 const deepSeekEvaluationResponseSchema = z.object({
   items: z.array(

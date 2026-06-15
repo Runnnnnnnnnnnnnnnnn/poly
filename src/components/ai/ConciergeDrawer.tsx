@@ -17,7 +17,7 @@ import {
   OPEN_CONCIERGE_EVENT,
   type ConciergeOpenContext,
 } from "@/src/lib/ai/concierge-context";
-import { localApiUrl } from "@/src/lib/localApiClient";
+import { isSnapshotMode, localApiUrl } from "@/src/lib/localApiClient";
 
 type ChatResponse = {
   status: "live" | "fallback" | "error" | "guarded";
@@ -86,6 +86,20 @@ export function ConciergeDrawer() {
     setMessages(nextMessages);
     setInput("");
     setOpen(true);
+
+    // 静的スナップショット（公開版でAPI未接続）ではAIを呼び出せないため、案内を返す。
+    if (isSnapshotMode()) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content:
+            "この公開版（静的スナップショット）では、AIリサーチアシスタントはリアルタイム応答できません。価格・出来高・ニュース・解決条件などの表示データはそのままご覧いただけます。AIとの対話は、最新データに接続したローカル版でご利用ください。",
+          status: "fallback",
+        },
+      ]);
+      return;
+    }
 
     setLoading(true);
 

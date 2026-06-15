@@ -10,6 +10,8 @@ node_modules/
 coverage/
 .cache/
 tsconfig.tsbuildinfo
+.claude/
+.pages-build-disabled/
 dev.db
 dev.db-journal
 prisma/dev.db

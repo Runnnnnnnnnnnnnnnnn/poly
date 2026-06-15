@@ -24,14 +24,14 @@ export function NewsList({ items, markets }: { items: NewsItem[]; markets: Marke
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:px-0">
         {filters.map((item) => (
           <button
             key={item}
             type="button"
             onClick={() => setFilter(item)}
             className={[
-              "rounded-md border px-3 py-2 text-sm font-semibold transition-colors",
+              "h-10 shrink-0 whitespace-nowrap rounded-full border px-4 text-sm font-semibold transition-colors",
               filter === item
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-border bg-white text-muted-foreground hover:bg-accent hover:text-accent-foreground",
