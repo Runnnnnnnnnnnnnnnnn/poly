@@ -5,15 +5,23 @@ const DEFAULT_STATIC_LOCAL_API_BASE = process.env.NEXT_PUBLIC_LOCAL_API_BASE ?? 
 
 export function initializeLocalApiBaseFromUrl() {
   if (typeof window === "undefined") return "";
-  const params = new URLSearchParams(window.location.search);
-  const apiBase = params.get("api") || params.get("apiBase");
+  const apiBase = getUrlApiBase();
   if (!apiBase) return getLocalApiBase();
   setLocalApiBase(apiBase);
-  return apiBase.trim().replace(/\/$/, "");
+  return apiBase;
 }
 
 export function getLocalApiBase() {
   if (typeof window === "undefined") return "";
+  const apiBase = getUrlApiBase();
+  if (apiBase) {
+    const saved = window.localStorage.getItem(LOCAL_API_STORAGE_KEY)?.trim().replace(/\/$/, "");
+    if (saved !== apiBase) {
+      window.localStorage.setItem(LOCAL_API_STORAGE_KEY, apiBase);
+      window.dispatchEvent(new Event("local-api-base-changed"));
+    }
+    return apiBase;
+  }
   const saved = window.localStorage.getItem(LOCAL_API_STORAGE_KEY)?.trim();
   if (saved) return saved.replace(/\/$/, "");
   if (process.env.NEXT_PUBLIC_STATIC_EXPORT === "1") return DEFAULT_STATIC_LOCAL_API_BASE;
@@ -51,4 +59,10 @@ export async function fetchLocalApi<T>(path: string, init: RequestInit = {}) {
   }
 
   return (await response.json()) as T;
+}
+
+function getUrlApiBase() {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  return (params.get("api") || params.get("apiBase") || "").trim().replace(/\/$/, "");
 }

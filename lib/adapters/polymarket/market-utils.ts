@@ -11,7 +11,7 @@ export type NormalizedMarket = MarketSummary & {
 
 export function dedupeMarkets(markets: Array<NormalizedMarket | null>) {
   const seen = new Set<string>();
-  return markets.filter((market) => {
+  return markets.filter((market): market is NormalizedMarket => {
     if (!market) return false;
     if (seen.has(market.id)) return false;
     seen.add(market.id);

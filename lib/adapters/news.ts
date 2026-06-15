@@ -36,10 +36,13 @@ export async function fetchNewsItems(): Promise<{
     fetchRssItems("日本銀行", "https://www.boj.or.jp/rss/whatsnew.xml"),
     fetchRssItems("日本銀行統計", "https://www.boj.or.jp/rss/statistics.xml"),
     fetchRssItems("e-Gov", "https://public-comment.e-gov.go.jp/rss/pcm_list.xml"),
+    fetchRssItems("Google News: Polymarket", "https://news.google.com/rss/search?q=Polymarket%20prediction%20market&hl=ja&gl=JP&ceid=JP:ja", "報道"),
+    fetchRssItems("Google News: Japan markets", "https://news.google.com/rss/search?q=Japan%20markets%20yen%20Nikkei&hl=ja&gl=JP&ceid=JP:ja", "報道"),
+    fetchRssItems("Google News: crypto regulation", "https://news.google.com/rss/search?q=crypto%20regulation%20Japan&hl=ja&gl=JP&ceid=JP:ja", "報道"),
   ]);
 
   const items = settled.flatMap((result, index) => {
-    const source = ["国会会議録", "日本銀行", "日本銀行統計", "e-Gov"][index];
+    const source = ["国会会議録", "日本銀行", "日本銀行統計", "e-Gov", "Google News: Polymarket", "Google News: Japan markets", "Google News: crypto regulation"][index];
     if (result.status === "fulfilled") {
       sourceStatuses.push({
         source,
@@ -59,7 +62,7 @@ export async function fetchNewsItems(): Promise<{
 
   const normalized = dedupeNews(items)
     .sort((a, b) => new Date(b.publishedAt ?? 0).getTime() - new Date(a.publishedAt ?? 0).getTime())
-    .slice(0, 32);
+    .slice(0, 48);
 
   if (normalized.length === 0) {
     return { items: fallbackNews, status: "fallback", sourceStatuses };
@@ -69,7 +72,7 @@ export async function fetchNewsItems(): Promise<{
 }
 
 async function fetchKokkaiItems(): Promise<NewsItem[]> {
-  const queries = ["日銀", "暗号資産", "金融庁", "予測市場"];
+  const queries = ["日銀", "暗号資産", "金融庁", "予測市場", "為替", "半導体", "選挙"];
   const responses = await Promise.allSettled(
     queries.map(async (query) => {
       const url = new URL("https://kokkai.ndl.go.jp/api/speech");
@@ -104,14 +107,14 @@ async function fetchKokkaiItems(): Promise<NewsItem[]> {
   });
 }
 
-async function fetchRssItems(source: string, url: string): Promise<NewsItem[]> {
+async function fetchRssItems(source: string, url: string, kind: "公式情報" | "報道" = "公式情報"): Promise<NewsItem[]> {
   const response = await fetchWithTimeout(url, {}, 9000);
   if (!response.ok) throw new Error(`${source} RSS ${response.status}`);
   const xml = await response.text();
-  return parseRss(xml, source).slice(0, 8);
+  return parseRss(xml, source, kind).slice(0, 8);
 }
 
-function parseRss(xml: string, source: string): NewsItem[] {
+function parseRss(xml: string, source: string, kind: "公式情報" | "報道"): NewsItem[] {
   const itemMatches = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)];
   return itemMatches.map((match, index) => {
     const itemXml = match[1];
@@ -129,7 +132,7 @@ function parseRss(xml: string, source: string): NewsItem[] {
       category,
       relatedMarket: relatedMarketLabel(category),
       summary: summarize(description || title),
-      kind: "公式情報",
+      kind,
       status: "live",
     };
   });
@@ -171,6 +174,7 @@ function categorizeNews(text: string): MarketCategory | "政策" {
   if (/暗号資産|ステーブルコイン|金融庁|税制|規制|法令|パブリックコメント/i.test(text)) return "規制";
   if (/選挙|内閣|首相|国会|参院|衆院/i.test(text)) return "政治";
   if (/デジタル|AI|半導体|通信|サイバー/i.test(text)) return "テック";
+  if (/Polymarket|prediction market|market|Nikkei|株|市場/i.test(text)) return "金融";
   return "政策";
 }
 

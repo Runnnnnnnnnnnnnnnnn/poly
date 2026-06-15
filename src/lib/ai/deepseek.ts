@@ -14,6 +14,14 @@ export const chatRequestSchema = z.object({
   messages: z.array(chatMessageSchema).min(1).max(12),
   marketId: z.string().optional(),
   page: z.string().optional(),
+  context: z
+    .object({
+      kind: z.string().optional(),
+      marketId: z.string().optional(),
+      title: z.string().optional(),
+      subtitle: z.string().optional(),
+    })
+    .optional(),
 });
 
 const deepSeekResponseSchema = z
@@ -76,6 +84,10 @@ export async function answerWithDeepSeek(input: z.infer<typeof chatRequestSchema
 
   const messages: ChatMessage[] = [
     { role: "system", content: JAPAN_MARKET_CONCIERGE_SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: `現在の画面文脈: ${JSON.stringify({ page: input.page, context: input.context ?? null }).slice(0, 1000)}。この文脈に合わせ、一覧画面ならテーマ比較、詳細画面なら該当テーマの解決条件・関連情報・参考試算を優先して答える。`,
+    },
     {
       role: "system",
       content: `利用可能な圧縮済みコンテキストです。Raw HTMLは含めていません。\n${JSON.stringify(contextPack).slice(0, 12000)}`,

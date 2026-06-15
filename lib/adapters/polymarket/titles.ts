@@ -94,7 +94,7 @@ export async function translateMarketTitles(markets: MarketSummary[]) {
 }
 
 export function toJapaneseTitle(title: string, category: MarketCategory, scope: MarketScope) {
-  if (/[\u3040-\u30ff\u3400-\u9fff]/.test(title)) return title;
+  if (/[\u3040-\u30ff\u3400-\u9fff]/.test(title) && !hasUntranslatedEnglish(title)) return title;
   const normalized = title.replace(/\s+/g, " ").replace(/\?+$/, "").trim();
   const knownTitle = knownJapaneseTitle(normalized);
   if (knownTitle) return knownTitle;
@@ -188,14 +188,55 @@ function knownJapaneseTitle(title: string) {
   const chinaJapanClash = title.match(/China x Japan military clash before (\d{4})/i);
   if (chinaJapanClash) return `中国と日本は${chinaJapanClash[1]}年までに軍事衝突する？`;
 
-  const tennisMatch = title.match(/^(Roland Garros WTA|Madrid Open):\s*(.+?)\s+vs\s+(.+)$/i);
+  const tennisMatch = title.match(/^(Roland Garros WTA|Madrid Open|Internazionali BNL d'Italia):\s*(.+?)\s+vs\s+(.+)$/i);
   if (tennisMatch) return `${translateEventName(tennisMatch[1])}: ${translatePerson(tennisMatch[2])}対${translatePerson(tennisMatch[3])}`;
+
+  const setHandicap = title.match(/^Set Handicap:\s*(.+?)\s+\(([-+.\d]+)\)\s+vs\s+(.+?)\s+\(([-+.\d]+)\)$/i);
+  if (setHandicap) return `セットハンデ: ${translatePerson(setHandicap[1])}（${setHandicap[2]}）対${translatePerson(setHandicap[3])}（${setHandicap[4]}）`;
 
   const worldCup = title.match(/Will ([A-Za-z .'-]+) win the 2026 FIFA World Cup/i);
   if (worldCup) return `${translateCountry(worldCup[1])}は2026年FIFAワールドカップで優勝する？`;
 
   const hormuz = title.match(/Strait of Hormuz traffic returns to normal by (.+)$/i);
   if (hormuz) return `ホルムズ海峡の船舶通行は${translateShortDate(hormuz[1])}までに正常化する？`;
+
+  const usInvadeIran = title.match(/U\.?S\.? invade Iran before (\d{4})/i);
+  if (usInvadeIran) return `米国は${usInvadeIran[1]}年までにイランへ侵攻する？`;
+
+  const khargIsland = title.match(/Kharg Island no longer under Iranian control by (.+)$/i);
+  if (khargIsland) return `ハールク島は${translateShortDate(khargIsland[1])}までにイランの支配下でなくなる？`;
+
+  const cryptoCapitalGains = title.match(/Trump eliminates capital gains tax on crypto (?:in|before) (20\d{2})/i);
+  if (cryptoCapitalGains) return `トランプ氏は${cryptoCapitalGains[1]}年までに暗号資産のキャピタルゲイン課税を廃止する？`;
+
+  const iranAirspace = title.match(/Iran close its airspace by (.+)$/i);
+  if (iranAirspace) return `イランは${translateShortDate(iranAirspace[1])}までに領空を閉鎖する？`;
+
+  const aiModel = title.match(/^(?:Will\s+)?(.+?) have (?:the\s+)?best AI model at (?:the\s+)?end of ([A-Za-z]+) (\d{4})/i);
+  if (aiModel) return `${translateOrganization(aiModel[1])}は${translateMonthYear(aiModel[2], aiModel[3], true)}時点で最高評価のAIモデルを持つ？`;
+
+  const bitcoinReach = title.match(/Bitcoin (?:reach|hit) \$?([\d,]+) in ([A-Za-z]+)/i);
+  if (bitcoinReach) return `ビットコインは${translateMonth(bitcoinReach[2])}に${bitcoinReach[1]}ドルへ到達する？`;
+
+  const bitcoinDip = title.match(/Bitcoin dip to \$?([\d,]+) in ([A-Za-z]+)/i);
+  if (bitcoinDip) return `ビットコインは${translateMonth(bitcoinDip[2])}に${bitcoinDip[1]}ドルまで下落する？`;
+
+  const tokyoTemperature = title.match(/highest temperature in Tokyo be ([\d.]+)°C on ([A-Za-z]+ \d{1,2})/i);
+  if (tokyoTemperature) return `東京の最高気温は${translateShortDate(tokyoTemperature[2])}に${tokyoTemperature[1]}度になる？`;
+
+  const japanPrimeMinister = title.match(/^(?:Will\s+)?(.+?) be (?:the\s+)?Prime Minister of (?:Japan|日本) as (?:a\s+)?result of (?:the\s+)?(20\d{2}) snap (?:election|選挙)/i);
+  if (japanPrimeMinister) return `${translatePerson(japanPrimeMinister[1])}氏は${japanPrimeMinister[2]}年の解散総選挙を受けて日本の首相になる？`;
+
+  const presidentialNomination = title.match(/^(?:Will\s+)?(.+?)\s+(?:win|be nominated for)\s+(?:the\s+)?(20\d{2})\s+(Democratic|Republican)\s+presidential nomination/i);
+  if (presidentialNomination) {
+    return `${translatePerson(presidentialNomination[1])}氏は${presidentialNomination[2]}年${translateParty(presidentialNomination[3])}の大統領候補に指名される？`;
+  }
+
+  const candidateElection = title.match(/^(?:Will\s+)?(.+?)\s+win\s+(20\d{2})\s+(.+?)\s+election/i);
+  if (candidateElection) return `${translatePerson(candidateElection[1])}氏は${candidateElection[2]}年の${translatePhrase(candidateElection[3])}選挙で勝利する？`;
+
+  const genericWin = title.match(/^(?:Will\s+)?(.+?)\s+win\s+(.+)$/i);
+  if (genericWin) return `${translatePerson(genericWin[1])}氏は${translatePhrase(genericWin[2])}で勝利する？`;
 
   return null;
 }
@@ -237,6 +278,7 @@ function translateEventName(value: string) {
   const events: Record<string, string> = {
     "Roland Garros WTA": "全仏オープン女子",
     "Madrid Open": "マドリード・オープン",
+    "Internazionali BNL d'Italia": "イタリア国際",
   };
   return events[normalized] ?? translatePhrase(normalized);
 }
@@ -246,9 +288,49 @@ function translatePerson(value: string) {
   const people: Record<string, string> = {
     "Aryna Sabalenka": "アリナ・サバレンカ",
     "Naomi Osaka": "大坂なおみ",
+    Osaka: "大坂なおみ",
     "Iva Jovic": "イバ・ヨビッチ",
+    "Eva Lys": "エバ・リス",
+    Sabalenka: "サバレンカ",
+    "Oprah Winfrey": "オプラ・ウィンフリー",
+    "Bernie Sanders": "バーニー・サンダース",
+    "Chelsea Clinton": "チェルシー・クリントン",
+    "Andrew Yang": "アンドリュー・ヤン",
+    "LeBron James": "レブロン・ジェームズ",
+    "Vivek Ramaswamy": "ビベック・ラマスワミ",
+    "Sanae Takaichi": "高市早苗",
+    "Fumitake Fujita": "藤田文武",
+    "Taro Kono": "河野太郎",
+    "Yoshihiko Noda": "野田佳彦",
+    "Rebecca Shepherd": "レベッカ・シェパード",
+    "Byron Donalds": "バイロン・ドナルズ",
+    "Gavin Newsom": "ギャビン・ニューサム",
+    "Alexandria Ocasio-Cortez": "アレクサンドリア・オカシオ＝コルテス",
+    "Kamala Harris": "カマラ・ハリス",
+    "JD Vance": "JDバンス",
+    "Donald Trump": "ドナルド・トランプ",
+    "Joe Biden": "ジョー・バイデン",
+    "Elon Musk": "イーロン・マスク",
+    "Jerome Powell": "ジェローム・パウエル",
   };
   return people[normalized] ?? translatePhrase(normalized);
+}
+
+function translateParty(value: string) {
+  return value.toLowerCase() === "democratic" ? "民主党" : "共和党";
+}
+
+function translateOrganization(value: string) {
+  const normalized = value.trim();
+  const organizations: Record<string, string> = {
+    xAI: "xAI",
+    Anthropic: "Anthropic",
+    DeepSeek: "DeepSeek",
+    OpenAI: "OpenAI",
+    Google: "Google",
+    Meta: "Meta",
+  };
+  return organizations[normalized] ?? translatePhrase(normalized);
 }
 
 function translateShortDate(value: string) {
@@ -257,6 +339,28 @@ function translateShortDate(value: string) {
   const monthDay = normalized.match(/June (\d{1,2})/i);
   if (monthDay) return `6月${monthDay[1]}日`;
   return normalized;
+}
+
+function translateMonthYear(month: string, year: string, endOfMonth = false) {
+  return `${year}年${translateMonth(month)}${endOfMonth ? "末" : ""}`;
+}
+
+function translateMonth(value: string) {
+  const months: Record<string, string> = {
+    January: "1月",
+    February: "2月",
+    March: "3月",
+    April: "4月",
+    May: "5月",
+    June: "6月",
+    July: "7月",
+    August: "8月",
+    September: "9月",
+    October: "10月",
+    November: "11月",
+    December: "12月",
+  };
+  return months[value] ?? value;
 }
 
 function formatMeetingMonth(value: string) {
@@ -292,6 +396,7 @@ function glossaryRegExp(value: string) {
 const translationGlossary: Record<string, string> = {
   "US x Iran": "米国とイランの",
   "United States": "米国",
+  "U.S.": "米国",
   US: "米国",
   Iran: "イラン",
   China: "中国",
@@ -306,6 +411,11 @@ const translationGlossary: Record<string, string> = {
   "World Cup Winner": "ワールドカップ優勝国",
   "World Cup": "ワールドカップ",
   "presidential election": "大統領選挙",
+  "Democratic presidential nomination": "民主党大統領候補指名",
+  "Republican presidential nomination": "共和党大統領候補指名",
+  Democratic: "民主党",
+  Republican: "共和党",
+  Makerfield: "メーカーフィールド",
   election: "選挙",
   "rate cut": "利下げ",
   "cut interest rates": "利下げ",
@@ -357,4 +467,7 @@ const countryGlossary: Record<string, string> = {
   USA: "米国",
   "South Korea": "韓国",
   Japan: "日本",
+  "Ivory Coast": "コートジボワール",
+  Scotland: "スコットランド",
+  Paraguay: "パラグアイ",
 };

@@ -1,9 +1,9 @@
 import { DEFAULT_SUGGESTED_QUESTIONS } from "@/src/lib/ai/prompts";
 
-export function SuggestedQuestions({ onSelect }: { onSelect: (question: string) => void }) {
+export function SuggestedQuestions({ onSelect, questions = DEFAULT_SUGGESTED_QUESTIONS }: { onSelect: (question: string) => void; questions?: string[] }) {
   return (
     <div className="flex flex-wrap gap-2">
-      {DEFAULT_SUGGESTED_QUESTIONS.map((question) => (
+      {questions.map((question) => (
         <button
           key={question}
           type="button"

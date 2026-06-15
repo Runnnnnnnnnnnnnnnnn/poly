@@ -9,6 +9,14 @@ import { ConciergeMessage, type ConciergeChatMessage } from "@/src/components/ai
 import { SourceCitationCard } from "@/src/components/ai/SourceCitationCard";
 import { SuggestedQuestions } from "@/src/components/ai/SuggestedQuestions";
 import type { SourceCard } from "@/src/lib/ai/compressSource";
+import {
+  conciergeInputPlaceholder,
+  conciergeOpeningMessage,
+  conciergeSuggestedQuestions,
+  inferConciergeContextFromPath,
+  OPEN_CONCIERGE_EVENT,
+  type ConciergeOpenContext,
+} from "@/src/lib/ai/concierge-context";
 import { localApiUrl } from "@/src/lib/localApiClient";
 
 type ChatResponse = {
@@ -23,32 +31,49 @@ export function ConciergeDrawer() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [context, setContext] = useState<ConciergeOpenContext>({});
   const [messages, setMessages] = useState<ConciergeChatMessage[]>([
     {
       role: "assistant",
-      content:
-        "Polymarket Conciergeです。世界と日本の注目テーマ、確率の見方、関連情報、参考試算を分かりやすく説明します。",
+      content: conciergeOpeningMessage({}),
       status: "fallback",
     },
   ]);
   const [sources, setSources] = useState<SourceCard[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const marketId = useMemo(() => {
+  const pathMarketId = useMemo(() => {
     const match = pathname.match(/^\/markets\/([^/]+)/);
     return match?.[1];
   }, [pathname]);
+  const activeContext = useMemo(() => inferConciergeContextFromPath(pathname, context), [context, pathname]);
+  const marketId = activeContext.marketId ?? pathMarketId;
+  const suggestedQuestions = useMemo(() => conciergeSuggestedQuestions(activeContext), [activeContext]);
 
   useEffect(() => {
+    function openWithContext(nextContext?: ConciergeOpenContext) {
+      const resolved = inferConciergeContextFromPath(pathname, nextContext ?? {});
+      setContext(resolved);
+      setMessages([
+        {
+          role: "assistant",
+          content: conciergeOpeningMessage(resolved),
+          status: "fallback",
+        },
+      ]);
+      setSources([]);
+      setOpen(true);
+    }
+
     if (window.location.search.includes("consult=1")) {
-      setOpen(true);
+      openWithContext();
     }
-    function openConcierge() {
-      setOpen(true);
+    function openConcierge(event: Event) {
+      openWithContext(event instanceof CustomEvent ? event.detail : undefined);
     }
-    window.addEventListener("open-concierge", openConcierge);
-    return () => window.removeEventListener("open-concierge", openConcierge);
-  }, []);
+    window.addEventListener(OPEN_CONCIERGE_EVENT, openConcierge);
+    return () => window.removeEventListener(OPEN_CONCIERGE_EVENT, openConcierge);
+  }, [pathname]);
 
   useEffect(() => {
     panelRef.current?.scrollTo({ top: panelRef.current.scrollHeight, behavior: "smooth" });
@@ -70,6 +95,7 @@ export function ConciergeDrawer() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           marketId,
+          context: activeContext,
           page: pathname,
           messages: nextMessages
             .filter((message) => message.role === "user" || message.role === "assistant")
@@ -111,7 +137,19 @@ export function ConciergeDrawer() {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          const resolved = inferConciergeContextFromPath(pathname, {});
+          setContext(resolved);
+          setMessages([
+            {
+              role: "assistant",
+              content: conciergeOpeningMessage(resolved),
+              status: "fallback",
+            },
+          ]);
+          setSources([]);
+          setOpen(true);
+        }}
         className="fixed bottom-5 right-5 z-40 inline-flex h-12 items-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground shadow-soft hover:bg-primary/90"
       >
         <MessageSquare className="h-4 w-4" />
@@ -128,7 +166,7 @@ export function ConciergeDrawer() {
                 </span>
                 <div>
                   <h2 className="font-bold">Polymarket Concierge</h2>
-                  <p className="text-xs text-muted-foreground">投資助言ではありません / 自動売買機能はありません</p>
+                  <p className="text-xs text-muted-foreground">{contextLabel(activeContext)}</p>
                 </div>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="rounded-md p-2 hover:bg-accent" aria-label="閉じる">
@@ -154,12 +192,12 @@ export function ConciergeDrawer() {
             </div>
 
             <div className="border-t border-border bg-white p-4">
-              <SuggestedQuestions onSelect={(question) => void sendMessage(question)} />
+              <SuggestedQuestions questions={suggestedQuestions} onSelect={(question) => void sendMessage(question)} />
               <form onSubmit={onSubmit} className="mt-3 flex gap-2">
                 <input
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
-                  placeholder="市場や確率について質問"
+                  placeholder={conciergeInputPlaceholder(activeContext)}
                   className="h-10 min-w-0 flex-1 rounded-md border border-input px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 />
                 <Button type="submit" size="icon" disabled={loading || !input.trim()} aria-label="送信">
@@ -172,4 +210,11 @@ export function ConciergeDrawer() {
       ) : null}
     </>
   );
+}
+
+function contextLabel(context: ConciergeOpenContext) {
+  if (context.kind === "market-detail") return "このテーマに沿って相談 / 投資助言ではありません";
+  if (context.kind === "markets") return "テーマ一覧に沿って相談 / 投資助言ではありません";
+  if (context.kind === "home") return "使い方と基本を相談 / 投資助言ではありません";
+  return "投資助言ではありません / 自動売買機能はありません";
 }

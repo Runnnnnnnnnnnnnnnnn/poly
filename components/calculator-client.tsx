@@ -8,9 +8,19 @@ import type { DataStatus, RateResponse } from "@/lib/types";
 import { formatJpy, formatUsd } from "@/lib/utils";
 import { fetchLocalApi } from "@/src/lib/localApiClient";
 
-export function CalculatorClient({ initialUsdJpy, rateStatus }: { initialUsdJpy: number; rateStatus: DataStatus }) {
-  const [buyPrice, setBuyPrice] = useState(0.42);
-  const [sellPrice, setSellPrice] = useState(0.55);
+export function CalculatorClient({
+  initialUsdJpy,
+  rateStatus,
+  initialBuyPrice = 0.42,
+  initialSellPrice = 0.55,
+}: {
+  initialUsdJpy: number;
+  rateStatus: DataStatus;
+  initialBuyPrice?: number;
+  initialSellPrice?: number;
+}) {
+  const [buyPrice, setBuyPrice] = useState(initialBuyPrice);
+  const [sellPrice, setSellPrice] = useState(initialSellPrice);
   const [investmentUsd, setInvestmentUsd] = useState(1000);
   const [usdJpy, setUsdJpy] = useState(initialUsdJpy);
   const [currentRateStatus, setCurrentRateStatus] = useState(rateStatus);

@@ -39,7 +39,7 @@ export async function buildContextPack(options: { marketId?: string; query?: str
   return {
     retrievedAt: new Date().toISOString(),
     dataStatus: markets.status,
-    markets: filterMarkets(markets.markets, options.query).slice(0, 8),
+    markets: filterMarkets(markets.markets, options.query).slice(0, 12),
     selectedMarket: selectedMarket ? marketToBrief(selectedMarket, sourceCards) : null,
     sourceCards,
   } satisfies ContextPack;
@@ -80,7 +80,8 @@ export function marketToBrief(market: MarketDetail, sourceCards: SourceCard[]): 
 function filterMarkets(markets: MarketSummary[], query?: string) {
   if (!query) return markets;
   const normalized = query.toLowerCase();
-  return markets.filter((market) =>
+  const filtered = markets.filter((market) =>
     [market.title, market.originalTitle, market.summaryJa, market.category].join(" ").toLowerCase().includes(normalized),
   );
+  return filtered.length >= 3 ? filtered : markets;
 }

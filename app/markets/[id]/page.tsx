@@ -3,13 +3,15 @@ import Image from "next/image";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
+import { CalculatorClient } from "@/components/calculator-client";
 import { ProbabilityChart, VolumeChart } from "@/components/charts/market-charts";
 import { WatchButton } from "@/components/markets/watch-button";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getMarketDetailDashboard, getMarketsDashboard } from "@/lib/server/dashboard";
+import { getCalculatorDefaults, getMarketDetailDashboard, getMarketsDashboard } from "@/lib/server/dashboard";
+import type { NewsItem } from "@/lib/types";
 import { formatDate, formatPercent, formatUsd } from "@/lib/utils";
 import { AskConciergeButton } from "@/src/components/ai/AskConciergeButton";
 
@@ -17,13 +19,14 @@ export const dynamicParams = false;
 
 export async function generateStaticParams() {
   const data = await getMarketsDashboard();
-  return data.markets.slice(0, 50).map((market) => ({ id: market.id }));
+  return data.markets.slice(0, 120).map((market) => ({ id: market.id }));
 }
 
 export default async function MarketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const data = await getMarketDetailDashboard(id);
+  const [data, rate] = await Promise.all([getMarketDetailDashboard(id), getCalculatorDefaults()]);
   const market = data.market;
+  const themeNews = dedupeNews([...market.officialInfo, ...market.relatedNews]);
 
   return (
     <AppShell>
@@ -60,10 +63,10 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
                     Polymarketで確認
                   </a>
                 </Button>
-                <Button asChild variant="secondary">
-                  <Link href={`/calculator?market=${market.id}`}>試算する</Link>
-                </Button>
-                <AskConciergeButton />
+                <AskConciergeButton
+                  label="このテーマを相談"
+                  context={{ kind: "market-detail", marketId: market.id, title: market.title }}
+                />
               </div>
             </div>
           </div>
@@ -76,9 +79,26 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
           <Metric title="スプレッド" value={market.spread === null ? "-" : market.spread.toFixed(3)} />
           <Metric title="出来高" value={formatUsd(market.volume)} />
           <Metric title="流動性" value={formatUsd(market.liquidity)} />
-          <Metric title="関連ニュース" value={`${market.relatedNews.length}件`} />
+          <Metric title="ニュース・公式情報" value={`${themeNews.length}件`} />
           <Metric title="データ状態" value={market.status === "live" ? "リアルタイム" : "参考データ"} />
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>このテーマの収益計算</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <p className="text-sm leading-6 text-muted-foreground">
+              現在のYES価格を初期値にして、想定売却価格、投資額、USD/JPY、手数料から参考損益を確認できます。
+            </p>
+            <CalculatorClient
+              initialUsdJpy={rate.usdJpy}
+              rateStatus={rate.status}
+              initialBuyPrice={market.yesPrice}
+              initialSellPrice={Math.min(0.99, Math.max(0.01, market.yesPrice + 0.08))}
+            />
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
@@ -116,8 +136,8 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
             <CardContent>
               <div className="mb-4 grid gap-2 rounded-md bg-slate-50 p-3 text-sm text-muted-foreground">
                 <p>次回イベント日: {formatDate(market.endDate)}</p>
-                <p>関連ニュース更新: {market.relatedNews.length}件</p>
-                <p>通貨換算: 収益計算ページでUSD/JPYを確認</p>
+                <p>ニュース・公式情報: {themeNews.length}件</p>
+                <p>通貨換算: このテーマ内の収益計算でUSD/JPYを確認</p>
                 <p>リスク注意: 流動性、スプレッド、解決条件を確認</p>
               </div>
               <ul className="grid gap-3 text-sm leading-6 text-muted-foreground">
@@ -133,10 +153,10 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
 
         <Card>
           <CardHeader>
-            <CardTitle>関連する公式情報・ニュース</CardTitle>
+            <CardTitle>ニュース・公式情報</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3">
-            {market.relatedNews.map((item) => (
+            {themeNews.map((item) => (
               <a
                 key={item.id}
                 href={item.url}
@@ -144,9 +164,15 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
                 rel="noreferrer"
                 className="grid gap-1 rounded-md border border-border p-4 hover:bg-slate-50"
               >
-                <span className="text-sm font-semibold">{item.title}</span>
+                <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant={item.kind === "公式情報" ? "live" : "secondary"}>{item.kind}</Badge>
+                  <span>{item.source}</span>
+                  <span>{formatDate(item.publishedAt)}</span>
+                </span>
+                <span className="text-sm font-semibold text-slate-950">{item.title}</span>
+                <span className="text-sm leading-6 text-muted-foreground">{item.summary}</span>
                 <span className="text-xs text-muted-foreground">
-                  {item.source} / {item.category}
+                  関連テーマ: {item.relatedMarket ?? market.title} / {item.category}
                 </span>
               </a>
             ))}
@@ -155,6 +181,16 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
       </section>
     </AppShell>
   );
+}
+
+function dedupeNews(items: NewsItem[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.url || item.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function Metric({ title, value }: { title: string; value: string }) {

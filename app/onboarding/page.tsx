@@ -66,7 +66,10 @@ export default function OnboardingPage() {
               <Button asChild size="lg" variant="outline">
                 <Link href="/tutorial">3分チュートリアルを開始</Link>
               </Button>
-              <AskConciergeButton label="AIコンシェルジュに聞いてみる" />
+              <AskConciergeButton
+                label="AIコンシェルジュに聞いてみる"
+                context={{ kind: "home", title: "Polymarket Watch" }}
+              />
             </div>
           </div>
         </div>

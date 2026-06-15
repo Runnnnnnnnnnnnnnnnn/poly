@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type React from "react";
-import { BarChart3, BookOpen, Calculator, Newspaper, Search } from "lucide-react";
+import { BarChart3, BookOpen, Newspaper, Search } from "lucide-react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,6 @@ const navItems = [
   { href: "/onboarding", label: "概要", icon: BookOpen },
   { href: "/markets", label: "テーマ", icon: Search },
   { href: "/news", label: "公式情報", icon: Newspaper },
-  { href: "/calculator", label: "収益計算", icon: Calculator },
   { href: "/tutorial", label: "チュートリアル", icon: BarChart3 },
 ];
 
@@ -29,7 +28,7 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  className="inline-flex h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 >
                   <Icon className="h-4 w-4" />
                   {item.label}

@@ -129,9 +129,8 @@ export async function fetchMarkets(): Promise<{
       .filter(Boolean)
       .filter((market): market is NormalizedMarket => Boolean(market))
       .filter(isRelevantMarket)
-      .filter((market) => !market.endDate || new Date(market.endDate).getTime() > Date.now() - 1000 * 60 * 60 * 24 * 60)
-      .sort((a, b) => marketPriority(b) - marketPriority(a))
-      .slice(0, 18);
+      .filter((market) => !market.endDate || new Date(market.endDate).getTime() > Date.now() - 1000 * 60 * 60 * 24 * 60);
+    const selectedJapanMarkets = selectDiverseMarkets(japanMarkets, 36);
 
     if (japanMarkets.length === 0 && normalizedGlobalMarkets.length === 0) {
       sourceStatuses.push({
@@ -149,8 +148,8 @@ export async function fetchMarkets(): Promise<{
       };
     }
 
-    const enrichedGlobal = normalizedGlobalMarkets.length > 0 ? await enrichMarketsWithClob(normalizedGlobalMarkets.slice(0, 12)) : [];
-    const enrichedJapan = await enrichMarketsWithClob(japanMarkets);
+    const enrichedGlobal = normalizedGlobalMarkets.length > 0 ? await enrichMarketsWithClob(normalizedGlobalMarkets) : [];
+    const enrichedJapan = await enrichMarketsWithClob(selectedJapanMarkets);
     const globalSummaries = dedupeSummariesByTitle(await translateMarketTitles(enrichedGlobal.length > 0 ? enrichedGlobal.map(stripDetailFields) : fallbackGlobalMarkets));
     const japanSummaries = dedupeSummariesByTitle(await translateMarketTitles(enrichedJapan.length > 0 ? enrichedJapan.map(stripDetailFields) : fallbackMarkets));
     sourceStatuses.push({
@@ -260,7 +259,7 @@ async function fetchSearchEvents() {
     PRIMARY_MARKET_QUERIES.map(async (query) => {
       const url = new URL(`${GAMMA_API}/public-search`);
       url.searchParams.set("q", query);
-      url.searchParams.set("limit", "10");
+      url.searchParams.set("limit", "14");
       const response = await fetchWithTimeout(url.toString());
       if (!response.ok) throw new Error(`public-search ${query}: ${response.status}`);
       return publicSearchSchema.parse(await response.json()).events;
@@ -275,12 +274,12 @@ async function fetchGlobalMarkets() {
     const url = new URL(`${GAMMA_API}/markets`);
     url.searchParams.set("active", "true");
     url.searchParams.set("closed", "false");
-    url.searchParams.set("limit", "48");
+    url.searchParams.set("limit", "80");
     url.searchParams.set("order", "volume24hr");
     url.searchParams.set("ascending", "false");
     const response = await fetchWithTimeout(url.toString());
     if (!response.ok) throw new Error(`global markets ${response.status}`);
-    return gammaMarketsSchema
+    const topMarkets = gammaMarketsSchema
       .parse(await response.json())
       .map((market) =>
         normalizeMarket(
@@ -303,7 +302,9 @@ async function fetchGlobalMarkets() {
       .filter((market): market is NormalizedMarket => Boolean(market))
       .filter((market) => !market.endDate || new Date(market.endDate).getTime() > Date.now() - 1000 * 60 * 60 * 24 * 3)
       .sort((a, b) => marketPriority(b) - marketPriority(a))
-      .slice(0, 18);
+      .slice(0, 36);
+    const searchedMarkets = await fetchGlobalMarketsBySearch().catch(() => []);
+    return selectDiverseMarkets(dedupeMarkets([...topMarkets, ...searchedMarkets]), 48);
   } catch {
     return fetchGlobalMarketsBySearch();
   }
@@ -314,21 +315,49 @@ async function fetchGlobalMarketsBySearch() {
     GLOBAL_MARKET_QUERIES.map(async (query) => {
       const url = new URL(`${GAMMA_API}/public-search`);
       url.searchParams.set("q", query);
-      url.searchParams.set("limit", "8");
+      url.searchParams.set("limit", "12");
       const response = await fetchWithTimeout(url.toString());
       if (!response.ok) throw new Error(`public-search ${query}: ${response.status}`);
       return publicSearchSchema.parse(await response.json()).events;
     }),
   );
 
-  return dedupeMarkets(
+  return selectDiverseMarkets(dedupeMarkets(
     results
       .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
       .flatMap((event) => (event.markets ?? []).map((market) => normalizeMarket(market, event, "global"))),
-  )
-    .filter((market): market is NormalizedMarket => Boolean(market))
+  ).filter((market): market is NormalizedMarket => Boolean(market)), 36);
+}
+
+function selectDiverseMarkets(markets: NormalizedMarket[], limit: number) {
+  const sorted = [...markets].sort((a, b) => marketPriority(b) - marketPriority(a));
+  const selected = new Map<string, NormalizedMarket>();
+  const categoryTargets = [
+    ["イベント", 6],
+    ["暗号資産", 6],
+    ["テック", 5],
+    ["金融", 5],
+    ["為替", 5],
+    ["日銀", 5],
+    ["政治", 5],
+    ["選挙", 5],
+    ["規制", 5],
+  ] as const;
+
+  for (const [category, target] of categoryTargets) {
+    for (const market of sorted.filter((item) => item.category === category).slice(0, target)) {
+      selected.set(market.id, market);
+    }
+  }
+
+  for (const market of sorted) {
+    selected.set(market.id, market);
+    if (selected.size >= limit) break;
+  }
+
+  return Array.from(selected.values())
     .sort((a, b) => marketPriority(b) - marketPriority(a))
-    .slice(0, 18);
+    .slice(0, limit);
 }
 
 function normalizeMarket(market: GammaMarket, event: GammaEvent, scope: MarketScope): NormalizedMarket | null {
