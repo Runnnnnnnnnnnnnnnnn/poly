@@ -12,6 +12,7 @@ coverage/
 tsconfig.tsbuildinfo
 .claude/
 .pages-build-disabled/
+public/ai-evaluations.json
 dev.db
 dev.db-journal
 prisma/dev.db

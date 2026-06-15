@@ -26,6 +26,7 @@ export function MarketAiEvaluationPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [snapshot, setSnapshot] = useState(false);
+  const [liveBackend, setLiveBackend] = useState(true);
   const mountedRef = useRef(true);
 
   const refresh = useCallback(async (silent = true) => {
@@ -46,13 +47,33 @@ export function MarketAiEvaluationPanel() {
   useEffect(() => {
     mountedRef.current = true;
     setHistory(readHistory());
-    // AIバックエンドが無い（公開版でプロキシ未設定）ときはAI評価を取得せず案内を出す。
-    if (!isAiAvailable()) {
-      setSnapshot(true);
+    const backendAvailable = isAiAvailable();
+    setLiveBackend(backendAvailable);
+
+    if (!backendAvailable) {
+      // 公開（静的）版: ビルド時に鍵を使って生成したAI予想JSONを読み込む（鍵は埋め込まれない）。
+      const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+      void (async () => {
+        try {
+          const res = await fetch(`${base}/ai-evaluations.json`, { cache: "no-store" });
+          if (!res.ok) throw new Error(String(res.status));
+          const payload = (await res.json()) as MarketAiEvaluationsResponse;
+          if (!mountedRef.current) return;
+          if (payload.items?.length) {
+            setData(payload);
+            setHistory((current) => saveHistory(payload.items, current));
+          } else {
+            setSnapshot(true);
+          }
+        } catch {
+          if (mountedRef.current) setSnapshot(true);
+        }
+      })();
       return () => {
         mountedRef.current = false;
       };
     }
+
     void refresh();
     const timer = window.setInterval(() => void refresh(), 60_000);
     return () => {
@@ -87,18 +108,18 @@ export function MarketAiEvaluationPanel() {
                 {snapshot
                   ? "公開版（スナップショット）では非表示"
                   : data
-                    ? `最終評価 ${formatDateTime(data.updatedAt)} / ${data.model}`
+                    ? `${liveBackend ? "最終評価" : "公開版のAI予想（ビルド時点）"} ${formatDateTime(data.updatedAt)} / ${data.model}`
                     : "評価を取得中"}
               </span>
-              {!snapshot && error ? <span className="text-xs text-muted-foreground">取得失敗: {error}</span> : null}
+              {liveBackend && error ? <span className="text-xs text-muted-foreground">取得失敗: {error}</span> : null}
             </div>
           </div>
-          {snapshot ? null : (
+          {liveBackend ? (
             <Button type="button" variant="outline" size="sm" onClick={() => void refresh(false)} disabled={loading}>
               <RefreshCcw className={cn("h-4 w-4", loading ? "animate-spin" : "")} />
               再評価
             </Button>
-          )}
+          ) : null}
         </div>
 
         <div className="grid gap-3 lg:grid-cols-2">

@@ -64,12 +64,14 @@ try {
     if (moveExisting(from, to)) moved.push([from, to]);
   }
 
+  const repo = process.env.GITHUB_PAGES_REPO || "poly";
   const env = {
     ...process.env,
     DATABASE_URL: process.env.DATABASE_URL || "file:./dev.db",
     NEXT_PUBLIC_STATIC_EXPORT: "1",
     GITHUB_PAGES: "true",
-    GITHUB_PAGES_REPO: process.env.GITHUB_PAGES_REPO || "poly",
+    GITHUB_PAGES_REPO: repo,
+    NEXT_PUBLIC_BASE_PATH: `/${repo}`,
     SKIP_TITLE_AI: "1",
   };
 
@@ -78,6 +80,10 @@ try {
     exitCode = prisma.status ?? 1;
     throw new Error("prisma generate failed");
   }
+
+  // AI予想を鍵を使って生成し public/ai-evaluations.json に出力（鍵はサーバー側のみ・非致命）。
+  // DEEPSEEK_API_KEY が無ければスクリプト側で参考データにフォールバックする。
+  spawnSync("npx", ["tsx", "scripts/gen-ai-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
 
   const next = spawnSync("npx", ["next", "build"], { cwd: root, env, stdio: "inherit" });
   if (next.status !== 0) {

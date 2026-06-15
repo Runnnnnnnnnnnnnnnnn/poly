@@ -25,6 +25,8 @@ jobs:
       GITHUB_PAGES_REPO: poly
       DEEPSEEK_BASE_URL: https://api.deepseek.com
       DEEPSEEK_MODEL: deepseek-v4-flash
+      # ビルド時のAI予想生成に使用（サーバー側のみ・公開バンドルには出ない）。
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       # AI(チャット/評価)を公開版でも動かすためのプロキシURL。
       # 鍵を持つバックエンド(このアプリをVercel等にデプロイしたもの)のURLを
       # リポジトリの Variables に AI_API_BASE として登録すると、公開サイトから
