@@ -60,11 +60,11 @@ export const MARKET_FILTERS = [
 ] as const;
 
 export const CATEGORY_KEYWORDS: Record<MarketCategory, string[]> = {
-  政治: ["politic", "prime minister", "cabinet", "内閣", "首相", "国会"],
+  政治: ["politic", "prime minister", "cabinet", "military", "geopolitic", "clash", "war", "内閣", "首相", "国会"],
   金融: ["rate", "inflation", "cpi", "金利", "インフレ", "金融"],
   規制: ["regulation", "law", "tax", "金融庁", "規制", "税制", "法改正"],
   テック: ["tech", "ai", "semiconductor", "digital", "半導体", "デジタル"],
-  イベント: ["expo", "olympic", "event", "万博", "イベント"],
+  イベント: ["expo", "olympic", "event", "wta", "tennis", "open", "fifa", "nba", "nfl", "万博", "イベント"],
   日銀: ["boj", "bank of japan", "日銀", "植田"],
   為替: ["jpy", "yen", "usd/jpy", "為替", "円"],
   暗号資産: ["crypto", "bitcoin", "stablecoin", "暗号資産", "ステーブルコイン"],

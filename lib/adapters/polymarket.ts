@@ -159,8 +159,8 @@ export async function fetchJapanMarkets(): Promise<{
 
     const enrichedGlobal = normalizedGlobalMarkets.length > 0 ? await enrichMarketsWithClob(normalizedGlobalMarkets.slice(0, 12)) : [];
     const enrichedJapan = await enrichMarketsWithClob(japanMarkets);
-    const globalSummaries = await translateMarketTitles(enrichedGlobal.length > 0 ? enrichedGlobal.map(stripDetailFields) : fallbackGlobalMarkets);
-    const japanSummaries = await translateMarketTitles(enrichedJapan.length > 0 ? enrichedJapan.map(stripDetailFields) : fallbackMarkets);
+    const globalSummaries = dedupeSummariesByTitle(await translateMarketTitles(enrichedGlobal.length > 0 ? enrichedGlobal.map(stripDetailFields) : fallbackGlobalMarkets));
+    const japanSummaries = dedupeSummariesByTitle(await translateMarketTitles(enrichedJapan.length > 0 ? enrichedJapan.map(stripDetailFields) : fallbackMarkets));
     sourceStatuses.push({
       source: "Polymarket Gamma API",
       status: "live",
@@ -397,19 +397,25 @@ function dedupeMarkets(markets: Array<NormalizedMarket | null>) {
   });
 }
 
+function dedupeSummariesByTitle(markets: MarketSummary[]) {
+  const seen = new Set<string>();
+  return markets.filter((market) => {
+    const key = market.title.replace(/\s+/g, "").toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function isRelevantMarket(market: NormalizedMarket) {
   const haystack = [
     market.originalTitle,
-    market.title,
     market.description,
     market.resolutionSource,
-    market.category,
   ]
     .join(" ")
     .toLowerCase();
-  return [...JAPAN_KEYWORDS_EN.map((keyword) => keyword.toLowerCase()), ...JAPAN_KEYWORDS_JA].some((keyword) =>
-    haystack.includes(keyword.toLowerCase()),
-  );
+  return JAPAN_KEYWORDS_EN.some((keyword) => keywordMatches(haystack, keyword)) || JAPAN_KEYWORDS_JA.some((keyword) => haystack.includes(keyword.toLowerCase()));
 }
 
 async function enrichMarketsWithClob(markets: NormalizedMarket[]) {
@@ -679,9 +685,17 @@ function findNoIndex(outcomes: string[]) {
 function categorize(text: string): MarketCategory {
   const normalized = text.toLowerCase();
   const category = (Object.entries(CATEGORY_KEYWORDS) as Array<[MarketCategory, string[]]>).find(([, keywords]) =>
-    keywords.some((keyword) => normalized.includes(keyword.toLowerCase())),
+    keywords.some((keyword) => keywordMatches(normalized, keyword)),
   );
   return category?.[0] ?? "イベント";
+}
+
+function keywordMatches(text: string, keyword: string) {
+  const normalizedKeyword = keyword.toLowerCase();
+  if (/^[a-z0-9 /.-]+$/i.test(normalizedKeyword)) {
+    return new RegExp(`\\b${escapeRegExp(normalizedKeyword)}\\b`, "i").test(text);
+  }
+  return text.includes(normalizedKeyword);
 }
 
 function nullableNumber(value: unknown) {
@@ -730,7 +744,12 @@ function toJapaneseTitle(title: string, category: MarketCategory, scope: MarketS
 }
 
 function knownJapaneseTitle(title: string) {
+  if (/US x Iran permanent peace deal/i.test(title)) return "米国とイランは恒久的な和平合意に至る？";
+
   if (/Iranian regime fall|regime fall.*Iran/i.test(title)) return "イランの政権は6月30日までに崩壊する？";
+
+  const usIranDeal = title.match(/US announces new Iran agreement\/ceasefire extension by (.+)$/i);
+  if (usIranDeal) return `米国は${translateShortDate(usIranDeal[1])}までにイランとの合意または停戦延長を発表する？`;
 
   const fedChange = title.match(/Fed (increase|decrease|cut)s? (?:interest )?rates by (\d+)(\+)? bps after (?:the )?([A-Za-z]+ \d{4}) meeting/i);
   if (fedChange) {
@@ -753,6 +772,21 @@ function knownJapaneseTitle(title: string) {
   const bojCut = title.match(/Bank of Japan (?:cuts|decreases?) (?:interest )?rates(?: by (\d+)(\+)? bps)? after (?:the )?([A-Za-z]+ \d{4}) meeting/i);
   if (bojCut) return `日銀は${formatMeetingMonth(bojCut[3])}会合後に${bojCut[1] ? `${bojCut[1]}bp${bojCut[2] ? "以上" : ""}の` : ""}利下げをする？`;
 
+  const usdJpyHit = title.match(/Will USD\/JPY hit ([\d.]+) \((High|Low)\) in (\d{4})/i);
+  if (usdJpyHit) return `USD/JPYは${usdJpyHit[3]}年に${usdJpyHit[1]}円まで${usdJpyHit[2].toLowerCase() === "high" ? "上昇" : "下落"}する？`;
+
+  const usdJpyClose = title.match(/Will the close USD\/JPY price at the end of (\d{4}) be between ([\d.]+) and ([\d.]+)/i);
+  if (usdJpyClose) return `${usdJpyClose[1]}年末のUSD/JPY終値は${usdJpyClose[2]}円から${usdJpyClose[3]}円の間になる？`;
+
+  const nikkeiBetween = title.match(/Will the official close price for the Nikkei 225 on the final trading day of December (\d{4}) be between ([\d,]+) and ([\d,]+)/i);
+  if (nikkeiBetween) return `${nikkeiBetween[1]}年12月最終取引日の日経平均終値は${nikkeiBetween[2]}円から${nikkeiBetween[3]}円の間になる？`;
+
+  const nikkeiAtLeast = title.match(/Will the official close price for the Nikkei 225 on the final trading day of December (\d{4}) be at least ([\d,]+)/i);
+  if (nikkeiAtLeast) return `${nikkeiAtLeast[1]}年12月最終取引日の日経平均終値は${nikkeiAtLeast[2]}円以上になる？`;
+
+  const nikkeiLessThan = title.match(/Will the official close price for the Nikkei 225 on the final trading day of December (\d{4}) be less than ([\d,]+)/i);
+  if (nikkeiLessThan) return `${nikkeiLessThan[1]}年12月最終取引日の日経平均終値は${nikkeiLessThan[2]}円未満になる？`;
+
   if (/Trump say "crypto" or "Bitcoin" during events with Xi Jinping/i.test(title)) {
     return "トランプ氏は習近平氏との会談で暗号資産に言及する？";
   }
@@ -764,6 +798,12 @@ function knownJapaneseTitle(title: string) {
   if (/Japan declassifies new UFO files in 2026/i.test(title)) {
     return "日本は2026年にUFO関連の新資料を公開する？";
   }
+
+  const chinaJapanClash = title.match(/China x Japan military clash before (\d{4})/i);
+  if (chinaJapanClash) return `中国と日本は${chinaJapanClash[1]}年までに軍事衝突する？`;
+
+  const tennisMatch = title.match(/^(Roland Garros WTA|Madrid Open):\s*(.+?)\s+vs\s+(.+)$/i);
+  if (tennisMatch) return `${translateEventName(tennisMatch[1])}: ${translatePerson(tennisMatch[2])}対${translatePerson(tennisMatch[3])}`;
 
   const worldCup = title.match(/Will ([A-Za-z .'-]+) win the 2026 FIFA World Cup/i);
   if (worldCup) return `${translateCountry(worldCup[1])}は2026年FIFAワールドカップで優勝する？`;
@@ -796,6 +836,25 @@ function translatePhrase(value: string) {
 
 function translateCountry(value: string) {
   return countryGlossary[value.trim()] ?? translatePhrase(value.trim());
+}
+
+function translateEventName(value: string) {
+  const normalized = value.trim();
+  const events: Record<string, string> = {
+    "Roland Garros WTA": "全仏オープン女子",
+    "Madrid Open": "マドリード・オープン",
+  };
+  return events[normalized] ?? translatePhrase(normalized);
+}
+
+function translatePerson(value: string) {
+  const normalized = value.replace(/\?+$/, "").trim();
+  const people: Record<string, string> = {
+    "Aryna Sabalenka": "アリナ・サバレンカ",
+    "Naomi Osaka": "大坂なおみ",
+    "Iva Jovic": "イバ・ヨビッチ",
+  };
+  return people[normalized] ?? translatePhrase(normalized);
 }
 
 function translateShortDate(value: string) {
@@ -933,10 +992,14 @@ const countryGlossary: Record<string, string> = {
   Turkey: "トルコ",
   Sweden: "スウェーデン",
   Austria: "オーストリア",
+  Australia: "オーストラリア",
   Brazil: "ブラジル",
   Argentina: "アルゼンチン",
   France: "フランス",
   England: "イングランド",
   Portugal: "ポルトガル",
+  "Congo DR": "コンゴ民主共和国",
+  USA: "米国",
+  "South Korea": "韓国",
   Japan: "日本",
 };
