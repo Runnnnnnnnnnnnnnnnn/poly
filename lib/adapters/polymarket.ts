@@ -493,8 +493,21 @@ function buildVolumeHistory(market: MarketSummary): ChartPoint[] {
 }
 
 function relateNews(market: MarketSummary, items: NewsItem[]) {
-  const categoryMatches = items.filter((item) => item.category === market.category || item.relatedMarket === market.title);
-  if (categoryMatches.length > 0) return categoryMatches;
+  const marketText = [market.title, market.originalTitle, market.summaryJa, market.themeLabel, market.category].join(" ").toLowerCase();
+  const scored = items
+    .map((item) => {
+      const newsText = [item.title, item.summary, item.relatedMarket ?? "", item.category].join(" ").toLowerCase();
+      let score = item.category === market.category ? 5 : 0;
+      if (item.relatedMarket && marketText.includes(item.relatedMarket.toLowerCase())) score += 8;
+      for (const token of newsText.split(/[^a-z0-9ぁ-んァ-ヶ一-龠ー/]+/u).filter((part) => part.length >= 2 && !/^\d+$/.test(part)).slice(0, 24)) {
+        if (marketText.includes(token)) score += token.length > 4 ? 2 : 1;
+      }
+      return { item, score };
+    })
+    .filter((entry) => entry.score >= 4)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.item);
+  if (scored.length > 0) return scored;
   return items.slice(0, 4);
 }
 

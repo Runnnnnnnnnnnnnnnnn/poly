@@ -1,29 +1,65 @@
-import { z } from "zod";
-
 import { fallbackNews } from "@/lib/sample-data";
 import type { DataStatus, MarketCategory, NewsItem, SourceStatus } from "@/lib/types";
 import { fetchWithTimeout } from "@/lib/utils";
 
-const kokkaiSchema = z
-  .object({
-    speechRecord: z
-      .array(
-        z
-          .object({
-            speechID: z.string(),
-            nameOfHouse: z.string().nullable().optional(),
-            nameOfMeeting: z.string().nullable().optional(),
-            date: z.string().nullable().optional(),
-            speaker: z.string().nullable().optional(),
-            speech: z.string().nullable().optional(),
-            speechURL: z.string().nullable().optional(),
-            meetingURL: z.string().nullable().optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
-  })
-  .passthrough();
+type RssFeedConfig = {
+  source: string;
+  url: string;
+  kind: "公式情報" | "報道";
+  category?: MarketCategory | "政策";
+  relatedMarket?: string;
+  limit?: number;
+};
+
+const TREND_FEEDS: RssFeedConfig[] = [
+  googleNewsFeed("日経: 為替・日銀", "site:nikkei.com 円 為替 日銀 when:7d", "為替", "USD/JPYの水準・レンジ"),
+  googleNewsFeed("日経: 日本株・半導体", "site:nikkei.com 日経平均 日本株 半導体 AI when:7d", "金融", "日経平均・日本株指数"),
+  googleNewsFeed("Reuters: Japan markets", "site:reuters.com Japan yen BOJ Nikkei when:7d", "為替", "USD/JPYの水準・レンジ"),
+  googleNewsFeed("Bloomberg: Japan markets", "site:bloomberg.co.jp 日銀 円 日本株 when:7d", "金融", "日経平均・日本株指数"),
+  googleNewsFeed("Polymarket / prediction markets", "Polymarket 予測市場 Bloomberg Reuters CoinDesk when:30d", "金融", "Polymarket"),
+  googleNewsFeed("暗号資産規制", "暗号資産 規制 日本 金融庁 CoinDesk Cointelegraph when:14d", "規制", "日本の暗号資産規制"),
+  googleNewsFeed("AI・半導体", "AI 半導体 NVIDIA OpenAI 日本 日経 Reuters when:7d", "テック", "AI・半導体テーマ"),
+  googleNewsFeed("政治・選挙", "日本 選挙 首相 内閣 NHK Reuters when:14d", "政治", "日本の選挙・政局"),
+  googleNewsFeed("スポーツ", "2026 FIFA ワールドカップ 日本 Reuters when:30d", "イベント", "2026年FIFAワールドカップ"),
+  {
+    source: "日本銀行",
+    url: "https://www.boj.or.jp/rss/whatsnew.xml",
+    kind: "公式情報",
+    category: "日銀",
+    relatedMarket: "日銀の金融政策",
+    limit: 5,
+  },
+  {
+    source: "日本銀行統計",
+    url: "https://www.boj.or.jp/rss/statistics.xml",
+    kind: "公式情報",
+    category: "為替",
+    relatedMarket: "USD/JPYの水準・レンジ",
+    limit: 5,
+  },
+];
+
+function googleNewsFeed(
+  source: string,
+  query: string,
+  category: MarketCategory | "政策",
+  relatedMarket: string,
+  limit = 8,
+): RssFeedConfig {
+  const url = new URL("https://news.google.com/rss/search");
+  url.searchParams.set("q", query);
+  url.searchParams.set("hl", "ja");
+  url.searchParams.set("gl", "JP");
+  url.searchParams.set("ceid", "JP:ja");
+  return {
+    source,
+    url: url.toString(),
+    kind: "報道",
+    category,
+    relatedMarket,
+    limit,
+  };
+}
 
 export async function fetchNewsItems(): Promise<{
   items: NewsItem[];
@@ -31,18 +67,10 @@ export async function fetchNewsItems(): Promise<{
   sourceStatuses: SourceStatus[];
 }> {
   const sourceStatuses: SourceStatus[] = [];
-  const settled = await Promise.allSettled([
-    fetchKokkaiItems(),
-    fetchRssItems("日本銀行", "https://www.boj.or.jp/rss/whatsnew.xml"),
-    fetchRssItems("日本銀行統計", "https://www.boj.or.jp/rss/statistics.xml"),
-    fetchRssItems("e-Gov", "https://public-comment.e-gov.go.jp/rss/pcm_list.xml"),
-    fetchRssItems("Google News: Polymarket", "https://news.google.com/rss/search?q=Polymarket%20prediction%20market&hl=ja&gl=JP&ceid=JP:ja", "報道"),
-    fetchRssItems("Google News: Japan markets", "https://news.google.com/rss/search?q=Japan%20markets%20yen%20Nikkei&hl=ja&gl=JP&ceid=JP:ja", "報道"),
-    fetchRssItems("Google News: crypto regulation", "https://news.google.com/rss/search?q=crypto%20regulation%20Japan&hl=ja&gl=JP&ceid=JP:ja", "報道"),
-  ]);
+  const settled = await Promise.allSettled(TREND_FEEDS.map((feed) => fetchRssItems(feed)));
 
   const items = settled.flatMap((result, index) => {
-    const source = ["国会会議録", "日本銀行", "日本銀行統計", "e-Gov", "Google News: Polymarket", "Google News: Japan markets", "Google News: crypto regulation"][index];
+    const source = TREND_FEEDS[index].source;
     if (result.status === "fulfilled") {
       sourceStatuses.push({
         source,
@@ -61,7 +89,8 @@ export async function fetchNewsItems(): Promise<{
   });
 
   const normalized = dedupeNews(items)
-    .sort((a, b) => new Date(b.publishedAt ?? 0).getTime() - new Date(a.publishedAt ?? 0).getTime())
+    .filter(isUsefulNewsItem)
+    .sort((a, b) => newsSortScore(b) - newsSortScore(a))
     .slice(0, 48);
 
   if (normalized.length === 0) {
@@ -71,58 +100,25 @@ export async function fetchNewsItems(): Promise<{
   return { items: normalized, status: "live", sourceStatuses };
 }
 
-async function fetchKokkaiItems(): Promise<NewsItem[]> {
-  const queries = ["日銀", "暗号資産", "金融庁", "予測市場", "為替", "半導体", "選挙"];
-  const responses = await Promise.allSettled(
-    queries.map(async (query) => {
-      const url = new URL("https://kokkai.ndl.go.jp/api/speech");
-      url.searchParams.set("any", query);
-      url.searchParams.set("maximumRecords", "4");
-      url.searchParams.set("recordPacking", "json");
-      const response = await fetchWithTimeout(url.toString(), {}, 9000);
-      if (!response.ok) throw new Error(`Kokkai ${response.status}`);
-      return kokkaiSchema.parse(await response.json()).speechRecord ?? [];
-    }),
-  );
-
-  return responses.flatMap((result) => {
-    if (result.status !== "fulfilled") return [];
-    return result.value.map((record) => {
-      const title = `${record.nameOfHouse ?? "国会"} ${record.nameOfMeeting ?? ""} ${record.speaker ?? ""}`.trim();
-      const speech = record.speech ?? "";
-      const category = categorizeNews(`${title} ${speech}`);
-      return {
-        id: `kokkai-${record.speechID}`,
-        title,
-        source: "国会会議録",
-        publishedAt: record.date ? `${record.date}T00:00:00.000Z` : null,
-        url: record.speechURL ?? record.meetingURL ?? "https://kokkai.ndl.go.jp/",
-        category,
-        relatedMarket: relatedMarketLabel(category),
-        summary: summarize(speech),
-        kind: "公式情報" as const,
-        status: "live" as const,
-      };
-    });
-  });
-}
-
-async function fetchRssItems(source: string, url: string, kind: "公式情報" | "報道" = "公式情報"): Promise<NewsItem[]> {
-  const response = await fetchWithTimeout(url, {}, 9000);
-  if (!response.ok) throw new Error(`${source} RSS ${response.status}`);
+async function fetchRssItems(config: RssFeedConfig): Promise<NewsItem[]> {
+  const response = await fetchWithTimeout(config.url, { cache: "no-store" }, 9000);
+  if (!response.ok) throw new Error(`${config.source} RSS ${response.status}`);
   const xml = await response.text();
-  return parseRss(xml, source, kind).slice(0, 8);
+  return parseRss(xml, config).slice(0, config.limit ?? 8);
 }
 
-function parseRss(xml: string, source: string, kind: "公式情報" | "報道"): NewsItem[] {
+function parseRss(xml: string, config: RssFeedConfig): NewsItem[] {
   const itemMatches = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)];
   return itemMatches.map((match, index) => {
     const itemXml = match[1];
-    const title = decodeXml(readTag(itemXml, "title") || "Untitled");
+    const rawTitle = decodeXml(readTag(itemXml, "title") || "Untitled");
+    const titleParts = splitGoogleNewsTitle(rawTitle, config.source);
     const url = decodeXml(readTag(itemXml, "link") || "");
     const publishedAt = parseRssDate(readTag(itemXml, "pubDate") || readTag(itemXml, "dc:date"));
     const description = decodeXml(readTag(itemXml, "description") || "");
-    const category = categorizeNews(`${title} ${description}`);
+    const title = titleParts.title;
+    const source = titleParts.publisher || config.source;
+    const category = config.category ?? categorizeNews(`${title} ${description}`);
     return {
       id: `${source}-${index}-${title}`.replace(/\s+/g, "-").slice(0, 120),
       title,
@@ -130,9 +126,9 @@ function parseRss(xml: string, source: string, kind: "公式情報" | "報道"):
       publishedAt,
       url: url || sourceUrl(source),
       category,
-      relatedMarket: relatedMarketLabel(category),
+      relatedMarket: config.relatedMarket ?? relatedMarketLabel(category),
       summary: summarize(description || title),
-      kind,
+      kind: config.kind,
       status: "live",
     };
   });
@@ -168,6 +164,16 @@ function summarize(value: string) {
   return text.length > 120 ? `${text.slice(0, 117)}...` : text;
 }
 
+function splitGoogleNewsTitle(rawTitle: string, fallbackSource: string) {
+  const parts = rawTitle.split(" - ");
+  if (parts.length < 2) return { title: rawTitle, publisher: fallbackSource };
+  const publisher = parts[parts.length - 1]?.trim() || null;
+  return {
+    title: parts.slice(0, -1).join(" - ").trim() || rawTitle,
+    publisher,
+  };
+}
+
 function categorizeNews(text: string): MarketCategory | "政策" {
   if (/日銀|金融政策|金利|物価|Bank of Japan|BOJ/i.test(text)) return "日銀";
   if (/為替|円|外為|USD\/JPY|JPY|Yen/i.test(text)) return "為替";
@@ -196,16 +202,44 @@ function relatedMarketLabel(category: MarketCategory | "政策") {
 
 function sourceUrl(source: string) {
   if (source.includes("日本銀行")) return "https://www.boj.or.jp/";
-  if (source === "e-Gov") return "https://public-comment.e-gov.go.jp/pcm/list";
-  return "https://kokkai.ndl.go.jp/";
+  if (source.includes("Reuters")) return "https://jp.reuters.com/";
+  if (source.includes("Bloomberg")) return "https://www.bloomberg.co.jp/";
+  if (source.includes("日本経済新聞") || source.includes("日経")) return "https://www.nikkei.com/";
+  if (source.includes("CoinDesk")) return "https://www.coindeskjapan.com/";
+  return "https://news.google.com/";
 }
 
 function dedupeNews(items: NewsItem[]) {
   const seen = new Set<string>();
   return items.filter((item) => {
-    const key = item.url || item.title;
+    const key = normalizeNewsKey(item.title);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function normalizeNewsKey(value: string) {
+  return value.toLowerCase().replace(/\s+/g, " ").replace(/[|｜].+$/u, "").trim();
+}
+
+function isUsefulNewsItem(item: NewsItem) {
+  if (item.title.length < 6) return false;
+  if (/Google News|ヘルプ|Google ニュース/i.test(item.title)) return false;
+  if (item.source.toLowerCase() === "polymarket") return false;
+  if (/国会会議録|e-Gov|パブリックコメント/.test(item.source)) return false;
+  return true;
+}
+
+function newsSortScore(item: NewsItem) {
+  const publishedAt = new Date(item.publishedAt ?? 0).getTime();
+  return publishedAt + sourcePriority(item) * 1000 * 60 * 60 * 6;
+}
+
+function sourcePriority(item: NewsItem) {
+  if (/日本経済新聞|日経/.test(item.source)) return 5;
+  if (/Reuters|ロイター|Bloomberg|ブルームバーグ/.test(item.source)) return 4;
+  if (/CoinDesk|Cointelegraph|コイン/.test(item.source)) return 3;
+  if (item.kind === "報道") return 2;
+  return 1;
 }

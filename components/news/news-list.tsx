@@ -118,7 +118,11 @@ function findRelatedThemeGroups(item: NewsItem, markets: MarketSummary[]) {
       const categoryScore = categoryMatchScore(item.category, group);
       score += categoryScore;
       if ((item.category === "為替" || item.category === "日銀") && categoryScore === 0) return { group, score: 0 };
-      if (relatedMarketText && marketText.includes(relatedMarketText.slice(0, 18))) score += 5;
+      if (relatedMarketText && relatedMarketText !== "polymarket") {
+        const groupLabel = normalize(group.label);
+        if (groupLabel.includes(relatedMarketText) || relatedMarketText.includes(groupLabel)) score += 30;
+        else if (marketText.includes(relatedMarketText.slice(0, 18))) score += 10;
+      }
       for (const token of importantTokens(newsText)) {
         if (marketText.includes(token)) score += token.length > 4 ? 2 : 1;
       }
@@ -146,7 +150,10 @@ function formatProbabilityRange(group: MarketThemeGroup) {
 }
 
 function importantTokens(text: string) {
-  return Array.from(new Set(text.split(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/u).filter((token) => token.length >= 2))).slice(0, 24);
+  return Array.from(new Set(text.split(/[^a-z0-9ぁ-んァ-ヶ一-龠ー/]+/u).filter((token) => token.length >= 2)))
+    .filter((token) => !/^\d+$/.test(token))
+    .filter((token) => !["ニュース", "市場", "日本", "関連", "速報", "今日", "明日", "今年", "について", "する"].includes(token))
+    .slice(0, 24);
 }
 
 function normalize(value: string) {

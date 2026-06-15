@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ExternalLink, ShieldAlert } from "lucide-react";
+import { ArrowRight, BookOpen, ExternalLink, Scale, TrendingUp } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -8,18 +8,36 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { marketScaleNotes, officialPolymarketLinks, polymarketReferenceLinks, type ReferenceLink } from "@/lib/polymarket-reference-links";
 import { AskConciergeButton } from "@/src/components/ai/AskConciergeButton";
 
-const basics = [
+const overviewCards = [
   {
-    title: "何を見るか",
-    body: "市場ごとの確率、倍率、出来高、流動性、判定条件を確認します。",
+    title: "予測市場",
+    body: "政治、金融、スポーツ、テックなど、将来の出来事に対して「起きる / 起きない」の見方が取引されます。",
   },
   {
-    title: "価格の読み方",
-    body: "確率が42%なら、当たった場合の参考倍率は約2.4倍です。",
+    title: "価格の意味",
+    body: "YESが0.42付近なら、市場参加者はその出来事をおおむね42%程度の見方として扱っている、と読みます。",
   },
   {
-    title: "注意点",
-    body: "日本国内から金銭を賭ける利用は法的リスクがあります。この画面は情報整理用です。",
+    title: "この画面の用途",
+    body: "売買やウォレット接続ではなく、ニュース、価格、出来高、判定条件を並べて情報整理するために使います。",
+  },
+];
+
+const explainerSections = [
+  {
+    title: "Polymarketで分かること",
+    icon: BookOpen,
+    body: "Polymarketは、将来の出来事について市場参加者の見方を価格として集約する予測市場です。世論調査や専門家コメントとは違い、参加者が価格を通じて見方を更新するため、ニュースへの反応や市場の関心が数字に出やすい点が特徴です。",
+  },
+  {
+    title: "市場規模と注目度",
+    icon: TrendingUp,
+    body: "2024年の米大統領選をきっかけに注目が広がり、その後も政治、地政学、暗号資産、スポーツなどへテーマが拡大しています。日本語のオンチェーン分析記事では、2026年3月のPolymarket月間取引高が約95億ドル、月間アクティブユーザーが約78万ウォレット規模だったと整理されています。",
+  },
+  {
+    title: "日本での見通し",
+    icon: Scale,
+    body: "日本では、金銭参加型の予測市場は賭博規制や金融規制との関係が大きな論点です。一方で、Polymarketが2030年までの日本承認を目指す動きも報じられており、短期的には情報を見る用途や限定的な実証、ランキング型の設計が現実的な入口として議論されています。",
   },
 ];
 
@@ -33,7 +51,7 @@ export default function OnboardingPage() {
               <p className="text-sm font-bold text-primary">Polymarket Watch</p>
               <h1 className="text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">Polymarketとは</h1>
               <p className="max-w-3xl text-base leading-8 text-muted-foreground">
-                将来の出来事をテーマに、市場価格から参加者の見方を読む予測市場です。実際の利用可否や法規制は国・地域で異なるため、ここでは情報整理に限定して扱います。
+                ニュースで話題になる出来事について、市場参加者の見方を価格として読むための予測市場です。ここでは売買ではなく、価格、出来高、ニュース、判定条件を情報として整理します。
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[260px] lg:grid-cols-1">
@@ -56,7 +74,7 @@ export default function OnboardingPage() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          {basics.map((item) => (
+          {overviewCards.map((item) => (
             <Card key={item.title}>
               <CardHeader>
                 <CardTitle>{item.title}</CardTitle>
@@ -68,24 +86,46 @@ export default function OnboardingPage() {
           ))}
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>市場規模の目安</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+        <div className="grid gap-4">
+          {explainerSections.map((section) => {
+            const Icon = section.icon;
+            return (
+              <Card key={section.title}>
+                <CardHeader>
+                  <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-md bg-accent text-primary">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <CardTitle>{section.title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm leading-7 text-muted-foreground">{section.body}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        <div className="grid gap-3 rounded-lg border border-border bg-white p-5 shadow-sm">
+          <h2 className="text-xl font-bold tracking-tight text-slate-950">数字を見るときの注意点</h2>
+          <div className="grid gap-3 md:grid-cols-2">
             {marketScaleNotes.map((note) => (
               <p key={note} className="rounded-md bg-slate-50 p-3 text-sm leading-6 text-muted-foreground">
                 {note}
               </p>
             ))}
-          </CardContent>
-        </Card>
+            <p className="rounded-md bg-slate-50 p-3 text-sm leading-6 text-muted-foreground">
+              日本国内から金銭を賭ける利用には法的リスクがあります。このダッシュボードでは市場データを情報として読むことに限定します。
+            </p>
+            <p className="rounded-md bg-slate-50 p-3 text-sm leading-6 text-muted-foreground">
+              市場価格は将来を保証するものではありません。出来高、流動性、スプレッド、判定条件、関連ニュースを合わせて確認します。
+            </p>
+          </div>
+        </div>
 
         <section className="grid gap-4" aria-labelledby="reference-title">
           <div className="flex items-center gap-2">
-            <ShieldAlert className="h-5 w-5 text-primary" />
             <h2 id="reference-title" className="text-2xl font-bold tracking-tight text-slate-950">
-              引用元リンク
+              さらに読む
             </h2>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { getMarketsDashboard } from "@/lib/server/dashboard";
+import { getMarketAiEvaluations } from "@/src/lib/ai/market-evaluations";
 
 export async function GET() {
-  const payload = await getMarketsDashboard();
+  const payload = await getMarketAiEvaluations();
   return NextResponse.json(payload, {
     headers: {
       "cache-control": "no-store",

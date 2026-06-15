@@ -78,13 +78,15 @@ export async function fetchWithTimeout(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const cacheOptions =
-    process.env.NEXT_PUBLIC_STATIC_EXPORT === "1"
-      ? ({ cache: "force-cache" } as RequestInit)
-      : ({ next: { revalidate: 300 } } as RequestInit);
+    init.cache || init.next
+      ? {}
+      : process.env.NEXT_PUBLIC_STATIC_EXPORT === "1"
+        ? ({ cache: "force-cache" } as RequestInit)
+        : ({ next: { revalidate: 300 } } as RequestInit);
   try {
     return await fetch(url, {
-      ...init,
       ...cacheOptions,
+      ...init,
       signal: controller.signal,
       headers: {
         "user-agent": "PolymarketWatch/0.1 readonly research dashboard",

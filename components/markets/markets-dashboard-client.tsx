@@ -4,6 +4,7 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Globe2, Landmark, Layers3, RefreshCcw } from "lucide-react";
 
+import { MarketAiEvaluationPanel } from "@/components/markets/market-ai-evaluation-panel";
 import { MarketGroupExplorer } from "@/components/markets/market-group-explorer";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -100,6 +101,8 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
         <MetricCard title="合計出来高" value={formatUsd(totals.volume)} />
         <MetricCard title="合計流動性" value={formatUsd(totals.liquidity)} />
       </div>
+
+      <MarketAiEvaluationPanel />
 
       <MarketGroupExplorer
         markets={data.markets}

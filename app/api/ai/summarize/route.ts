@@ -23,5 +23,9 @@ export async function POST(request: Request) {
       },
     ],
   });
-  return NextResponse.json(payload);
+  return NextResponse.json(payload, {
+    headers: {
+      "cache-control": "no-store",
+    },
+  });
 }

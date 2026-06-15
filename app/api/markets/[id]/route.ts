@@ -8,5 +8,9 @@ export async function GET(
 ) {
   const { id } = await params;
   const payload = await getMarketDetailDashboard(id);
-  return NextResponse.json(payload);
+  return NextResponse.json(payload, {
+    headers: {
+      "cache-control": "no-store",
+    },
+  });
 }

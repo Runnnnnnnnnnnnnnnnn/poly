@@ -101,3 +101,51 @@ export type RateResponse = {
   usdJpy: number;
   source: string;
 };
+
+export type AiEvaluationRating = "YES寄り" | "NO寄り" | "様子見";
+export type AiEvaluationConfidence = "高" | "中" | "低";
+
+export type MarketAiEvaluation = {
+  id: string;
+  tabId: string;
+  tabLabel: string;
+  marketId: string;
+  title: string;
+  category: MarketCategory;
+  themeLabel: string;
+  marketProbability: number;
+  aiProbability: number;
+  yesMultiplier: number | null;
+  noMultiplier: number | null;
+  expectedReturnYes: number | null;
+  expectedReturnNo: number | null;
+  rating: AiEvaluationRating;
+  confidence: AiEvaluationConfidence;
+  reasons: string[];
+  evidence: string[];
+  historySignals: {
+    points: number;
+    firstProbability: number | null;
+    latestProbability: number | null;
+    change7d: number | null;
+    high7d: number | null;
+    low7d: number | null;
+  };
+  scoreBreakdown: {
+    liquidity: number;
+    momentum: number;
+    news: number;
+    spreadPenalty: number;
+  };
+  evaluatedAt: string;
+  model: string;
+  status: DataStatus;
+};
+
+export type MarketAiEvaluationsResponse = {
+  status: DataStatus;
+  updatedAt: string;
+  model: string;
+  items: MarketAiEvaluation[];
+  sourceStatuses: SourceStatus[];
+};

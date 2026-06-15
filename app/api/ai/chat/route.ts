@@ -9,5 +9,9 @@ export async function POST(request: Request) {
   }
 
   const payload = await answerWithDeepSeek(parsed.data);
-  return NextResponse.json(payload);
+  return NextResponse.json(payload, {
+    headers: {
+      "cache-control": "no-store",
+    },
+  });
 }
