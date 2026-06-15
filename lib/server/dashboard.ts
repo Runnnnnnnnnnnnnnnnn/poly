@@ -1,9 +1,9 @@
 import { fetchNewsItems } from "@/lib/adapters/news";
-import { fetchMarketDetail, fetchJapanMarkets } from "@/lib/adapters/polymarket";
+import { fetchMarketDetail, fetchMarkets } from "@/lib/adapters/polymarket";
 import { fetchUsdJpy } from "@/lib/adapters/rates";
 
 export async function getMarketsDashboard() {
-  const result = await fetchJapanMarkets();
+  const result = await fetchMarkets();
   return {
     ...result,
     updatedAt: new Date().toISOString(),

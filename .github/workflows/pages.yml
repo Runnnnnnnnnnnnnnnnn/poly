@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: file:./dev.db
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       NEXT_PUBLIC_STATIC_EXPORT: "1"
       GITHUB_PAGES: "true"
       GITHUB_PAGES_REPO: poly
@@ -32,7 +33,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies

@@ -7,12 +7,12 @@ export const aiToolDefinitions = [
     type: "function",
     function: {
       name: "search_markets",
-      description: "Search Japan-related prediction markets by query and category.",
+      description: "Search global and Japan-related prediction markets by query and category.",
       parameters: {
         type: "object",
         properties: {
           query: { type: "string", description: "Search keyword." },
-          category: { type: "string", description: "Optional Japanese category." },
+          category: { type: "string", description: "Optional dashboard category such as 金融, 為替, 政治, イベント." },
         },
         required: ["query"],
         additionalProperties: false,

@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { createConnection } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,6 +32,31 @@ function restore(moved) {
 
 const moved = [];
 let exitCode = 0;
+
+function isPortOpen(port) {
+  return new Promise((resolve) => {
+    const socket = createConnection({ host: "127.0.0.1", port });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => resolve(false));
+    socket.setTimeout(500, () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+if (!process.env.CI && process.env.ALLOW_PAGES_BUILD_WITH_DEV_SERVER !== "1") {
+  const devPort = Number(process.env.PAGES_BUILD_DEV_PORT || 3000);
+  if (await isPortOpen(devPort)) {
+    console.error(
+      `Refusing to run build:pages while a local server is listening on 127.0.0.1:${devPort}. Stop the dev server first, or set ALLOW_PAGES_BUILD_WITH_DEV_SERVER=1 if this is intentional.`,
+    );
+    process.exit(1);
+  }
+}
 
 try {
   rmSync(disabledRoot, { recursive: true, force: true });

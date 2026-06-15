@@ -214,7 +214,8 @@ export const fallbackGlobalMarkets: MarketSummary[] = [
 ];
 
 export function fallbackDetail(id: string): MarketDetail {
-  const market = fallbackMarkets.find((item) => item.id === id) ?? fallbackMarkets[0];
+  const allFallbackMarkets = [...fallbackGlobalMarkets, ...fallbackMarkets];
+  const market = allFallbackMarkets.find((item) => item.id === id) ?? allFallbackMarkets[0];
   return {
     ...market,
     description:

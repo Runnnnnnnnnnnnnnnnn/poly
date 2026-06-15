@@ -1,1 +1,1 @@
-export { fetchJapanMarkets, fetchMarketDetail } from "@/lib/adapters/polymarket";
+export { fetchJapanMarkets, fetchMarketDetail, fetchMarkets } from "@/lib/adapters/polymarket";
