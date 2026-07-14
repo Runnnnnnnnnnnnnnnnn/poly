@@ -4,11 +4,20 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "build": "DATABASE_URL=${DATABASE_URL:-file:./dev.db} SKIP_TITLE_AI=1 prisma generate && SKIP_TITLE_AI=1 next build",
     "build:pages": "node scripts/build-pages.mjs",
-    "dev:remote": "next dev --hostname 0.0.0.0 --port 3000"
+    "dev:remote": "next dev --hostname 0.0.0.0 --port 3000",
+    "dev:paper": "node scripts/run-all.mjs",
+    "start:paper": "PAPER_PRODUCTION=1 node scripts/run-all.mjs",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate deploy",
+    "backtest": "tsx scripts/run-backtest.mts",
+    "paper:backtest": "tsx scripts/run-paper-backtest.mts",
+    "collect:crypto": "tsx scripts/collect-crypto-snapshots.mts",
+    "paper:trade": "tsx scripts/run-paper-trading.mts"
   },
   "overrides": {
     "postcss": "8.5.15"

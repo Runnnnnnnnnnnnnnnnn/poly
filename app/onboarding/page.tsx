@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  ArrowUpRight,
   BarChart3,
   BookOpen,
   Bot,
@@ -10,7 +9,6 @@ import {
   Flag,
   Globe2,
   Layers3,
-  Link2,
   Newspaper,
   Scale,
   Search,
@@ -19,41 +17,8 @@ import {
 
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  marketScaleNotes,
-  officialPolymarketLinks,
-  polymarketReferenceLinks,
-  type ReferenceLink,
-} from "@/lib/polymarket-reference-links";
+import { Card, CardContent } from "@/components/ui/card";
 import { AskConciergeButton } from "@/src/components/ai/AskConciergeButton";
-
-const allReferenceLinks = [...officialPolymarketLinks, ...polymarketReferenceLinks];
-
-function findRef(urlPart: string): ReferenceLink | undefined {
-  return allReferenceLinks.find((link) => link.url.includes(urlPart));
-}
-
-// セクションごとに、本文で触れた内容の参照元をひも付ける
-const basicsRefs = [
-  findRef("polymarket.com/ja"),
-  findRef("docs.polymarket.us"),
-  findRef("diamond.jp/crypto"),
-  findRef("coincheck.com"),
-  findRef("innovationlaw.jp"),
-].filter(Boolean) as ReferenceLink[];
-
-const outlookRefs = [
-  findRef("coindesk.com"),
-  findRef("hashhub-research.com"),
-  findRef("finance.yahoo.co.jp"),
-  findRef("coincheck.com"),
-].filter(Boolean) as ReferenceLink[];
-
-// 各セクションの参照元をまとめてページ最下部に表示する（重複はURLで除去）。
-const allCitedRefs = Array.from(
-  new Map([...basicsRefs, ...outlookRefs, ...allReferenceLinks].map((ref) => [ref.url, ref])).values(),
-);
 
 const tocItems = [
   { id: "basics", label: "Polymarketとは", icon: BookOpen },
@@ -83,12 +48,12 @@ const usageSteps = [
   {
     icon: Search,
     title: "予測市場一覧でテーマを探す",
-    body: "「予測市場一覧」では、テーマを国内・国外に分けて表示します。各カードで確率レンジ・YES倍率・出来高をひと目で確認でき、関連する個別市場もまとめて見られます。",
+    body: "「予測市場一覧」では、テーマを国内・国外に分けて表示します。各カードで確率レンジ・YES倍率・出来高を確認し、条件違いの個別市場は詳細内にまとめて見られます。",
   },
   {
     icon: BarChart3,
-    title: "詳細ページで深掘りする",
-    body: "テーマを開くと、現在確率・倍率・Best Bid/Ask・スプレッド・出来高・流動性を一覧表示。確率推移と出来高のチャート、解決条件、確認ポイント、収益計算まで1ページで把握できます。",
+    title: "詳細ページで検証材料を見る",
+    body: "テーマを開くと、確率推移、出来高、スプレッド、解決条件、収益計算を確認できます。バックテストでは価格履歴と判定条件を分けて見ます。",
   },
   {
     icon: Newspaper,
@@ -98,7 +63,7 @@ const usageSteps = [
   {
     icon: Bot,
     title: "AIリサーチアシスタントに相談する",
-    body: "画面右下の「リサーチ相談」から、用語の意味や読み方、確認ポイントを質問できます。表示中のテーマに沿って要点を整理します（投資助言や自動売買は行いません）。",
+    body: "画面右下の「リサーチ相談」から、表示中のテーマに沿って要点を整理できます。モデル改善の観点では、確率、出来高、ニュース、解決条件の確認に使います。",
   },
 ];
 
@@ -142,7 +107,7 @@ export default function OnboardingPage() {
               <p className="text-sm font-bold text-primary">Polymarket Watch</p>
               <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl md:text-5xl">Polymarketとは</h1>
               <p className="max-w-3xl text-sm leading-7 text-muted-foreground sm:text-base sm:leading-8">
-                Polymarketは、ニュースで話題になる出来事の「起きやすさ」を価格として読み取れる予測市場です。このページでは、①Polymarketの基本、②このサイトの使い方、③これからの展望を、複数の公式・解説記事を引用しながら一通り理解できるように整理しています。
+                Polymarketは、ニュースで話題になる出来事の「起きやすさ」を価格として読み取れる予測市場です。このサイトでは、その価格と履歴を使って、バックテストで評価モデルを改善するための材料を整理します。
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[260px] lg:grid-cols-1">
@@ -185,12 +150,12 @@ export default function OnboardingPage() {
 
         {/* 01 基本解説 */}
         <section id="basics" className="grid scroll-mt-24 gap-4">
-          <SectionHeading step="01" title="Polymarketとは" lead="複数の公式・解説記事をもとに、仕組みと現状を整理します。" />
+          <SectionHeading step="01" title="Polymarketとは" lead="仕組みと、モデル検証に使うときの読み方を整理します。" />
 
           <Card>
             <CardContent className="grid gap-4 p-5 sm:p-6">
               <p className="text-sm leading-7 text-slate-700 sm:text-base sm:leading-8">
-                Polymarketは、将来の出来事について市場参加者の見方を価格として集約する「予測市場(Prediction Market)」です。世論調査や専門家コメントと違い、参加者が自分の資金で売買しながら価格を更新していくため、ニュースへの反応や関心の高さが数字に表れやすいのが特徴だと、ダイヤモンド・ザイ系のCRYPTO INSIGHTやCoincheckのレポートは説明しています。決済にはステーブルコイン(USDC)が使われ、取引や価格はブロックチェーン上に公開されます。
+                Polymarketは、将来の出来事について市場参加者の見方を価格として集約する「予測市場(Prediction Market)」です。世論調査や専門家コメントと違い、参加者が売買しながら価格を更新していくため、ニュースへの反応や関心の高さが数字に表れやすいのが特徴です。バックテストでは、この価格を「市場が置いた確率」として扱い、実際の結果と比較します。
               </p>
               <div className="grid gap-3 md:grid-cols-3">
                 {basicsPoints.map((point) => {
@@ -209,27 +174,16 @@ export default function OnboardingPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <BarChart3 className="h-5 w-5 text-primary" />
-                市場規模で見る現在地
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              <ul className="grid gap-2">
-                {marketScaleNotes.map((note) => (
-                  <li key={note} className="flex gap-2 rounded-md bg-slate-50 p-3 text-sm leading-6 text-slate-700">
-                    <BarChart3 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <span>{note}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-sm leading-7 text-muted-foreground">
-                これらの数字は出典記事の集計時点のものです。市場規模は短期間で大きく変動するため、最新の傾向は出典元や「予測市場一覧」の出来高でご確認ください。
-              </p>
-            </CardContent>
-          </Card>
+          <details className="rounded-lg border border-border bg-white shadow-sm">
+            <summary className="cursor-pointer px-4 py-3 text-base font-bold text-slate-950 sm:px-5">
+              モデル検証で見るポイント
+            </summary>
+            <div className="grid gap-3 border-t border-border p-4 text-sm leading-6 text-muted-foreground sm:grid-cols-3 sm:p-5">
+              <p className="rounded-md bg-slate-50 p-3">市場価格: その時点の参加者の確率見立て。</p>
+              <p className="rounded-md bg-slate-50 p-3">出来高・流動性: モデル評価時の信頼度を調整する材料。</p>
+              <p className="rounded-md bg-slate-50 p-3">結果判定: Brier scoreやLog lossで検証する基準。</p>
+            </div>
+          </details>
         </section>
 
         {/* 02 使い方 */}
@@ -334,8 +288,6 @@ export default function OnboardingPage() {
           </div>
         </section>
 
-        {/* 引用・参照元（ページ全体・最下部にまとめて掲載） */}
-        <CitationList title="引用・参照元" links={allCitedRefs} />
       </article>
     </AppShell>
   );
@@ -349,37 +301,6 @@ function SectionHeading({ step, title, lead }: { step: string; title: string; le
         <h2 className="text-xl font-bold tracking-tight text-slate-950 md:text-2xl">{title}</h2>
       </div>
       <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{lead}</p>
-    </div>
-  );
-}
-
-function CitationList({ title, links }: { title: string; links: ReferenceLink[] }) {
-  return (
-    <div className="grid gap-3 rounded-lg border border-dashed border-border bg-white p-4 sm:p-5">
-      <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
-        <Link2 className="h-4 w-4 text-primary" />
-        {title}
-      </p>
-      <ul className="grid gap-2 sm:grid-cols-2">
-        {links.map((link) => (
-          <li key={link.url}>
-            <a
-              href={link.url}
-              target="_blank"
-              rel="noreferrer"
-              className="grid h-full gap-1 rounded-md border border-border p-3 transition-colors hover:border-primary/40 hover:bg-slate-50"
-            >
-              <span className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold text-primary">{link.kind}</span>
-                <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" />
-              </span>
-              <span className="text-sm font-bold leading-snug text-slate-950">{link.title}</span>
-              <span className="text-xs text-muted-foreground">{link.source}</span>
-              <span className="text-xs leading-5 text-muted-foreground">{link.note}</span>
-            </a>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

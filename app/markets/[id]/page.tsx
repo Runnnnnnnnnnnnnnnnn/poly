@@ -81,11 +81,11 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
           <Metric title="データ状態" value={market.status === "live" ? "リアルタイム" : "参考データ"} />
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>このテーマの収益計算</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4">
+        <details className="rounded-lg border border-border bg-white shadow-sm">
+          <summary className="cursor-pointer px-4 py-3 text-base font-bold text-slate-950 sm:px-5">
+            このテーマの収益計算
+          </summary>
+          <div className="grid gap-4 border-t border-border p-4 sm:p-5">
             <p className="text-sm leading-6 text-muted-foreground">
               現在の市場価格を初期値にして、想定売却価格、投資額、USD/JPY、手数料から参考損益を確認できます。
             </p>
@@ -95,8 +95,8 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
               initialBuyPrice={market.yesPrice}
               initialSellPrice={Math.min(0.99, Math.max(0.01, market.yesPrice + 0.08))}
             />
-          </CardContent>
-        </Card>
+          </div>
+        </details>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
@@ -118,20 +118,20 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_0.75fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>解決条件</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4">
+          <details className="rounded-lg border border-border bg-white shadow-sm">
+            <summary className="cursor-pointer px-4 py-3 text-base font-bold text-slate-950 sm:px-5">
+              解決条件
+            </summary>
+            <div className="grid gap-4 border-t border-border p-4 sm:p-5">
               <p className="whitespace-pre-line text-sm leading-7 text-muted-foreground">{market.description}</p>
               <p className="text-sm font-semibold">判定に使われる情報: {market.resolutionSource || "Polymarketの市場ルール"}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>確認ポイント</CardTitle>
-            </CardHeader>
-            <CardContent>
+            </div>
+          </details>
+          <details className="rounded-lg border border-border bg-white shadow-sm">
+            <summary className="cursor-pointer px-4 py-3 text-base font-bold text-slate-950 sm:px-5">
+              確認ポイント
+            </summary>
+            <div className="border-t border-border p-4 sm:p-5">
               <div className="mb-4 grid gap-2 rounded-md bg-slate-50 p-3 text-sm text-muted-foreground">
                 <p>次回イベント日: {formatDate(market.endDate)}</p>
                 <p>ニュース・公式情報: {themeNews.length}件</p>
@@ -145,15 +145,15 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
                   </li>
                 ))}
               </ul>
-            </CardContent>
-          </Card>
+            </div>
+          </details>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>ニュース・公式情報</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+        <details className="rounded-lg border border-border bg-white shadow-sm">
+          <summary className="cursor-pointer px-4 py-3 text-base font-bold text-slate-950 sm:px-5">
+            ニュース・公式情報
+          </summary>
+          <div className="grid gap-3 border-t border-border p-4 sm:p-5">
             {themeNews.map((item) => (
               <a
                 key={item.id}
@@ -168,14 +168,10 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
                   <span>{formatDate(item.publishedAt)}</span>
                 </span>
                 <span className="text-sm font-semibold text-slate-950">{item.title}</span>
-                <span className="text-sm leading-6 text-muted-foreground">{item.summary}</span>
-                <span className="text-xs text-muted-foreground">
-                  関連テーマ: {item.relatedMarket ?? market.title} / {item.category}
-                </span>
               </a>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </details>
       </section>
     </AppShell>
   );

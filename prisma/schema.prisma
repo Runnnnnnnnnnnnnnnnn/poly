@@ -29,3 +29,164 @@ model MarketSnapshot {
 
   @@index([marketId, capturedAt])
 }
+
+model PredictionMarket {
+  id           String    @id
+  asset        String
+  tokenId      String
+  title        String
+  slug         String?
+  endDate      DateTime?
+  resolved     Boolean   @default(false)
+  result       Int?
+  firstSeenAt  DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+
+  @@index([asset, endDate])
+  @@index([resolved, endDate])
+}
+
+model BacktestRun {
+  id              String          @id
+  asset           String
+  status          String
+  threshold       Float
+  initialCapital  Float
+  marketCount     Int             @default(0)
+  metricsJson     String?
+  error           String?
+  startedAt       DateTime        @default(now())
+  completedAt     DateTime?
+  points          BacktestPoint[]
+}
+
+model BacktestPoint {
+  id                   String      @id
+  runId                String
+  marketId             String
+  observedAt           DateTime
+  predictedProbability Float
+  actualOutcome        Int
+  brierScore           Float
+  logLoss              Float
+  position             Int
+  pnl                  Float
+  run                  BacktestRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, observedAt])
+  @@index([marketId, observedAt])
+}
+
+model PaperAccount {
+  id           String            @id
+  name         String
+  initialCash  Float
+  cashBalance  Float
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  runs         PaperTradingRun[]
+}
+
+model PaperTradingRun {
+  id                String                 @id
+  accountId         String
+  asset             String
+  mode              String
+  strategy          String
+  status            String
+  initialCash       Float
+  finalCash         Float?
+  configJson        String
+  metricsJson       String?
+  error             String?
+  startedAt         DateTime               @default(now())
+  completedAt       DateTime?
+  account           PaperAccount           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  orders            PaperOrder[]
+  fills             PaperFill[]             @relation("PaperRunFills")
+  positions         PaperPosition[]
+  equitySnapshots   PaperEquitySnapshot[]
+
+  @@index([accountId, startedAt])
+  @@index([asset, mode, status])
+}
+
+model PaperOrder {
+  id                String       @id
+  runId             String
+  marketId          String
+  tokenId           String
+  outcome           String
+  side              String
+  orderType         String
+  requestedPrice    Float
+  requestedQuantity Float
+  filledPrice       Float?
+  filledQuantity    Float        @default(0)
+  fee               Float        @default(0)
+  slippage          Float        @default(0)
+  status            String
+  reason            String?
+  submittedAt      DateTime     @default(now())
+  filledAt          DateTime?
+  run               PaperTradingRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  fills             PaperFill[]
+
+  @@index([runId, submittedAt])
+  @@index([marketId, status])
+}
+
+model PaperFill {
+  id          String          @id
+  runId       String
+  orderId     String
+  marketId    String
+  tokenId     String
+  outcome     String
+  side        String
+  price       Float
+  quantity    Float
+  notional    Float
+  fee         Float
+  slippage    Float
+  filledAt    DateTime        @default(now())
+  run         PaperTradingRun @relation("PaperRunFills", fields: [runId], references: [id], onDelete: Cascade)
+  order       PaperOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([runId, filledAt])
+  @@index([marketId, filledAt])
+}
+
+model PaperPosition {
+  id              String          @id
+  runId           String
+  marketId        String
+  tokenId         String
+  outcome         String
+  quantity        Float
+  avgEntryPrice   Float
+  costBasis       Float
+  feePaid         Float           @default(0)
+  settlementValue Float?
+  realizedPnl     Float?
+  status          String
+  openedAt        DateTime        @default(now())
+  closedAt        DateTime?
+  run             PaperTradingRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, marketId, outcome])
+  @@index([runId, status])
+}
+
+model PaperEquitySnapshot {
+  id             String          @id
+  runId          String
+  capturedAt     DateTime        @default(now())
+  cash           Float
+  positionsValue Float
+  equity         Float
+  unrealizedPnl  Float
+  run            PaperTradingRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, capturedAt])
+}

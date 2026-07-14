@@ -11,15 +11,13 @@ import { groupMarkets, type MarketThemeGroup } from "@/lib/market-groups";
 import type { MarketSummary, NewsItem } from "@/lib/types";
 import { formatDateTime, formatPayoutMultiplier, formatPercent } from "@/lib/utils";
 
-const filters = ["すべて", "報道", "公式情報", "日銀", "金融", "規制", "政治", "為替", "政策"] as const;
+const filters = ["すべて", "報道", "公式情報"] as const;
 
 export function NewsList({ items, markets }: { items: NewsItem[]; markets: MarketSummary[] }) {
   const [filter, setFilter] = useState<(typeof filters)[number]>("すべて");
   const filtered = useMemo(() => {
     if (filter === "すべて") return items;
-    if (filter === "公式情報") return items.filter((item) => item.kind === "公式情報");
-    if (filter === "報道") return items.filter((item) => item.kind === "報道");
-    return items.filter((item) => item.category === filter);
+    return items.filter((item) => item.kind === filter);
   }, [filter, items]);
 
   return (
@@ -43,34 +41,35 @@ export function NewsList({ items, markets }: { items: NewsItem[]; markets: Marke
       </div>
       <div className="grid gap-3">
         {filtered.map((item) => (
-          <article key={item.id} className="rounded-lg border border-border bg-white p-5 shadow-sm">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-              <div className="grid gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{item.source}</Badge>
-                  <Badge variant={item.kind === "公式情報" ? "live" : "secondary"}>{item.kind}</Badge>
-                  <Badge variant="secondary">{item.category}</Badge>
-                  <StatusBadge status={item.status} />
-                </div>
-                <h2 className="text-lg font-semibold leading-snug">
-                  <a href={item.url} target="_blank" rel="noreferrer" className="hover:text-primary">
-                    {item.title}
-                  </a>
-                </h2>
-                <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{item.summary}</p>
-                <p className="text-xs text-muted-foreground">
-                  関連市場: {item.relatedMarket ?? "未分類"} / 公開: {formatDateTime(item.publishedAt)}
-                </p>
-                <div>
-                  <Button asChild size="sm" variant="outline">
-                    <a href={item.url} target="_blank" rel="noreferrer">
-                      <ExternalLink className="h-4 w-4" />
-                      ニュースを開く
-                    </a>
-                  </Button>
-                </div>
+          <article key={item.id} className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5">
+            <div className="grid gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{item.source}</Badge>
+                <Badge variant={item.kind === "公式情報" ? "live" : "secondary"}>{item.kind}</Badge>
+                <Badge variant="secondary">{item.category}</Badge>
+                <StatusBadge status={item.status} />
+                <span className="text-xs text-muted-foreground">{formatDateTime(item.publishedAt)}</span>
               </div>
-              <RelatedThemes item={item} markets={markets} />
+              <h2 className="text-lg font-semibold leading-snug">
+                <a href={item.url} target="_blank" rel="noreferrer" className="hover:text-primary">
+                  {item.title}
+                </a>
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                <Button asChild size="sm" variant="outline">
+                  <a href={item.url} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                    ニュースを開く
+                  </a>
+                </Button>
+              </div>
+              <details className="rounded-md border border-border bg-slate-50 p-3">
+                <summary className="cursor-pointer text-sm font-bold text-slate-800">要約と関連テーマを表示</summary>
+                <div className="mt-3 grid gap-3">
+                  <p className="text-sm leading-6 text-muted-foreground">{item.summary}</p>
+                  <RelatedThemes item={item} markets={markets} />
+                </div>
+              </details>
             </div>
           </article>
         ))}
@@ -83,7 +82,7 @@ function RelatedThemes({ item, markets }: { item: NewsItem; markets: MarketSumma
   const related = useMemo(() => findRelatedThemeGroups(item, markets), [item, markets]);
 
   return (
-    <aside className="grid gap-2 rounded-md bg-slate-50 p-3">
+    <aside className="grid gap-2">
       <p className="text-xs font-bold text-muted-foreground">関連テーマ</p>
       {related.length > 0 ? (
         related.map((group) => (

@@ -110,4 +110,59 @@ For GitHub Pages, `npm run build:pages` generates a static UI snapshot in `out/`
 - Backtesting
 - Static snapshot export for GitHub Pages
 
+## Crypto prediction backtest API
+
+The backend includes a read-only crypto prediction backtest. It treats Polymarket's YES price as the market-implied probability, stores live snapshots in SQLite, and evaluates resolved BTC/ETH/SOL/XRP markets with accuracy, Brier score, log loss, calibration, and a simple threshold strategy PnL. This is a measurement baseline, not a guarantee of future returns.
+
+Initialize the database and start the app:
+
+```sh
+npm run db:push
+npm run dev
+```
+
+Run a backtest:
+
+```sh
+curl -X POST http://localhost:3000/api/backtests \
+  -H 'content-type: application/json' \
+  -d '{"asset":"BTC","threshold":0.55,"initialCapital":1000,"limit":40}'
+```
+
+List runs with `GET /api/backtests`, inspect one with `GET /api/backtests/{id}`, and collect a live snapshot with `POST /api/backtests/collect`. For continuous local collection, run `npm run collect:crypto`; the default interval is five minutes and can be changed with `COLLECT_INTERVAL_MS`.
+
+`GET /api/backtests/forecast?asset=BTC` also converts a common Polymarket threshold ladder into a market-implied median and p10/p25/p75/p90 price range. It is intentionally an implied range, not an independent price model; markets with different target dates are not mixed.
+
+## Paper trading
+
+実注文を出さないペーパートレード機能を追加しました。注文、約定、手数料、ポジション、満期決済、資産推移をDBに保存します。詳細な設計、仮定、公式仕様との対応は [docs/paper-trading.md](./docs/paper-trading.md) を参照してください。
+
+```sh
+npx prisma db push
+npm run paper:backtest
+ASSET=BTC npm run paper:trade
+```
+
+`paper:trade` は live paper run を作成して5分ごとに公開データを評価します。これは実注文ではありませんが、公開する場合はrun APIに認証を追加してください。
+
+## 統合起動
+
+画面とバックグラウンドworkerを一つのコマンドで起動できます。
+
+```sh
+npm run db:push
+npm run dev:paper
+```
+
+ブラウザでは [http://localhost:3000/paper-trading](http://localhost:3000/paper-trading) を開いてください。トップURLの [http://localhost:3000](http://localhost:3000) も同じ統合画面へ移動します。`dev:paper` はNext.jsとpaper workerを同時起動し、`.paper-run-id` にlive run IDを保存して再起動時も同じrunを継続します。
+
+本番ビルド後は以下です。
+
+```sh
+npm run build
+npm run start:paper
+```
+
+For durable history, move `DATABASE_URL` from SQLite to a managed PostgreSQL database, run the collector as a scheduled worker, and keep raw API responses plus request timestamps in object storage or a warehouse. Do not rely on an in-process timer on serverless hosting because it may be stopped between requests. For public deployment, use a server-capable host such as Render, Fly.io, Railway, or a VPS, put the database and worker in the same deployment environment, add authentication/rate limiting to the backtest and collection routes, and expose only HTTPS. GitHub Pages can host the UI snapshot but cannot execute these runtime API routes.
+
 Automatic trading is not part of the initial version.

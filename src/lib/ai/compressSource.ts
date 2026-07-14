@@ -39,6 +39,6 @@ export function newsToSourceCard(item: NewsItem): SourceCard {
 }
 
 function keywordsForText(text: string) {
-  const candidates = ["日銀", "円", "為替", "金利", "暗号資産", "規制", "選挙", "国会", "e-Gov", "日本銀行"];
+  const candidates = ["日銀", "円", "為替", "金利", "暗号資産", "規制", "選挙", "日本銀行", "日経", "Reuters", "Bloomberg"];
   return candidates.filter((keyword) => text.includes(keyword)).slice(0, 8);
 }
