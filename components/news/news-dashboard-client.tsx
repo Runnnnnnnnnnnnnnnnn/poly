@@ -68,13 +68,13 @@ export function NewsDashboardClient({ initialData, initialMarkets }: { initialDa
           {snapshot ? null : (
             <Button type="button" variant="outline" size="sm" onClick={() => void refresh(false)} disabled={refreshing}>
               <RefreshCcw className={cn("h-4 w-4", refreshing ? "animate-spin" : "")} />
-              手動更新
+              最新に更新
             </Button>
           )}
         </div>
         <h1 className="text-3xl font-bold tracking-tight md:text-4xl">ニュース・公式情報</h1>
         <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-          話題になっているニュースと、その背景確認に使える関連テーマを並べて表示します。
+          話題になっているニュースと、その背景確認に使える予測テーマを並べて表示します。
         </p>
       </div>
       <DataUsagePanel mode="news" sourceStatuses={data.sourceStatuses} compact />

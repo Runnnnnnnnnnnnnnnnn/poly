@@ -104,7 +104,7 @@ export function MarketAiEvaluationPanel() {
                   AI予想
                 </h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  国内と国外から注目度が高いテーマを1件ずつ選び、市場データと関連情報から参考評価します。
+                  国内と国外から注目度が高いテーマを1件ずつ選び、価格・出来高・関連情報を使って保守的に参考評価します。
                 </p>
               </div>
             </div>
@@ -123,9 +123,24 @@ export function MarketAiEvaluationPanel() {
           {liveBackend ? (
             <Button type="button" variant="outline" size="sm" onClick={() => void refresh(false)} disabled={loading}>
               <RefreshCcw className={cn("h-4 w-4", loading ? "animate-spin" : "")} />
-              再評価
+              AI予想を更新
             </Button>
           ) : null}
+        </div>
+
+        <div className="grid gap-2 rounded-md bg-slate-50 p-3 text-xs leading-5 text-muted-foreground md:grid-cols-3">
+          <p>
+            <span className="block font-bold text-slate-900">市場確率</span>
+            現在価格から読める、参加者全体の見方です。
+          </p>
+          <p>
+            <span className="block font-bold text-slate-900">AI確率</span>
+            市場価格を基準に、ニュース・出来高・流動性を加えて補正した参考値です。
+          </p>
+          <p>
+            <span className="block font-bold text-slate-900">参考リターン</span>
+            AI確率と現在価格の差から機械的に試算したもので、売買指示ではありません。
+          </p>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-2">
@@ -142,15 +157,15 @@ export function MarketAiEvaluationPanel() {
         </div>
 
         <div className="grid grid-cols-3 gap-2">
-          <SmallMetric label="評価履歴" value={`${historySummary?.total ?? latestHistory.length}件`} />
-          <SmallMetric label="検証待ち" value={`${historySummary?.pending ?? latestHistory.length}件`} />
-          <SmallMetric label="平均Brier" value={formatScore(historySummary?.averageBrierScore ?? null)} />
+          <SmallMetric label="保存したAI予想" value={`${historySummary?.total ?? latestHistory.length}件`} />
+          <SmallMetric label="結果待ち" value={`${historySummary?.pending ?? latestHistory.length}件`} />
+          <SmallMetric label="予測誤差" value={formatScore(historySummary?.averageBrierScore ?? null)} />
         </div>
 
         <details className="rounded-md border border-border bg-slate-50 p-3">
           <summary className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-800">
             <History className="h-4 w-4 text-primary" />
-            AI評価の履歴
+            保存したAI予想の履歴
           </summary>
           {latestHistory.length ? (
             <div className="mt-3 grid gap-2">
@@ -163,14 +178,14 @@ export function MarketAiEvaluationPanel() {
                     </p>
                   </div>
                   <Badge variant={item.brierScore === null || item.brierScore === undefined ? "outline" : "live"}>
-                    {item.brierScore === null || item.brierScore === undefined ? "検証待ち" : `Brier ${formatScore(item.brierScore)}`}
+                    {item.brierScore === null || item.brierScore === undefined ? "結果待ち" : `予測誤差 ${formatScore(item.brierScore)}`}
                   </Badge>
                 </div>
               ))}
             </div>
           ) : (
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              評価履歴はこのブラウザに保存されます。解決済み判定が取得できるまでは「検証待ち」として蓄積します。
+              評価履歴はこのブラウザに保存されます。結果が確定するまでは「結果待ち」として蓄積します。
             </p>
           )}
         </details>
@@ -194,7 +209,7 @@ function EvaluationCard({ item, previous }: { item: MarketAiEvaluation; previous
       <div className="grid grid-cols-3 gap-2">
         <SmallMetric label="AI確率" value={formatPercent(item.aiProbability)} emphasis />
         <SmallMetric label="市場確率" value={formatPercent(item.marketProbability)} />
-        <SmallMetric label="YES期待収益" value={formatReturn(item.expectedReturnYes)} />
+        <SmallMetric label="YES参考リターン" value={formatReturn(item.expectedReturnYes)} />
       </div>
 
       {previous ? (
@@ -204,7 +219,7 @@ function EvaluationCard({ item, previous }: { item: MarketAiEvaluation; previous
       ) : null}
 
       <details className="rounded-md border border-border bg-white p-3">
-        <summary className="cursor-pointer text-sm font-bold text-slate-800">評価理由と根拠を表示</summary>
+        <summary className="cursor-pointer text-sm font-bold text-slate-800">なぜこの評価なのかを見る</summary>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="grid gap-2">
             <p className="text-xs font-bold text-muted-foreground">評価理由</p>
@@ -220,7 +235,7 @@ function EvaluationCard({ item, previous }: { item: MarketAiEvaluation; previous
               {item.evidence.slice(0, 3).map((evidence) => (
                 <li key={evidence}>{evidence}</li>
               ))}
-              <li>NO期待収益 {formatReturn(item.expectedReturnNo)}</li>
+              <li>NO参考リターン {formatReturn(item.expectedReturnNo)}</li>
             </ul>
           </div>
         </div>

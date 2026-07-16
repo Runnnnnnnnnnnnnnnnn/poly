@@ -81,12 +81,12 @@ const DATA_USAGE = {
     {
       icon: LineChart,
       label: "成績評価",
-      body: "Brier score、的中率、損益を見て、モデルが改善しているか確認します。",
+      body: "予測誤差、的中率、損益を見て、モデルが改善しているか確認します。",
     },
     {
       icon: Activity,
-      label: "売買シミュレーション",
-      body: "注文送信はせず、過去データとペーパートレードで仮説を検証します。",
+      label: "仮想運用",
+      body: "注文送信はせず、過去データと仮想の売買記録で仮説を検証します。",
     },
   ],
 } as const;
@@ -124,9 +124,13 @@ export function DataUsagePanel({ mode, sourceStatuses = [], compact = false }: D
           })}
         </div>
 
+        <p className="rounded-md bg-primary/5 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">
+          このサイトは売買注文を行わず、データを「見る・比べる・検証する」ために使います。
+        </p>
+
         {sourceStatuses.length ? (
           <details className="rounded-md border border-border bg-slate-50 p-3">
-            <summary className="cursor-pointer text-sm font-bold text-slate-800">取得状況を表示</summary>
+            <summary className="cursor-pointer text-sm font-bold text-slate-800">データ元ごとの取得状況を見る</summary>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               {sourceStatuses.map((source) => (
                 <div key={`${source.source}-${source.message ?? ""}`} className="flex items-center justify-between gap-3 rounded-md bg-white p-2.5">

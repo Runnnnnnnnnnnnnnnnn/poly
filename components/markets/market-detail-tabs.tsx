@@ -13,8 +13,8 @@ import type { MarketDetail, NewsItem, RateResponse, SourceStatus } from "@/lib/t
 import { cn, formatDate, formatPayoutMultiplier, formatPercent, formatUsd } from "@/lib/utils";
 
 const tabs = [
-  { id: "overview", label: "概要", icon: Gauge },
-  { id: "analysis", label: "分析", icon: BarChart3 },
+  { id: "overview", label: "見方", icon: Gauge },
+  { id: "analysis", label: "推移", icon: BarChart3 },
   { id: "calculator", label: "収益計算", icon: Calculator },
   { id: "news", label: "ニュース", icon: Newspaper },
   { id: "rules", label: "判定条件", icon: FileText },
@@ -139,6 +139,9 @@ export function MarketDetailTabs({ market, rate, themeNews, sourceStatuses = [] 
             <CardTitle>ニュース・公式情報</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3">
+            <p className="rounded-md bg-slate-50 p-3 text-sm leading-6 text-muted-foreground">
+              このテーマの判定条件や価格変化を読むための材料です。市場価格そのものとは分けて確認します。
+            </p>
             {themeNews.length ? (
               themeNews.map((item) => (
                 <a
@@ -172,6 +175,9 @@ export function MarketDetailTabs({ market, rate, themeNews, sourceStatuses = [] 
             <CardTitle>判定条件</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
+            <p className="rounded-md bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-900">
+              予想が当たるかどうかは、この条件で最終判定されます。取引前に必ず公式ページでも確認してください。
+            </p>
             <p className="whitespace-pre-line text-sm leading-7 text-muted-foreground">{market.description}</p>
             <p className="rounded-md bg-slate-50 p-3 text-sm font-semibold text-slate-800">
               判定に使われる情報: {market.resolutionSource || "Polymarketの市場ルール"}

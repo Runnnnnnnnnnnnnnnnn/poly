@@ -64,7 +64,7 @@ export function NewsList({ items, markets }: { items: NewsItem[]; markets: Marke
                 </Button>
               </div>
               <details className="rounded-md border border-border bg-slate-50 p-3">
-                <summary className="cursor-pointer text-sm font-bold text-slate-800">要約と関連テーマを表示</summary>
+                <summary className="cursor-pointer text-sm font-bold text-slate-800">ニュースの要点と関係するテーマを見る</summary>
                 <div className="mt-3 grid gap-3">
                   <p className="text-sm leading-6 text-muted-foreground">{item.summary}</p>
                   <RelatedThemes item={item} markets={markets} />
@@ -94,7 +94,7 @@ function RelatedThemes({ item, markets }: { item: NewsItem; markets: MarketSumma
           </Link>
         ))
       ) : (
-        <p className="text-sm leading-6 text-muted-foreground">関連テーマは取得中です。手動更新で最新の市場データを確認できます。</p>
+        <p className="text-sm leading-6 text-muted-foreground">関連テーマは取得中です。「最新に更新」で市場データを再確認できます。</p>
       )}
     </aside>
   );

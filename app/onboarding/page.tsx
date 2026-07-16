@@ -181,7 +181,7 @@ export default function OnboardingPage() {
             <div className="grid gap-3 border-t border-border p-4 text-sm leading-6 text-muted-foreground sm:grid-cols-3 sm:p-5">
               <p className="rounded-md bg-slate-50 p-3">市場価格: その時点の参加者の確率見立て。</p>
               <p className="rounded-md bg-slate-50 p-3">出来高・流動性: モデル評価時の信頼度を調整する材料。</p>
-              <p className="rounded-md bg-slate-50 p-3">結果判定: 予測誤差や外れ罰則で精度を確認する基準。</p>
+              <p className="rounded-md bg-slate-50 p-3">結果判定: 予測誤差や大外しペナルティで精度を確認する基準。</p>
             </div>
           </details>
         </section>

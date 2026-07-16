@@ -129,7 +129,7 @@ export function MarketGroupExplorer({
         ))}
         {visibleGroups.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-white p-8 text-center text-sm text-muted-foreground">
-            この分類に該当するテーマはまだありません。手動更新で最新データを再取得できます。
+            この分類に該当するテーマはまだありません。「最新に更新」で市場データを再取得できます。
           </div>
         ) : null}
       </div>
@@ -178,7 +178,7 @@ function ThemeGroupCard({ group }: { group: MarketThemeGroup }) {
           </div>
 
           <details className="rounded-md border border-border bg-slate-50 p-3">
-            <summary className="cursor-pointer text-sm font-bold text-slate-800">論点と個別市場を表示</summary>
+            <summary className="cursor-pointer text-sm font-bold text-slate-800">条件違いの市場と注意点を見る</summary>
             <div className="mt-3 grid gap-3">
               <div className="flex flex-wrap gap-2">
                 {issues.map((issue) => (
@@ -208,13 +208,13 @@ function ThemeGroupCard({ group }: { group: MarketThemeGroup }) {
           <div className="flex flex-wrap gap-2">
             <Button asChild>
               <Link href={`/markets/${primary.id}`}>
-                詳細
+                テーマ詳細
                 <ChevronRight className="h-4 w-4" />
               </Link>
             </Button>
             <Button asChild variant="outline">
               <a href={primary.url} target="_blank" rel="noreferrer">
-                公式
+                公式市場
                 <ExternalLink className="h-4 w-4" />
               </a>
             </Button>

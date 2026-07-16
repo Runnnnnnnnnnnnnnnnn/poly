@@ -78,14 +78,16 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => void refreshMarkets()} disabled={refreshing}>
             <RefreshCcw className={cn("h-4 w-4", refreshing ? "animate-spin" : "")} />
-            手動更新
+            最新に更新
           </Button>
         </div>
         <div className="grid gap-4 md:flex md:items-end md:justify-between">
           <div className="grid gap-2">
             <p className="text-sm font-bold text-primary">Polymarket Watch</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">予測市場一覧</h1>
-            <p className="text-sm leading-6 text-muted-foreground">テーマ、確率、倍率、出来高を確認できます。</p>
+            <p className="text-sm leading-6 text-muted-foreground">
+              国内・国外のテーマを分けて、確率、倍率、出来高、関連情報を確認できます。
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">

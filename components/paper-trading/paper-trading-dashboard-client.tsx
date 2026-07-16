@@ -142,7 +142,7 @@ export function PaperTradingDashboardClient() {
       }
       setUpdatedAt(new Date().toISOString());
     } catch {
-      setMessage("最新データを取得できませんでした。少し待ってから手動更新してください。");
+      setMessage("最新データを取得できませんでした。少し待ってから「画面を最新にする」を押してください。");
     }
   }, [asset]);
 
@@ -154,7 +154,7 @@ export function PaperTradingDashboardClient() {
 
   async function startRun() {
     setLoading(true);
-    setMessage(mode === "live" ? "リアルタイム検証を開始しています…" : "過去検証を実行しています…");
+    setMessage(mode === "live" ? "仮想運用を開始しています…" : "仮想の売買検証を実行しています…");
     try {
       const response = await fetch("/api/paper-trading/runs", {
         method: "POST",
@@ -170,8 +170,8 @@ export function PaperTradingDashboardClient() {
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error("検証を実行できませんでした");
-      setMessage(mode === "live" ? "リアルタイム検証を開始しました" : "過去検証が完了しました");
+      if (!response.ok) throw new Error("仮想の売買検証を実行できませんでした");
+      setMessage(mode === "live" ? "仮想運用を開始しました" : "仮想の売買検証が完了しました");
       await refresh();
       if (result?.id) await loadPaperRun(result.id);
     } catch (error) {
@@ -209,7 +209,7 @@ export function PaperTradingDashboardClient() {
 
   async function collectSnapshot() {
     setLoading(true);
-    setMessage("最新の市場データを取得しています…");
+    setMessage("最新の市場データを保存しています…");
     try {
       const response = await fetch("/api/backtests/collect", {
         method: "POST",
@@ -277,7 +277,7 @@ export function PaperTradingDashboardClient() {
             <div className="flex items-center gap-2 text-sm font-bold text-primary"><Activity className="h-4 w-4" />モデル検証</div>
             <h1 className="break-words text-2xl font-bold leading-tight tracking-tight text-slate-950 md:text-3xl">予測モデルの成績を見る</h1>
             <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-              市場価格がどれくらい当たったかを、損益・予測誤差・最大下落で確認します。実注文は出さず、検証用の売買だけを記録します。
+              トレード用の予測モデルを作るために、市場価格がどれくらい当たったかを、損益・予測誤差・最大下落で確認します。実注文は出さず、仮想の売買だけを記録します。
             </p>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
@@ -286,6 +286,8 @@ export function PaperTradingDashboardClient() {
           </div>
         </div>
       </section>
+
+      <WorkflowExplainer />
 
       <section className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <VisualStatusPanel
@@ -323,7 +325,7 @@ export function PaperTradingDashboardClient() {
             </div>
             <div className="grid gap-2 text-muted-foreground sm:grid-cols-2">
               <p>更新: {updatedAt ? new Date(updatedAt).toLocaleTimeString("ja-JP") : "-"}</p>
-              <p>{bestBacktest ? `最新の比較対象: ${bestBacktest.asset}` : "まず「市場価格を検証」を押してください"}</p>
+              <p>{bestBacktest ? `最新の比較対象: ${bestBacktest.asset}` : "まず「基準を作る」を押してください"}</p>
             </div>
           </CardContent>
         </Card>
@@ -335,7 +337,7 @@ export function PaperTradingDashboardClient() {
           <CardContent className="grid gap-2 pt-4 sm:grid-cols-3">
             <GuideStep number="1" title="予想レンジ" body="市場価格が織り込む価格帯を見る" />
             <GuideStep number="2" title="成績比較" body="予測誤差と損益を比べる" />
-            <GuideStep number="3" title="詳細確認" body="外れた市場と理由を確認する" />
+            <GuideStep number="3" title="失敗確認" body="外れた市場と理由を確認する" />
           </CardContent>
         </Card>
       </section>
@@ -369,7 +371,7 @@ export function PaperTradingDashboardClient() {
               <summary className="cursor-pointer text-sm font-bold text-slate-800">指標の読み方</summary>
               <div className="mt-3 grid gap-2 text-sm leading-6 text-muted-foreground sm:grid-cols-2">
                 <p>予測誤差: 確率の外れ幅。低いほど正確。</p>
-                <p>外れ罰則: 自信を持って外した時に大きく悪化。</p>
+                <p>大外しペナルティ: 自信を持って外した時に大きく悪化。</p>
                 <p>最大下落: 検証中の資産の最大落ち込み。</p>
                 <p>売買に必要な差: 市場価格とモデル確率の差。</p>
               </div>
@@ -401,10 +403,10 @@ export function PaperTradingDashboardClient() {
               <label className="grid gap-1.5 text-xs font-semibold">見る市場数<input value={maxMarkets} onChange={(event) => setMaxMarkets(event.target.value)} inputMode="numeric" className="h-10 rounded-lg border bg-background px-2.5 font-normal" /></label>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Button onClick={() => void startRun()} disabled={loading || Boolean(activeRun)}><Play className="h-4 w-4" />検証を実行</Button>
-              <Button variant="outline" onClick={() => void runBaselineBacktest()} disabled={loading}><BarChart3 className="h-4 w-4" />市場価格を検証</Button>
-              <Button variant="outline" onClick={() => void collectSnapshot()} disabled={loading}><Database className="h-4 w-4" />最新データ取得</Button>
-              <Button variant="outline" onClick={() => void refresh()} disabled={loading}><RefreshCw className="h-4 w-4" />手動更新</Button>
+              <Button onClick={() => void startRun()} disabled={loading || Boolean(activeRun)}><Play className="h-4 w-4" />仮想売買を試す</Button>
+              <Button variant="outline" onClick={() => void runBaselineBacktest()} disabled={loading}><BarChart3 className="h-4 w-4" />基準を作る</Button>
+              <Button variant="outline" onClick={() => void collectSnapshot()} disabled={loading}><Database className="h-4 w-4" />最新データを保存</Button>
+              <Button variant="outline" onClick={() => void refresh()} disabled={loading}><RefreshCw className="h-4 w-4" />画面を最新にする</Button>
             </div>
             {activeRun ? (
               <div className="flex flex-wrap gap-2">
@@ -426,6 +428,42 @@ export function PaperTradingDashboardClient() {
       </section>
 
       <DetailPanel paperRun={selectedPaperRun} backtest={selectedBacktest} loading={detailLoading} />
+    </div>
+  );
+}
+
+function WorkflowExplainer() {
+  return (
+    <section className="grid gap-3 rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5 md:grid-cols-3">
+      <WorkflowStep
+        icon={Database}
+        title="1. データを保存"
+        body="今の市場価格を記録し、あとで比較できる材料にします。"
+      />
+      <WorkflowStep
+        icon={BarChart3}
+        title="2. 基準を作る"
+        body="市場価格だけでどれくらい当たるかを過去データで確認します。"
+      />
+      <WorkflowStep
+        icon={Play}
+        title="3. 仮想売買を試す"
+        body="実注文なしで、損益と失敗パターンを記録します。"
+      />
+    </section>
+  );
+}
+
+function WorkflowStep({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-md bg-slate-50 p-3">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-primary">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <p className="font-bold text-slate-950">{title}</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{body}</p>
+      </div>
     </div>
   );
 }
@@ -543,14 +581,14 @@ function ScoreboardCard({ backtests, onSelect }: { backtests: BacktestRun[]; onS
               <VisualMeter tone={signal.tone} value={errorMeter(run.metrics?.brierScore)} />
               <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
                 <span>予測誤差 <b className="text-slate-950">{formatNumber(run.metrics?.brierScore, 3)}</b></span>
-                <span>外れ罰則 <b className="text-slate-950">{formatNumber(run.metrics?.logLoss, 3)}</b></span>
+                <span>大外し <b className="text-slate-950">{formatNumber(run.metrics?.logLoss, 3)}</b></span>
                 <span>損益 <b className={run.metrics?.returnPct && run.metrics.returnPct > 0 ? "text-emerald-700" : "text-slate-950"}>{formatPct(run.metrics?.returnPct)}</b></span>
                 <span>市場数 <b className="text-slate-950">{run.metrics?.markets ?? 0}</b></span>
               </div>
             </button>
           );
         })}
-        {!sorted.length ? <p className="p-4 text-sm text-muted-foreground">まだ過去検証の履歴がありません。「市場価格を検証」を実行してください。</p> : null}
+        {!sorted.length ? <p className="p-4 text-sm text-muted-foreground">まだ過去検証の履歴がありません。「基準を作る」を実行してください。</p> : null}
       </div>
     </details>
   );
@@ -624,7 +662,7 @@ function DetailPanel({ paperRun, backtest, loading }: { paperRun: PaperRunDetail
           </div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
             <MiniMetric label="予測誤差" value={formatNumber(backtest.metrics?.brierScore, 3)} />
-            <MiniMetric label="外れ罰則" value={formatNumber(backtest.metrics?.logLoss, 3)} />
+            <MiniMetric label="大外し" value={formatNumber(backtest.metrics?.logLoss, 3)} />
             <MiniMetric label="的中率" value={formatPct(backtest.metrics?.accuracy)} />
             <MiniMetric label="損益" value={formatPct(backtest.metrics?.returnPct)} />
           </div>
@@ -767,7 +805,7 @@ function getModelSignal(value: number | null | undefined): Signal {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return {
       label: "データ待ち",
-      description: "検証を実行すると判定できます",
+      description: "基準を作ると判定できます",
       tone: "neutral",
       icon: Gauge,
     };
@@ -830,8 +868,8 @@ function getProfitSignal(value: number | null | undefined): Signal {
 }
 
 function nextActionText(activeRun: Run | null, latestRun: Run | undefined, bestBacktest: BacktestRun | null) {
-  if (!bestBacktest) return "まず「市場価格を検証」を押して、比較できる基準を作ります。";
-  if (!latestRun?.metrics) return "次に「検証を実行」を押して、損益と予測誤差を記録します。";
+  if (!bestBacktest) return "まず「基準を作る」を押して、市場価格だけの比較基準を作ります。";
+  if (!latestRun?.metrics) return "次に「仮想売買を試す」を押して、損益と予測誤差を記録します。";
   if (!activeRun) return "リアルタイムで見たい場合は、検証方法をリアルタイムにして開始します。";
   return "自動更新中です。成績比較と検証履歴の色を見て、悪化していないか確認します。";
 }
