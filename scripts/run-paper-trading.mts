@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 
-import { createPaperRun, getPaperRun, tickPaperRun } from "../src/lib/paper-trading/service";
+import { createPaperRun, getPaperRun, listPaperRuns, stopPaperRun, tickPaperRun } from "../src/lib/paper-trading/service";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
 
 const intervalMs = Math.max(30_000, Number(process.env.PAPER_INTERVAL_MS ?? 300_000));
@@ -11,6 +11,10 @@ let runId = process.env.PAPER_RUN_ID ?? await readFile(runFile, "utf8").then((va
 if (runId) {
   const existing = await getPaperRun(runId);
   if (!existing || existing.status !== "running") runId = "";
+}
+if (!runId) {
+  const reusable = (await listPaperRuns()).find((run) => run.mode === "live" && run.asset === asset && run.status === "running");
+  if (reusable) runId = reusable.id;
 }
 if (!runId) {
   const run = await createPaperRun({
@@ -27,8 +31,10 @@ if (!runId) {
   });
   if (!run) throw new Error("could not create paper run");
   runId = run.id;
-  await writeFile(runFile, runId, "utf8");
 }
+await writeFile(runFile, runId, "utf8");
+const staleRuns = (await listPaperRuns()).filter((run) => run.mode === "live" && run.status === "running" && run.id !== runId);
+for (const staleRun of staleRuns) await stopPaperRun(staleRun.id).catch(() => null);
 
 async function tick() {
   if (!runId) return;

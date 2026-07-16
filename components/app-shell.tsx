@@ -12,7 +12,7 @@ import { ConciergeDrawer } from "@/src/components/ai/ConciergeDrawer";
 import { initializeLocalApiBaseFromUrl } from "@/src/lib/localApiClient";
 
 const navItems = [
-  { href: "/paper-trading", label: "モデル検証", icon: Activity },
+  { href: "/paper-trading", label: "モデル開発", icon: Activity },
   { href: "/onboarding", label: "Polymarketとは", icon: BookOpen },
   { href: "/markets", label: "予測市場一覧", icon: Search },
   { href: "/news", label: "ニュース", icon: Newspaper },
@@ -41,7 +41,7 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
       {/* モバイルは固定しない（スクロールで一緒に流れる）。デスクトップのみ上部固定。 */}
       <header className="relative z-30 border-b border-border bg-background md:sticky md:top-0 md:bg-background/95 md:backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 md:px-5 md:py-4">
-          <Link href="/markets" className="flex items-center gap-3" onClick={() => setOpen(false)}>
+          <Link href="/paper-trading" className="flex items-center gap-3" onClick={() => setOpen(false)}>
             <BrandLogo />
           </Link>
 

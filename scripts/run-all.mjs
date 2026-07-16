@@ -1,8 +1,12 @@
 import { spawn } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const lockPath = resolve(".run-all.lock");
+const root = process.env.POLYMARKET_PROJECT_ROOT || resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const runtimeCwd = process.env.POLYMARKET_RUNTIME_CWD || root;
+const lockPath = resolve(homedir(), ".polymarket-watch.run.lock");
 try {
   writeFileSync(lockPath, String(process.pid), { flag: "wx" });
 } catch {
@@ -19,22 +23,26 @@ try {
 
 const production = process.env.PAPER_PRODUCTION === "1";
 const appPort = process.env.APP_PORT || process.env.PORT || "3001";
-const env = { ...process.env };
+const env = {
+  ...process.env,
+  POLYMARKET_PROJECT_ROOT: root,
+  PAPER_RUN_FILE: process.env.PAPER_RUN_FILE || join(root, ".paper-run-id"),
+};
 const processes = [
   {
     name: "web",
     command: process.execPath,
-    args: ["node_modules/next/dist/bin/next", production ? "start" : "dev", "--hostname", "127.0.0.1", "--port", appPort],
+    args: [join(root, "node_modules/next/dist/bin/next"), production ? "start" : "dev", root, "--hostname", "127.0.0.1", "--port", appPort],
   },
   {
     name: "worker",
     command: process.execPath,
-    args: ["node_modules/tsx/dist/cli.mjs", "scripts/run-paper-trading.mts"],
+    args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-paper-trading.mts")],
   },
   {
     name: "monitor",
     command: process.execPath,
-    args: ["node_modules/tsx/dist/cli.mjs", "scripts/run-monitoring.mts"],
+    args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-monitoring.mts")],
   },
 ];
 const children = new Map();
@@ -42,7 +50,7 @@ const children = new Map();
 let closing = false;
 function startProcess(config) {
   if (closing) return;
-  const child = spawn(config.command, config.args, { env, stdio: "inherit" });
+  const child = spawn(config.command, config.args, { cwd: runtimeCwd, env, stdio: "inherit" });
   children.set(config.name, child);
   child.on("exit", (code, signal) => {
     children.delete(config.name);

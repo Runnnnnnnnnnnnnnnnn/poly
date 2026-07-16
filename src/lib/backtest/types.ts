@@ -2,6 +2,7 @@ export type CryptoAsset = "BTC" | "ETH" | "SOL" | "XRP" | "OTHER";
 
 export type CryptoMarket = {
   id: string;
+  eventId: string | null;
   asset: CryptoAsset;
   tokenId: string;
   noTokenId: string | null;

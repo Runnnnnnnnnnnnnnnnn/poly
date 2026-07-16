@@ -1,11 +1,11 @@
-import { runBacktest, collectCryptoSnapshots } from "../src/lib/backtest/service";
+import { collectCryptoSnapshots } from "../src/lib/backtest/service";
+import { runModelEvaluation } from "../src/lib/model-evaluation/service";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
 import { collectHyperliquidSnapshots } from "../src/lib/monitoring/hyperliquid";
 import { prisma } from "../src/lib/server/prisma";
 
 const collectIntervalMs = Math.max(60_000, Number(process.env.COLLECT_INTERVAL_MS ?? 300_000));
 const backtestIntervalMs = Math.max(60 * 60 * 1_000, Number(process.env.BACKTEST_INTERVAL_MS ?? 6 * 60 * 60 * 1_000));
-const assets = ["BTC", "ETH", "SOL", "XRP"] as const;
 let collecting = false;
 let backtesting = false;
 
@@ -41,18 +41,11 @@ async function backtestCycle() {
   try {
     const heartbeat = await prisma.pipelineHeartbeat.findUnique({ where: { id: "backtest" } });
     if (heartbeat?.lastSuccessAt && Date.now() - heartbeat.lastSuccessAt.getTime() < backtestIntervalMs * 0.9) return;
-    const latestByAsset = await prisma.backtestRun.groupBy({
-      by: ["asset"],
-      where: { status: "completed" },
-      _max: { completedAt: true },
-    });
-    const latestMap = new Map(latestByAsset.map((item) => [item.asset, item._max.completedAt?.getTime() ?? 0]));
-    const asset = [...assets].sort((a, b) => (latestMap.get(a) ?? 0) - (latestMap.get(b) ?? 0))[0];
-    await markPipelineAttempt("backtest", `${asset}を検証中`);
-    const result = await runBacktest({ asset, limit: 80, threshold: 0.55, initialCapital: 1_000 });
-    if (result.status === "failed") throw new Error(result.error ?? `${asset} backtest failed`);
-    await markPipelineSuccess("backtest", result.metrics?.observations ?? 0, `${asset} ${result.metrics?.markets ?? 0}市場`);
-    console.log(JSON.stringify({ type: "scheduled-backtest", asset, metrics: result.metrics }));
+    await markPipelineAttempt("backtest", "時系列ホールドアウトを検証中");
+    const result = await runModelEvaluation();
+    if (result.status === "failed") throw new Error(result.error ?? "model evaluation failed");
+    await markPipelineSuccess("backtest", result.metrics?.dataset.testMarkets ?? 0, `${result.modelVersion} / テスト${result.metrics?.dataset.testMarkets ?? 0}市場`);
+    console.log(JSON.stringify({ type: "scheduled-model-evaluation", modelVersion: result.modelVersion, metrics: result.metrics }));
   } catch (error) {
     await markPipelineError("backtest", error);
     console.error(error instanceof Error ? error.message : error);

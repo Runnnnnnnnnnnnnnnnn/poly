@@ -25,11 +25,24 @@ const marketSchema = z
     minimumOrderSize: z.union([z.string(), z.number()]).optional(),
     minimum_tick_size: z.union([z.string(), z.number()]).optional(),
     feesEnabled: z.boolean().optional(),
+    events: z.array(z.object({ id: z.union([z.string(), z.number()]) }).passthrough()).optional(),
   })
   .passthrough();
 
-const eventSchema = z.object({ markets: z.array(marketSchema).default([]) }).passthrough();
-const searchSchema = z.object({ events: z.array(eventSchema).default([]) });
+const searchEventSchema = z.object({ markets: z.array(marketSchema).default([]) }).passthrough();
+const searchSchema = z.object({ events: z.array(searchEventSchema).default([]) });
+const historicalEventSchema = z.object({
+  id: z.union([z.string(), z.number()]),
+  title: z.string().optional(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+  closedTime: z.string().nullable().optional(),
+  markets: z.array(marketSchema).default([]),
+}).passthrough();
+const eventKeysetSchema = z.object({
+  events: z.array(historicalEventSchema).default([]),
+  next_cursor: z.string().optional(),
+});
 const marketsSchema = z.array(marketSchema).default([]);
 const historySchema = z.object({ history: z.array(z.object({ t: z.number(), p: z.number() })).default([]) });
 const bookSchema = z.object({
@@ -40,6 +53,17 @@ const bookSchema = z.object({
 }).passthrough();
 
 const SEARCHES = ["bitcoin", "btc", "ethereum", "eth", "solana", "sol", "xrp", "crypto price"];
+const CRYPTO_PRICES_TAG_ID = "1312";
+const RECENT_PRICE_SEARCHES = ["Bitcoin price", "Ethereum price", "Solana price", "XRP price"];
+
+export type HistoricalCryptoEvent = {
+  id: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  closedTime: string | null;
+  markets: CryptoMarket[];
+};
 
 export async function discoverCryptoMarkets(options: { includeResolved?: boolean; limit?: number; asset?: CryptoAsset } = {}) {
   const includeResolved = options.includeResolved ?? true;
@@ -49,7 +73,7 @@ export async function discoverCryptoMarkets(options: { includeResolved?: boolean
 
   const topMarkets = await fetchTopMarkets().catch(() => []);
   const all = [...searched, ...topMarkets]
-    .map(toCryptoMarket)
+    .map((market) => toCryptoMarket(market))
     .filter((market): market is CryptoMarket => Boolean(market))
     .filter((market) => includeResolved || !market.resolved)
     .filter((market) => !options.asset || market.asset === options.asset);
@@ -57,13 +81,74 @@ export async function discoverCryptoMarkets(options: { includeResolved?: boolean
   return Array.from(new Map(all.map((market) => [market.id, market])).values()).slice(0, limit);
 }
 
+export async function discoverHistoricalCryptoEvents(options: { maxEvents?: number; horizonHours?: number; endDateMax?: Date } = {}) {
+  const maxEvents = Math.min(300, Math.max(30, options.maxEvents ?? 180));
+  const recentTarget = Math.min(40, Math.floor(maxEvents / 4));
+  const historicalTarget = maxEvents - recentTarget;
+  const horizonHours = Math.max(1, options.horizonHours ?? 24);
+  const endDateMax = options.endDateMax ?? new Date();
+  const events: HistoricalCryptoEvent[] = [];
+  let cursor: string | undefined;
+
+  for (let page = 0; page < 10 && events.length < historicalTarget; page += 1) {
+    const url = new URL(`${GAMMA_API}/events/keyset`);
+    url.searchParams.set("closed", "true");
+    url.searchParams.set("limit", "100");
+    url.searchParams.set("order", "endDate");
+    url.searchParams.set("ascending", "true");
+    url.searchParams.set("tag_id", CRYPTO_PRICES_TAG_ID);
+    url.searchParams.set("related_tags", "true");
+    url.searchParams.set("end_date_min", "2024-01-01T00:00:00Z");
+    url.searchParams.set("end_date_max", endDateMax.toISOString());
+    if (cursor) url.searchParams.set("after_cursor", cursor);
+
+    const response = await fetchWithTimeout(url.toString(), {}, 30_000);
+    if (!response.ok) throw new Error(`historical events ${response.status}`);
+    const parsed = eventKeysetSchema.parse(await response.json());
+
+    for (const event of parsed.events) {
+      const historicalEvent = toHistoricalEvent(event, horizonHours, endDateMax);
+      if (historicalEvent) events.push(historicalEvent);
+      if (events.length >= historicalTarget) break;
+    }
+
+    cursor = parsed.next_cursor;
+    if (!cursor || !parsed.events.length) break;
+  }
+
+  const recentPerAsset = Math.ceil(recentTarget / RECENT_PRICE_SEARCHES.length);
+  const recentResults = await Promise.allSettled(RECENT_PRICE_SEARCHES.map(async (titleSearch) => {
+    const url = new URL(`${GAMMA_API}/events/keyset`);
+    url.searchParams.set("closed", "true");
+    url.searchParams.set("limit", "60");
+    url.searchParams.set("order", "endDate");
+    url.searchParams.set("ascending", "false");
+    url.searchParams.set("title_search", titleSearch);
+    url.searchParams.set("end_date_min", "2025-01-01T00:00:00Z");
+    url.searchParams.set("end_date_max", endDateMax.toISOString());
+    const response = await fetchWithTimeout(url.toString(), {}, 30_000);
+    if (!response.ok) throw new Error(`recent historical events ${response.status}`);
+    return eventKeysetSchema.parse(await response.json()).events
+      .map((event) => toHistoricalEvent(event, horizonHours, endDateMax))
+      .filter((event): event is HistoricalCryptoEvent => Boolean(event))
+      .slice(0, recentPerAsset);
+  }));
+  for (const result of recentResults) {
+    if (result.status === "fulfilled") events.push(...result.value);
+  }
+
+  return Array.from(new Map(events.map((event) => [event.id, event])).values())
+    .sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime())
+    .slice(-maxEvents);
+}
+
 export async function fetchHistoricalProbability(tokenId: string, options: { fidelity?: number; startTs?: number; endTs?: number } = {}) {
   const url = new URL(`${CLOB_API}/prices-history`);
   url.searchParams.set("market", tokenId);
-  url.searchParams.set("interval", "max");
   url.searchParams.set("fidelity", String(options.fidelity ?? 1440));
   if (options.startTs) url.searchParams.set("startTs", String(options.startTs));
   if (options.endTs) url.searchParams.set("endTs", String(options.endTs));
+  if (!options.startTs && !options.endTs) url.searchParams.set("interval", "max");
 
   const response = await fetchWithTimeout(url.toString(), {}, 20_000);
   if (!response.ok) throw new Error(`prices-history ${response.status}`);
@@ -94,7 +179,7 @@ async function fetchTopMarkets() {
   return marketsSchema.parse(await response.json());
 }
 
-function toCryptoMarket(market: z.infer<typeof marketSchema>): CryptoMarket | null {
+function toCryptoMarket(market: z.infer<typeof marketSchema>, explicitEventId?: string): CryptoMarket | null {
   const text = (market.question ?? "").toLowerCase();
   const asset = inferAsset(text);
   const outcomes = safeJsonArray(market.outcomes).map(String);
@@ -109,6 +194,7 @@ function toCryptoMarket(market: z.infer<typeof marketSchema>): CryptoMarket | nu
   if (!asset || !market.id || !tokenIds[yesIndex >= 0 ? yesIndex : 0]) return null;
   return {
     id: String(market.id),
+    eventId: explicitEventId ?? (market.events?.[0] ? String(market.events[0].id) : null),
     asset,
     tokenId: tokenIds[yesIndex >= 0 ? yesIndex : 0],
     noTokenId: tokenIds[noIndex >= 0 ? noIndex : 1] ?? null,
@@ -126,6 +212,44 @@ function toCryptoMarket(market: z.infer<typeof marketSchema>): CryptoMarket | nu
     tickSize: toNumber(market.minimum_tick_size) || 0.01,
     feesEnabled: market.feesEnabled ?? true,
   };
+}
+
+function isFixedTerminalPriceQuestion(question: string) {
+  const text = question.toLowerCase();
+  const terminalPrice = /\b(above|below|between|higher than|lower than|greater than|less than|over|under)\b/.test(text);
+  const pathDependent = /\b(hit|reach|touch|before|during|all[- ]time high)\b|\bby\s/.test(text);
+  return terminalPrice && !pathDependent;
+}
+
+function toHistoricalEvent(event: z.infer<typeof historicalEventSchema>, horizonHours: number, endDateMax: Date): HistoricalCryptoEvent | null {
+  const startDate = parseDate(event.startDate);
+  const endDate = parseDate(event.endDate);
+  const closedTime = parseDate(event.closedTime);
+  if (!startDate || !endDate || endDate > endDateMax) return null;
+  const decisionAt = new Date(endDate.getTime() - horizonHours * 60 * 60 * 1_000);
+  if (startDate >= decisionAt || (closedTime && closedTime <= decisionAt)) return null;
+
+  const eventId = String(event.id);
+  const markets = event.markets
+    .filter((market) => isFixedTerminalPriceQuestion(market.question ?? ""))
+    .map((market) => toCryptoMarket(market, eventId))
+    .filter((market): market is CryptoMarket => Boolean(market?.resolved && market.result !== null))
+    .filter((market) => market.asset !== "OTHER");
+  if (!markets.length) return null;
+  return {
+    id: eventId,
+    title: event.title ?? markets[0].title,
+    startDate: startDate.toISOString(),
+    endDate: endDate.toISOString(),
+    closedTime: closedTime?.toISOString() ?? null,
+    markets,
+  };
+}
+
+function parseDate(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export async function fetchCurrentBook(tokenId: string) {

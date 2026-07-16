@@ -29,6 +29,7 @@ function restore(moved) {
   if (existsSync(disabledRoot)) {
     rmSync(disabledRoot, { recursive: true, force: true });
   }
+  moved.length = 0;
 }
 
 const moved = [];
@@ -99,7 +100,7 @@ try {
     SKIP_TITLE_AI: "1",
   };
 
-  const prisma = spawnSync("npx", ["prisma", "generate"], { cwd: root, env, stdio: "inherit" });
+  const prisma = spawnSync(process.execPath, ["node_modules/prisma/build/index.js", "generate"], { cwd: root, env, stdio: "inherit" });
   if (prisma.status !== 0) {
     exitCode = prisma.status ?? 1;
     throw new Error("prisma generate failed");
@@ -107,13 +108,13 @@ try {
 
   // AI予想を鍵を使って生成し public/ai-evaluations.json に出力（鍵はサーバー側のみ・非致命）。
   // DEEPSEEK_API_KEY が無ければスクリプト側で参考データにフォールバックする。
-  spawnSync("npx", ["tsx", "scripts/gen-ai-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
-  spawnSync("npx", ["tsx", "scripts/gen-monitoring-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
+  spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/gen-ai-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
+  spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/gen-monitoring-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
 
   rmSync(join(root, ".next"), { recursive: true, force: true });
   rmSync(join(root, "out"), { recursive: true, force: true });
 
-  const next = spawnSync("npx", ["next", "build"], { cwd: root, env, stdio: "inherit" });
+  const next = spawnSync(process.execPath, ["node_modules/next/dist/bin/next", "build"], { cwd: root, env, stdio: "inherit" });
   if (next.status !== 0) {
     exitCode = next.status ?? 1;
     throw new Error("next build failed");

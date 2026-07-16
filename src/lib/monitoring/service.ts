@@ -1,6 +1,7 @@
 import type { BacktestRun, HyperliquidSnapshot, PipelineHeartbeat } from "@prisma/client";
 
 import type { BacktestMetrics } from "@/src/lib/backtest/types";
+import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
 
 const monitoredAssets = ["BTC", "ETH", "SOL", "XRP", "HYPE"] as const;
@@ -28,6 +29,7 @@ export async function getMonitoringSnapshot() {
     hyperLast24Hours,
     heartbeats,
     latestHyperliquid,
+    latestEvaluation,
   ] = await Promise.all([
     prisma.marketSnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
     prisma.marketSnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
@@ -45,6 +47,7 @@ export async function getMonitoringSnapshot() {
     prisma.hyperliquidSnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
     prisma.pipelineHeartbeat.findMany({ orderBy: { id: "asc" } }),
     Promise.all(monitoredAssets.map((asset) => prisma.hyperliquidSnapshot.findFirst({ where: { asset }, orderBy: { capturedAt: "desc" } }))),
+    prisma.modelEvaluationRun.findFirst({ where: { status: "completed" }, orderBy: { completedAt: "desc" } }),
   ]);
 
   const usableBacktests = backtestRuns
@@ -54,12 +57,7 @@ export async function getMonitoringSnapshot() {
     ?? usableBacktests.find((item) => item.metrics.observations >= 100 && item.metrics.markets >= 10)
     ?? usableBacktests[0]
     ?? null;
-  const previousComparable = latestBacktest
-    ? usableBacktests.find((item) => item.run.id !== latestBacktest.run.id && item.run.asset === latestBacktest.run.asset) ?? null
-    : null;
-  const brierImprovement = latestBacktest && previousComparable && previousComparable.metrics.brierScore
-    ? (previousComparable.metrics.brierScore - (latestBacktest.metrics.brierScore ?? previousComparable.metrics.brierScore)) / previousComparable.metrics.brierScore
-    : null;
+  const evaluation = parseJson<ModelEvaluationMetrics>(latestEvaluation?.metricsJson ?? null);
 
   const resolvedAiRows = aiRows.filter((row) => row.resolvedOutcome !== null && row.brierScore !== null);
   const averageAiBrier = average(resolvedAiRows.map((row) => row.brierScore as number));
@@ -79,6 +77,7 @@ export async function getMonitoringSnapshot() {
     polymarketAt: polymarketAggregate._max.capturedAt,
     hyperliquidAt: hyperAggregate._max.capturedAt,
     backtestAt: latestBacktest?.run.completedAt ?? null,
+    evaluationAt: latestEvaluation?.completedAt ?? null,
     paperAt: paperEquityAggregate._max.capturedAt,
   });
 
@@ -99,16 +98,25 @@ export async function getMonitoringSnapshot() {
       backtestPoints: backtestPointCount,
     },
     model: {
-      name: "Calibrated Consensus v1",
-      latestAsset: latestBacktest?.run.asset ?? null,
-      latestBrierScore: latestBacktest?.metrics.brierScore ?? null,
-      latestAccuracy: latestBacktest?.metrics.accuracy ?? null,
-      latestReturnPct: latestBacktest?.metrics.returnPct ?? null,
-      testedMarkets: latestBacktest?.metrics.markets ?? 0,
-      observations: latestBacktest?.metrics.observations ?? 0,
-      brierImprovement,
-      previousBrierScore: previousComparable?.metrics.brierScore ?? null,
-      completedAt: latestBacktest?.run.completedAt?.toISOString() ?? null,
+      name: latestEvaluation?.modelVersion ?? "Reliability Guard v4",
+      evaluationStatus: evaluation?.quality.status ?? "building",
+      latestAsset: evaluation ? Object.keys(evaluation.dataset.assets).join("・") : null,
+      latestBrierScore: evaluation?.probability.modelBrierScore ?? null,
+      latestAccuracy: evaluation?.probability.modelAccuracy ?? null,
+      latestReturnPct: evaluation?.trading.netReturnPct ?? null,
+      testedMarkets: evaluation?.dataset.testMarkets ?? 0,
+      testedEvents: evaluation?.dataset.testEvents ?? 0,
+      observations: evaluation?.dataset.totalMarkets ?? 0,
+      brierImprovement: evaluation?.probability.relativeImprovement ?? null,
+      previousBrierScore: evaluation?.probability.marketBrierScore ?? null,
+      confidenceInterval95: evaluation?.probability.confidenceInterval95 ?? null,
+      statisticallyPositive: evaluation?.probability.statisticallyPositive ?? false,
+      completedAt: latestEvaluation?.completedAt?.toISOString() ?? null,
+      datasetStartedAt: evaluation?.dataset.firstEndAt ?? null,
+      datasetEndedAt: evaluation?.dataset.lastEndAt ?? null,
+      trades: evaluation?.trading.trades ?? 0,
+      winRate: evaluation?.trading.winRate ?? null,
+      maxDrawdownPct: evaluation?.trading.maxDrawdownPct ?? null,
       aiPredictions: aiRows.length,
       aiResolved: resolvedAiRows.length,
       aiBrierScore: averageAiBrier,
@@ -122,13 +130,8 @@ export async function getMonitoringSnapshot() {
       paperReturnPct: typeof latestPaperMetrics?.totalReturnPct === "number" ? latestPaperMetrics.totalReturnPct : null,
     },
     backtestQuality: {
-      status: (latestBacktest?.metrics.observations ?? 0) >= 100 && (latestBacktest?.metrics.markets ?? 0) >= 20 ? "good" : "building",
-      checks: [
-        { label: "確定済み市場のみ", passed: true },
-        { label: "決着前の価格だけで検証", passed: true },
-        { label: "100時点以上", passed: (latestBacktest?.metrics.observations ?? 0) >= 100 },
-        { label: "板・手数料・滑りを別検証", passed: paperRuns.some((run) => run.mode === "historical" && run.status === "completed") },
-      ],
+      status: evaluation?.quality.status ?? "building",
+      checks: evaluation?.quality.gates.map((gate) => ({ label: gate.label, passed: gate.passed })) ?? [],
     },
     hyperliquid: {
       snapshots: hyperAggregate._count._all,
@@ -153,13 +156,14 @@ function pipelineStatuses(input: {
   polymarketAt: Date | null;
   hyperliquidAt: Date | null;
   backtestAt: Date | null;
+  evaluationAt: Date | null;
   paperAt: Date | null;
 }) {
   const heartbeatMap = new Map(input.heartbeats.map((item) => [item.id, item]));
   return [
     pipeline("polymarket", "Polymarket収集", "5分ごと", input.polymarketAt, heartbeatMap.get("polymarket"), input.now),
     pipeline("hyperliquid", "相場データ収集", "5分ごと", input.hyperliquidAt, heartbeatMap.get("hyperliquid"), input.now),
-    pipeline("backtest", "自動バックテスト", "6時間ごと", input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
+    pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("paper", "仮想運用", "5分ごと", input.paperAt, heartbeatMap.get("paper"), input.now),
   ];
 }

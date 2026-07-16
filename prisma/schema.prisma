@@ -56,6 +56,20 @@ model PipelineHeartbeat {
   updatedAt     DateTime  @updatedAt
 }
 
+model ModelEvaluationRun {
+  id           String    @id
+  modelVersion String
+  status       String
+  datasetHash  String?
+  configJson   String
+  metricsJson  String?
+  error        String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  @@index([status, completedAt])
+}
+
 model PredictionMarket {
   id          String    @id
   asset       String

@@ -1,111 +1,131 @@
 {
-  "status": "live",
-  "generatedAt": "2026-07-16T18:57:49.518Z",
+  "status": "delayed",
+  "generatedAt": "2026-07-16T19:47:12.619Z",
   "collection": {
     "startedAt": "2026-07-13T02:42:17.427Z",
-    "latestAt": "2026-07-16T18:52:53.278Z",
-    "totalRecords": 8164,
-    "last24Hours": 6673
+    "latestAt": "2026-07-16T19:32:43.657Z",
+    "totalRecords": 8516,
+    "last24Hours": 7007
   },
   "polymarket": {
-    "snapshots": 6504,
+    "snapshots": 6824,
     "markets": 152,
-    "latestAt": "2026-07-16T18:52:51.743Z",
+    "latestAt": "2026-07-16T19:32:41.169Z",
     "backtestRuns": 7,
     "backtestPoints": 781
   },
   "model": {
-    "name": "Calibrated Consensus v1",
-    "latestAsset": "BTC",
-    "latestBrierScore": 0.04841491666666667,
-    "latestAccuracy": 0.9583333333333334,
-    "latestReturnPct": 0.04280916820619065,
-    "testedMarkets": 24,
-    "observations": 167,
-    "brierImprovement": 0.15706038882802853,
-    "previousBrierScore": 0.05743580681818184,
-    "completedAt": "2026-07-16T12:19:11.016Z",
-    "aiPredictions": 53,
+    "name": "Reliability Guard v4",
+    "evaluationStatus": "inconclusive",
+    "latestAsset": "ETH・BTC・SOL・XRP",
+    "latestBrierScore": 0.0537366186868687,
+    "latestAccuracy": 0.9141414141414137,
+    "latestReturnPct": 0,
+    "testedMarkets": 396,
+    "testedEvents": 36,
+    "observations": 580,
+    "brierImprovement": 0,
+    "previousBrierScore": 0.0537366186868687,
+    "confidenceInterval95": [
+      0,
+      0
+    ],
+    "statisticallyPositive": false,
+    "completedAt": "2026-07-16T19:27:47.199Z",
+    "datasetStartedAt": "2024-03-01T00:00:00.000Z",
+    "datasetEndedAt": "2026-07-16T16:00:00.000Z",
+    "trades": 0,
+    "winRate": null,
+    "maxDrawdownPct": 0,
+    "aiPredictions": 61,
     "aiResolved": 0,
     "aiBrierScore": null,
     "marketBrierScore": null,
     "aiImprovement": null,
     "paperRuns": 5,
     "runningPaperRuns": 1,
-    "paperSnapshots": 801,
+    "paperSnapshots": 805,
     "paperOrders": 1,
     "paperFills": 1,
     "paperReturnPct": 0
   },
   "backtestQuality": {
-    "status": "good",
+    "status": "inconclusive",
     "checks": [
       {
-        "label": "確定済み市場のみ",
+        "label": "時系列で訓練とテストを分離",
         "passed": true
       },
       {
-        "label": "決着前の価格だけで検証",
+        "label": "全市場を決着24時間前で統一",
         "passed": true
       },
       {
-        "label": "100時点以上",
+        "label": "同一テスト市場でPolymarketと比較",
         "passed": true
       },
       {
-        "label": "板・手数料・滑りを別検証",
+        "label": "スプレッド・滑り・手数料を反映",
         "passed": true
+      },
+      {
+        "label": "最終テスト15イベント以上",
+        "passed": true
+      },
+      {
+        "label": "誤差改善の95%区間がプラス",
+        "passed": false
       }
     ]
   },
   "hyperliquid": {
-    "snapshots": 25,
-    "latestAt": "2026-07-16T18:52:51.321Z",
+    "snapshots": 45,
+    "latestAt": "2026-07-16T19:32:39.964Z",
     "assets": [
       {
         "asset": "BTC",
-        "price": 64260.5,
-        "change24hPct": -0.009074927909451191,
-        "dayVolume": 1669950822.92265,
-        "openInterestUsd": 2410157275.7828736,
+        "price": 64229.5,
+        "change24hPct": -0.00944603806175015,
+        "dayVolume": 1663255925.6142,
+        "openInterestUsd": 2428712928.79314,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-16T18:52:51.321Z"
+        "capturedAt": "2026-07-16T19:32:39.964Z"
       },
       {
         "asset": "ETH",
-        "price": 1876.75,
-        "change24hPct": -0.024760964456454038,
-        "dayVolume": 869598125.91161,
-        "openInterestUsd": 1813680509.2790399,
+        "price": 1875.05,
+        "change24hPct": -0.025441787941787974,
+        "dayVolume": 857441331.8588299,
+        "openInterestUsd": 1809321807.3749998,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-16T18:52:51.321Z"
+        "capturedAt": "2026-07-16T19:32:39.964Z"
       },
       {
         "asset": "SOL",
-        "price": 75.6115,
-        "change24hPct": -0.025034492540584985,
-        "dayVolume": 178522296.93077,
-        "openInterestUsd": 333202828.64808,
-        "fundingRate": -7.386e-7,
-        "capturedAt": "2026-07-16T18:52:51.321Z"
+        "price": 75.7835,
+        "change24hPct": -0.01795410073993431,
+        "dayVolume": 176940597.66224,
+        "openInterestUsd": 334097017.5365999,
+        "fundingRate": -5.824e-7,
+        "capturedAt": "2026-07-16T19:32:39.964Z"
       },
       {
         "asset": "XRP",
-        "price": 1.09275,
-        "change24hPct": -0.017576193472983892,
-        "dayVolume": 19937766.5951,
-        "openInterestUsd": 102888459.7728,
+        "price": 1.09705,
+        "change24hPct": -0.012200612281649481,
+        "dayVolume": 19923721.5321,
+        "openInterestUsd": 103375768.67199999,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-16T18:52:51.321Z"
+        "capturedAt": "2026-07-16T19:32:39.964Z"
       },
       {
         "asset": "HYPE",
-        "price": 62.552,
-        "change24hPct": -0.07039783619908158,
-        "dayVolume": 427330980.23569,
-        "openInterestUsd": 1413176203.5029986,
-        "fundingRate": -0.0000067935,
-        "capturedAt": "2026-07-16T18:52:51.321Z"
+        "price": 62.5575,
+        "change24hPct": -0.06829453554354148,
+        "dayVolume": 433986098.2190096,
+        "openInterestUsd": 1411462830.7041593,
+        "fundingRate": -1.583e-7,
+        "capturedAt": "2026-07-16T19:32:39.964Z"
       }
     ]
   },
@@ -114,21 +134,21 @@
       "id": "polymarket",
       "label": "Polymarket収集",
       "cadence": "5分ごと",
-      "status": "healthy",
-      "lastSuccessAt": "2026-07-16T18:52:51.847Z",
-      "records": 318
+      "status": "waiting",
+      "lastSuccessAt": "2026-07-16T19:32:41.280Z",
+      "records": 638
     },
     {
       "id": "hyperliquid",
       "label": "相場データ収集",
       "cadence": "5分ごと",
-      "status": "healthy",
-      "lastSuccessAt": "2026-07-16T18:52:51.323Z",
-      "records": 25
+      "status": "waiting",
+      "lastSuccessAt": "2026-07-16T19:32:39.966Z",
+      "records": 45
     },
     {
       "id": "backtest",
-      "label": "自動バックテスト",
+      "label": "モデル再検証",
       "cadence": "6時間ごと",
       "status": "healthy",
       "lastSuccessAt": "2026-07-16T18:52:52.322Z",
@@ -138,9 +158,9 @@
       "id": "paper",
       "label": "仮想運用",
       "cadence": "5分ごと",
-      "status": "healthy",
-      "lastSuccessAt": "2026-07-16T18:52:53.292Z",
-      "records": 4
+      "status": "waiting",
+      "lastSuccessAt": "2026-07-16T19:32:43.666Z",
+      "records": 8
     }
   ]
 }
