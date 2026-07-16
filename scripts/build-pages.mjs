@@ -22,6 +22,7 @@ function restore(moved) {
   for (const [from, to] of moved.reverse()) {
     if (existsSync(to)) {
       mkdirSync(dirname(from), { recursive: true });
+      rmSync(from, { recursive: true, force: true });
       renameSync(to, from);
     }
   }
