@@ -95,38 +95,46 @@ export function DataUsagePanel({ mode, sourceStatuses = [], compact = false }: D
   const items = DATA_USAGE[mode];
 
   return (
-    <section className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5" aria-label="データの使い道">
+    <section className="rounded-lg border border-border bg-white p-3 shadow-sm sm:p-4" aria-label="データの使い道">
       <div className="grid gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-base font-bold text-slate-950">データの使い道</h2>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              この画面では、データを表示・背景確認・AI評価・モデル検証に分けて使います。
-            </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <Database className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-slate-950">データの使い道</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                売買注文は行わず、見る・比べる・検証するために使います。
+              </p>
+            </div>
           </div>
           {sourceStatuses.length ? <Badge variant="outline">{sourceStatuses.length}系統</Badge> : null}
         </div>
 
-        <div className={compact ? "grid gap-2 md:grid-cols-2" : "grid gap-2 sm:grid-cols-2 xl:grid-cols-4"}>
+        <div className="flex flex-wrap gap-2">
           {items.map((item) => {
             const Icon = item.icon;
             return (
-              <div key={item.label} className="grid gap-2 rounded-md bg-slate-50 p-3">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-primary">
-                    <Icon className="h-4 w-4" />
-                  </span>
-                  <span className="text-sm font-bold text-slate-950">{item.label}</span>
-                </div>
-                <p className="text-xs leading-5 text-muted-foreground">{item.body}</p>
-              </div>
+              <span key={item.label} className="inline-flex items-center gap-1.5 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-700">
+                <Icon className="h-3.5 w-3.5 text-primary" />
+                {item.label}
+              </span>
             );
           })}
         </div>
 
-        <p className="rounded-md bg-primary/5 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">
-          このサイトは売買注文を行わず、データを「見る・比べる・検証する」ために使います。
-        </p>
+        <details className="rounded-md border border-border bg-slate-50 p-3">
+          <summary className="cursor-pointer text-sm font-bold text-slate-800">詳しい使い道を見る</summary>
+          <div className={compact ? "mt-3 grid gap-2 md:grid-cols-2" : "mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4"}>
+            {items.map((item) => (
+              <div key={item.label} className="rounded-md bg-white p-3">
+                <p className="text-sm font-bold text-slate-950">{item.label}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </details>
 
         {sourceStatuses.length ? (
           <details className="rounded-md border border-border bg-slate-50 p-3">

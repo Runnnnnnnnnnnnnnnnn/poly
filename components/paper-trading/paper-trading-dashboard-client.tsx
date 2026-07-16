@@ -277,7 +277,7 @@ export function PaperTradingDashboardClient() {
             <div className="flex items-center gap-2 text-sm font-bold text-primary"><Activity className="h-4 w-4" />モデル検証</div>
             <h1 className="break-words text-2xl font-bold leading-tight tracking-tight text-slate-950 md:text-3xl">予測モデルの成績を見る</h1>
             <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-              トレード用の予測モデルを作るために、市場価格がどれくらい当たったかを、損益・予測誤差・最大下落で確認します。実注文は出さず、仮想の売買だけを記録します。
+              実注文なしで、市場価格の予測精度と仮想売買の損益を確認します。
             </p>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
@@ -307,37 +307,6 @@ export function PaperTradingDashboardClient() {
             <MetricCard icon={BarChart3} label="予測誤差" value={formatNumber(latestMetrics?.brierScore, 3)} sub="低いほど正確" tone={getModelSignal(latestMetrics?.brierScore).tone} meter={errorMeter(latestMetrics?.brierScore)} />
             <MetricCard icon={TrendingDown} label="最大下落" value={formatPct(latestMetrics?.maxDrawdownPct)} sub="小さいほど安定" tone={drawdownTone(latestMetrics?.maxDrawdownPct)} meter={drawdownMeter(latestMetrics?.maxDrawdownPct)} />
             <MetricCard icon={LineChart} label="最良スコア" value={formatNumber(bestBacktest?.metrics?.brierScore, 3)} sub={bestBacktest ? `${bestBacktest.asset} / 予測誤差` : "-"} tone={modelSignal.tone} meter={errorMeter(bestBacktest?.metrics?.brierScore)} />
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <Card>
-          <CardHeader className="border-b bg-slate-50/70">
-            <CardTitle>現在の状態</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 pt-4 text-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={activeRun ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700" : "rounded-full bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground"}>
-                {activeRun ? "リアルタイム検証中" : "待機中"}
-              </span>
-              <span className="text-muted-foreground">{activeRun ? `${activeRun.asset}のリアルタイム検証を自動更新中` : message}</span>
-            </div>
-            <div className="grid gap-2 text-muted-foreground sm:grid-cols-2">
-              <p>更新: {updatedAt ? new Date(updatedAt).toLocaleTimeString("ja-JP") : "-"}</p>
-              <p>{bestBacktest ? `最新の比較対象: ${bestBacktest.asset}` : "まず「基準を作る」を押してください"}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="border-b bg-slate-50/70">
-            <CardTitle>見る順番</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 pt-4 sm:grid-cols-3">
-            <GuideStep number="1" title="予想レンジ" body="市場価格が織り込む価格帯を見る" />
-            <GuideStep number="2" title="成績比較" body="予測誤差と損益を比べる" />
-            <GuideStep number="3" title="失敗確認" body="外れた市場と理由を確認する" />
           </CardContent>
         </Card>
       </section>
@@ -752,18 +721,6 @@ function VisualMeter({ tone, value, className = "" }: { tone: Tone; value: numbe
   return (
     <div className={`h-2 overflow-hidden rounded-full bg-slate-100 ${className}`}>
       <div className={`h-full rounded-full ${toneBarClass(tone)}`} style={{ width: `${clamp(value, 0, 100)}%` }} />
-    </div>
-  );
-}
-
-function GuideStep({ number, title, body }: { number: string; title: string; body: string }) {
-  return (
-    <div className="grid grid-cols-[auto_1fr] gap-3 rounded-lg bg-slate-50 p-3">
-      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{number}</span>
-      <div className="min-w-0">
-        <p className="font-bold text-slate-950">{title}</p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">{body}</p>
-      </div>
     </div>
   );
 }

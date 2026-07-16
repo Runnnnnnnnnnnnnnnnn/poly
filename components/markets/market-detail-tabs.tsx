@@ -61,13 +61,18 @@ export function MarketDetailTabs({ market, rate, themeNews, sourceStatuses = [] 
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 xl:grid-cols-4">
             <Metric title="現在確率" value={formatPercent(market.probability)} emphasis />
             <Metric title="YES倍率 / NO倍率" value={`${formatPayoutMultiplier(market.yesPrice)} / ${formatPayoutMultiplier(market.noPrice)}`} />
-            <Metric title="最良買い / 最良売り" value={`${market.bestBid?.toFixed(2) ?? "-"} / ${market.bestAsk?.toFixed(2) ?? "-"}`} />
             <Metric title="スプレッド" value={market.spread === null ? "-" : market.spread.toFixed(3)} />
             <Metric title="出来高" value={formatUsd(market.volume)} />
-            <Metric title="流動性" value={formatUsd(market.liquidity)} />
-            <Metric title="関連情報" value={`${themeNews.length}件`} />
-            <Metric title="データ状態" value={market.status === "live" ? "リアルタイム" : "参考データ"} />
           </div>
+          <details className="rounded-md border border-border bg-slate-50 p-3">
+            <summary className="cursor-pointer text-sm font-bold text-slate-800">その他の基本データを見る</summary>
+            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-4">
+              <Metric title="最良買い / 最良売り" value={`${market.bestBid?.toFixed(2) ?? "-"} / ${market.bestAsk?.toFixed(2) ?? "-"}`} />
+              <Metric title="流動性" value={formatUsd(market.liquidity)} />
+              <Metric title="関連情報" value={`${themeNews.length}件`} />
+              <Metric title="データ状態" value={market.status === "live" ? "リアルタイム" : "参考データ"} />
+            </div>
+          </details>
         </div>
       ) : null}
 

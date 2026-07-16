@@ -9,7 +9,6 @@ import { MarketAiEvaluationPanel } from "@/components/markets/market-ai-evaluati
 import { MarketGroupExplorer } from "@/components/markets/market-group-explorer";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { groupMarkets } from "@/lib/market-groups";
 import type { MarketsResponse } from "@/lib/types";
 import { cn, formatDateTime, formatUsd } from "@/lib/utils";
@@ -104,13 +103,13 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
-        <MetricCard title="世界テーマ" value={`${globalMarkets.length}件`} icon={<Globe2 className="h-4 w-4" />} />
-        <MetricCard title="日本テーマ" value={`${japanMarkets.length}件`} icon={<Landmark className="h-4 w-4" />} />
-        <MetricCard title="整理済みテーマ" value={`${themeGroups.length}件`} icon={<Layers3 className="h-4 w-4" />} />
-        <MetricCard title="合計出来高" value={formatUsd(totals.volume)} />
-        <MetricCard title="合計流動性" value={formatUsd(totals.liquidity)} />
-      </div>
+      <MarketSummaryStrip
+        globalCount={globalMarkets.length}
+        japanCount={japanMarkets.length}
+        groupCount={themeGroups.length}
+        volume={totals.volume}
+        liquidity={totals.liquidity}
+      />
 
       <DataUsagePanel mode="markets" sourceStatuses={data.sourceStatuses} />
 
@@ -125,16 +124,42 @@ export function MarketsDashboardClient({ initialData }: { initialData: MarketsRe
   );
 }
 
-function MetricCard({ title, value, icon }: { title: string; value: string; icon?: React.ReactNode }) {
+function MarketSummaryStrip({
+  globalCount,
+  japanCount,
+  groupCount,
+  volume,
+  liquidity,
+}: {
+  globalCount: number;
+  japanCount: number;
+  groupCount: number;
+  volume: number;
+  liquidity: number;
+}) {
   return (
-    <Card>
-      <CardContent className="grid gap-1.5 p-3 sm:gap-2 sm:p-4">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground sm:gap-2 sm:text-sm">
-          {icon}
-          <span className="truncate">{title}</span>
-        </div>
-        <p className="text-xl font-bold text-slate-950 sm:text-2xl">{value}</p>
-      </CardContent>
-    </Card>
+    <section className="rounded-lg border border-border bg-white p-3 shadow-sm sm:p-4" aria-label="市場サマリー">
+      <div className="grid grid-cols-3 gap-2">
+        <SummaryMetric title="国外" value={`${globalCount}件`} icon={<Globe2 className="h-4 w-4" />} />
+        <SummaryMetric title="国内" value={`${japanCount}件`} icon={<Landmark className="h-4 w-4" />} />
+        <SummaryMetric title="整理済み" value={`${groupCount}件`} icon={<Layers3 className="h-4 w-4" />} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-muted-foreground">
+        <span className="rounded-md bg-slate-50 px-2.5 py-1.5">出来高 {formatUsd(volume)}</span>
+        <span className="rounded-md bg-slate-50 px-2.5 py-1.5">流動性 {formatUsd(liquidity)}</span>
+      </div>
+    </section>
+  );
+}
+
+function SummaryMetric({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
+  return (
+    <div className="grid gap-1 rounded-md bg-slate-50 p-2.5 sm:p-3">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        {icon}
+        <span className="truncate">{title}</span>
+      </div>
+      <p className="text-lg font-bold text-slate-950 sm:text-xl">{value}</p>
+    </div>
   );
 }

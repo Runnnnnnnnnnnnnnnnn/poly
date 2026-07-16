@@ -104,7 +104,7 @@ export function MarketAiEvaluationPanel() {
                   AI予想
                 </h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  国内と国外から注目度が高いテーマを1件ずつ選び、価格・出来高・関連情報を使って保守的に参考評価します。
+                  注目度が高い国内・国外テーマを1件ずつ参考評価します。
                 </p>
               </div>
             </div>
@@ -128,20 +128,23 @@ export function MarketAiEvaluationPanel() {
           ) : null}
         </div>
 
-        <div className="grid gap-2 rounded-md bg-slate-50 p-3 text-xs leading-5 text-muted-foreground md:grid-cols-3">
-          <p>
-            <span className="block font-bold text-slate-900">市場確率</span>
-            現在価格から読める、参加者全体の見方です。
-          </p>
-          <p>
-            <span className="block font-bold text-slate-900">AI確率</span>
-            市場価格を基準に、ニュース・出来高・流動性を加えて補正した参考値です。
-          </p>
-          <p>
-            <span className="block font-bold text-slate-900">参考リターン</span>
-            AI確率と現在価格の差から機械的に試算したもので、売買指示ではありません。
-          </p>
-        </div>
+        <details className="rounded-md border border-border bg-slate-50 p-3">
+          <summary className="cursor-pointer text-sm font-bold text-slate-800">AI予想の読み方</summary>
+          <div className="mt-3 grid gap-2 text-xs leading-5 text-muted-foreground md:grid-cols-3">
+            <p>
+              <span className="block font-bold text-slate-900">市場確率</span>
+              現在価格から読める、参加者全体の見方です。
+            </p>
+            <p>
+              <span className="block font-bold text-slate-900">AI確率</span>
+              市場価格にニュース・出来高・流動性を加えた参考値です。
+            </p>
+            <p>
+              <span className="block font-bold text-slate-900">参考リターン</span>
+              AI確率と現在価格の差からの試算です。売買指示ではありません。
+            </p>
+          </div>
+        </details>
 
         <div className="grid gap-3 lg:grid-cols-2">
           {(data?.items ?? []).map((item) => (
@@ -156,12 +159,6 @@ export function MarketAiEvaluationPanel() {
           ) : null}
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          <SmallMetric label="保存したAI予想" value={`${historySummary?.total ?? latestHistory.length}件`} />
-          <SmallMetric label="結果待ち" value={`${historySummary?.pending ?? latestHistory.length}件`} />
-          <SmallMetric label="予測誤差" value={formatScore(historySummary?.averageBrierScore ?? null)} />
-        </div>
-
         <details className="rounded-md border border-border bg-slate-50 p-3">
           <summary className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-800">
             <History className="h-4 w-4 text-primary" />
@@ -169,6 +166,11 @@ export function MarketAiEvaluationPanel() {
           </summary>
           {latestHistory.length ? (
             <div className="mt-3 grid gap-2">
+              <div className="grid grid-cols-3 gap-2">
+                <SmallMetric label="保存件数" value={`${historySummary?.total ?? latestHistory.length}件`} />
+                <SmallMetric label="結果待ち" value={`${historySummary?.pending ?? latestHistory.length}件`} />
+                <SmallMetric label="予測誤差" value={formatScore(historySummary?.averageBrierScore ?? null)} />
+              </div>
               {latestHistory.map((item) => (
                 <div key={`${item.id}-${item.recordedAt}`} className="grid gap-2 rounded-md border border-border p-3 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div className="min-w-0">
