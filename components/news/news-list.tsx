@@ -89,7 +89,7 @@ function RelatedThemes({ item, markets }: { item: NewsItem; markets: MarketSumma
           <Link key={group.id} href={`/markets/${group.primaryMarket.id}`} className="grid gap-1 rounded-md border border-border bg-white p-3 hover:border-primary/40 hover:bg-accent">
             <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-950">{group.label}</span>
             <span className="text-xs text-muted-foreground">
-              確率 {formatProbabilityRange(group)} / YES {formatPayoutMultiplier(group.primaryMarket.yesPrice)} / 個別市場 {group.markets.length}件
+              確率 {formatProbabilityRange(group)} / YES倍率 {formatPayoutMultiplier(group.primaryMarket.yesPrice)} / 個別市場 {group.markets.length}件
             </span>
           </Link>
         ))

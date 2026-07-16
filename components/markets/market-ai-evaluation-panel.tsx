@@ -180,7 +180,7 @@ function EvaluationCard({ item, previous }: { item: MarketAiEvaluation; previous
       <div className="grid grid-cols-3 gap-2">
         <SmallMetric label="AI確率" value={formatPercent(item.aiProbability)} emphasis />
         <SmallMetric label="市場確率" value={formatPercent(item.marketProbability)} />
-        <SmallMetric label="YES期待" value={formatReturn(item.expectedReturnYes)} />
+        <SmallMetric label="YES期待収益" value={formatReturn(item.expectedReturnYes)} />
       </div>
 
       {previous ? (
@@ -206,7 +206,7 @@ function EvaluationCard({ item, previous }: { item: MarketAiEvaluation; previous
               {item.evidence.slice(0, 3).map((evidence) => (
                 <li key={evidence}>{evidence}</li>
               ))}
-              <li>NO期待 {formatReturn(item.expectedReturnNo)}</li>
+              <li>NO期待収益 {formatReturn(item.expectedReturnNo)}</li>
             </ul>
           </div>
         </div>

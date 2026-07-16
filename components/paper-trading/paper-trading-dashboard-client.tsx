@@ -142,7 +142,7 @@ export function PaperTradingDashboardClient() {
       }
       setUpdatedAt(new Date().toISOString());
     } catch {
-      setMessage("APIに接続できません。ローカルサーバーとworkerを起動してください。");
+      setMessage("最新データを取得できませんでした。少し待ってから手動更新してください。");
     }
   }, [asset]);
 
@@ -170,7 +170,7 @@ export function PaperTradingDashboardClient() {
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "run failed");
+      if (!response.ok) throw new Error("検証を実行できませんでした");
       setMessage(mode === "live" ? "リアルタイム検証を開始しました" : "過去検証が完了しました");
       await refresh();
       if (result?.id) await loadPaperRun(result.id);
@@ -196,7 +196,7 @@ export function PaperTradingDashboardClient() {
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "backtest failed");
+      if (!response.ok) throw new Error("市場価格の検証に失敗しました");
       setMessage("市場価格の過去成績を検証しました");
       await refresh();
       if (result?.id) await loadBacktest(result.id);
@@ -217,7 +217,7 @@ export function PaperTradingDashboardClient() {
         body: JSON.stringify({ assets: [asset], limit: Number(maxMarkets) || 40 }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "collection failed");
+      if (!response.ok) throw new Error("最新データを保存できませんでした");
       setMessage(`${result.saved ?? 0}件の市場データを保存しました`);
       await refresh();
     } catch (error) {
