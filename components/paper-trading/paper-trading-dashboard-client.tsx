@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchLocalApi, isSnapshotMode } from "@/src/lib/localApiClient";
 
 type RunMetrics = {
@@ -124,7 +123,6 @@ type ModelDecision = Signal & {
 
 export function PaperTradingDashboardClient() {
   const [asset, setAsset] = useState<(typeof assets)[number]>("BTC");
-  const [mode, setMode] = useState<"historical" | "live">("historical");
   const [initialCash, setInitialCash] = useState("10000");
   const [entryEdge, setEntryEdge] = useState("0.03");
   const [maxMarkets, setMaxMarkets] = useState("20");
@@ -166,20 +164,24 @@ export function PaperTradingDashboardClient() {
         return;
       }
       const shouldFetchAi = !aiEvaluations || Date.now() - lastAiFetchAtRef.current >= 60_000;
-      const [runsPayload, forecastPayload, backtestsPayload, aiPayload] = await Promise.all([
+      const aiRequest = shouldFetchAi
+        ? fetchLocalApi<AiEvaluationsResponse>("/api/ai/evaluations").catch(() => null)
+        : Promise.resolve(null);
+      const [runsPayload, forecastPayload, backtestsPayload] = await Promise.all([
         fetchLocalApi<{ items: Run[] }>("/api/paper-trading/runs"),
         fetchLocalApi<Forecast>(`/api/backtests/forecast?asset=${asset}`),
         fetchLocalApi<{ items: BacktestRun[] }>("/api/backtests?limit=20"),
-        shouldFetchAi ? fetchLocalApi<AiEvaluationsResponse>("/api/ai/evaluations") : Promise.resolve(null),
       ]);
       setRuns(runsPayload.items ?? []);
       setForecast(forecastPayload);
       setBacktests(backtestsPayload.items ?? []);
+      setUpdatedAt(new Date().toISOString());
+
+      const aiPayload = await aiRequest;
       if (aiPayload) {
         setAiEvaluations(aiPayload);
         lastAiFetchAtRef.current = Date.now();
       }
-      setUpdatedAt(new Date().toISOString());
     } catch (error) {
       setMessage(error instanceof Error && /401/.test(error.message) ? "APIの接続キーが確認できません。接続URLを発行し直してください。" : "最新データを取得できませんでした。少し待ってから「画面を最新にする」を押してください。");
     } finally {
@@ -193,15 +195,15 @@ export function PaperTradingDashboardClient() {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  async function startRun() {
+  async function startRun(runMode: "historical" | "live") {
     setLoading(true);
-    setMessage(mode === "live" ? "継続観察を開始しています…" : "仮想売買を検証しています…");
+    setMessage(runMode === "live" ? "継続観察を開始しています…" : "仮想売買を検証しています…");
     try {
       const result = await fetchLocalApi<PaperRunDetail>("/api/paper-trading/runs", {
         method: "POST",
         body: JSON.stringify({
           asset,
-          mode,
+          mode: runMode,
           config: {
             initialCash: Number(initialCash),
             entryEdge: Number(entryEdge),
@@ -209,7 +211,7 @@ export function PaperTradingDashboardClient() {
           },
         }),
       });
-      setMessage(mode === "live" ? "継続観察を開始しました" : "仮想売買の検証が完了しました");
+      setMessage(runMode === "live" ? "継続観察を開始しました" : "仮想売買の検証が完了しました");
       await refresh();
       if (result?.id) await loadPaperRun(result.id);
     } catch (error) {
@@ -310,123 +312,73 @@ export function PaperTradingDashboardClient() {
   }
 
   return (
-    <div className="space-y-5 pb-24">
-      <section className="rounded-lg border border-border bg-white p-5 shadow-sm md:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="grid gap-2">
-            <div className="flex items-center gap-2 text-sm font-bold text-primary"><Activity className="h-4 w-4" />モデル検証</div>
-            <h1 className="break-words text-2xl font-bold leading-tight tracking-tight text-slate-950 md:text-3xl">予測モデルの成績を見る</h1>
-            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-              実注文なしで、市場価格の予測精度と仮想売買の損益を確認します。
-            </p>
-          </div>
-          <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-            <ShieldCheck className="h-4 w-4" />
-            {snapshot ? "公開版・閲覧専用" : "実注文なし"}
-          </div>
+    <div className="space-y-4 pb-24">
+      <section className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-bold text-primary"><Activity className="h-4 w-4" />モデル検証</div>
+          <h1 className="mt-1 text-2xl font-bold leading-tight text-slate-950 md:text-3xl">モデル成績</h1>
+        </div>
+        <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+          <ShieldCheck className="h-4 w-4" />
+          {snapshot ? "閲覧専用" : "実注文なし"}
         </div>
       </section>
 
-      <WorkflowExplainer />
-
       <ModelSummaryPanel asset={asset} aiEvaluations={aiEvaluations} bestBacktest={bestBacktest} latestPaperRun={latestPaperRun} activeRun={activeRun} updatedAt={updatedAt} />
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)]">
-        <Card className="overflow-hidden">
-          <CardHeader className="flex-row items-start justify-between space-y-0 border-b bg-slate-50/70">
-            <div><CardTitle>参考：市場価格の予想レンジ</CardTitle><p className="mt-1 text-xs text-muted-foreground">DeepSeekの判定とは別に、市場価格だけから{forecast?.marketCount ?? 0}件を集計</p></div>
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold shadow-sm">{forecast?.targetDate ? `対象日 ${forecast.targetDate}` : "-"}</span>
-          </CardHeader>
-          <CardContent className="space-y-6 pt-6">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{asset} / 中央値</p>
-                <p className="mt-1 text-4xl font-bold tracking-tight text-primary sm:text-5xl">{forecast?.impliedMedian ? `$${price.format(forecast.impliedMedian)}` : "-"}</p>
-              </div>
-              <div className="grid grid-cols-3 gap-4 text-right text-xs">
-                <div><p className="text-muted-foreground">下位10%</p><p className="mt-1 font-bold">{formatPrice(forecast?.quantiles.p10)}</p></div>
-                <div><p className="text-muted-foreground">下位25%</p><p className="mt-1 font-bold">{formatPrice(forecast?.quantiles.p25)}</p></div>
-                <div><p className="text-muted-foreground">上位10%</p><p className="mt-1 font-bold">{formatPrice(forecast?.quantiles.p90)}</p></div>
-              </div>
+      <section className="rounded-lg border border-border bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-bold text-slate-950">検証する</h2>
+          <div className="grid w-full grid-cols-4 gap-1 rounded-lg bg-slate-100 p-1 sm:w-auto sm:min-w-72">
+            {assets.map((item) => (
+              <button key={item} type="button" onClick={() => setAsset(item)} disabled={snapshot} className={`h-9 rounded-md text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${asset === item ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-slate-950"}`}>{item}</button>
+            ))}
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <Button onClick={() => void runBaselineBacktest()} disabled={loading || snapshot}><BarChart3 className="h-4 w-4" />過去検証</Button>
+          <Button variant="secondary" onClick={() => void startRun("historical")} disabled={loading || snapshot || Boolean(activeRun)}><Play className="h-4 w-4" />仮想売買</Button>
+          <Button variant="outline" onClick={() => void startRun("live")} disabled={loading || snapshot || Boolean(activeRun)}><Activity className="h-4 w-4" />継続観察</Button>
+        </div>
+        {activeRun ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="secondary" size="sm" onClick={() => void tickRun()} disabled={loading || snapshot}><Target className="h-4 w-4" />今すぐ更新</Button>
+            <Button variant="outline" size="sm" onClick={() => void stopRun()} disabled={loading || snapshot}><Square className="h-4 w-4" />停止</Button>
+          </div>
+        ) : null}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
+          <span>{message}</span>
+          <span className="flex items-center gap-1.5"><Database className="h-3.5 w-3.5" />{activeRun ? `${activeRun.asset}を観察中` : "停止中"}</span>
+        </div>
+        <details className="mt-3 border-t pt-3">
+          <summary className="cursor-pointer text-sm font-bold text-slate-700">詳細設定</summary>
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="grid gap-1.5 text-xs font-semibold">初期資金<input disabled={snapshot} value={initialCash} onChange={(event) => setInitialCash(event.target.value)} inputMode="decimal" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
+              <label className="grid gap-1.5 text-xs font-semibold">売買に必要な差<input disabled={snapshot} value={entryEdge} onChange={(event) => setEntryEdge(event.target.value)} inputMode="decimal" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
+              <label className="grid gap-1.5 text-xs font-semibold">市場数<input disabled={snapshot} value={maxMarkets} onChange={(event) => setMaxMarkets(event.target.value)} inputMode="numeric" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Range label="下位10%" value={forecast?.quantiles.p10} />
-              <Range label="下位25%" value={forecast?.quantiles.p25} />
-              <Range label="中央値" value={forecast?.impliedMedian} primary />
-              <Range label="上位10%" value={forecast?.quantiles.p90} />
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => void collectSnapshot()} disabled={loading || snapshot}><Database className="h-4 w-4" />データ保存</Button>
+              <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}><RefreshCw className="h-4 w-4" />更新</Button>
             </div>
-            <ForecastRangeTrack forecast={forecast} />
-            <details className="rounded-lg border border-border bg-slate-50 p-3">
-              <summary className="cursor-pointer text-sm font-bold text-slate-800">指標の読み方</summary>
-              <div className="mt-3 grid gap-2 text-sm leading-6 text-muted-foreground sm:grid-cols-2">
-                <p>予測誤差: 確率の外れ幅。低いほど正確。</p>
-                <p>大外しペナルティ: 自信を持って外した時に大きく悪化。</p>
-                <p>最大下落: 検証中の資産の最大落ち込み。</p>
-                <p>売買に必要な差: 市場価格とモデル確率の差。</p>
-              </div>
-            </details>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="border-b bg-slate-50/70">
-            <CardTitle>検証を開始</CardTitle>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">過去の成績を確認するか、最新データを追跡します。</p>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-5">
-            <div>
-              <p className="mb-2 text-xs font-semibold text-muted-foreground">対象</p>
-              <div className="grid grid-cols-4 gap-2">
-                {assets.map((item) => (
-                  <button key={item} type="button" onClick={() => setAsset(item)} disabled={snapshot} className={`h-10 rounded-lg border text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${asset === item ? "border-primary bg-primary text-primary-foreground shadow-sm" : "bg-background text-muted-foreground hover:bg-accent"}`}>{item}</button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="mb-2 text-xs font-semibold text-muted-foreground">確認方法</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <button type="button" onClick={() => setMode("historical")} disabled={snapshot} className={`rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${mode === "historical" ? "border-primary bg-primary/5 shadow-sm" : "bg-background hover:bg-accent"}`}>
-                  <span className={`text-sm font-bold ${mode === "historical" ? "text-primary" : "text-slate-950"}`}>過去検証</span>
-                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">過去の結果と比べる</span>
-                </button>
-                <button type="button" onClick={() => setMode("live")} disabled={snapshot} className={`rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${mode === "live" ? "border-primary bg-primary/5 shadow-sm" : "bg-background hover:bg-accent"}`}>
-                  <span className={`text-sm font-bold ${mode === "live" ? "text-primary" : "text-slate-950"}`}>継続観察</span>
-                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">最新データを追跡する</span>
-                </button>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Button onClick={() => void startRun()} disabled={loading || snapshot || Boolean(activeRun)}><Play className="h-4 w-4" />{mode === "live" ? "継続観察を開始" : "仮想売買を試す"}</Button>
-              <Button variant="outline" onClick={() => void runBaselineBacktest()} disabled={loading || snapshot}><BarChart3 className="h-4 w-4" />市場価格で過去検証</Button>
-            </div>
-            <p className="text-xs text-muted-foreground">実注文は発生しません。</p>
-            <details className="rounded-lg border border-border bg-slate-50 p-3">
-              <summary className="cursor-pointer text-sm font-bold text-slate-800">条件とデータ更新</summary>
-              <div className="mt-3 grid gap-3">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <label className="grid gap-1.5 text-xs font-semibold">初期資金<input disabled={snapshot} value={initialCash} onChange={(event) => setInitialCash(event.target.value)} inputMode="decimal" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
-                  <label className="grid gap-1.5 text-xs font-semibold">売買に必要な差<input disabled={snapshot} value={entryEdge} onChange={(event) => setEntryEdge(event.target.value)} inputMode="decimal" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
-                  <label className="grid gap-1.5 text-xs font-semibold">見る市場数<input disabled={snapshot} value={maxMarkets} onChange={(event) => setMaxMarkets(event.target.value)} inputMode="numeric" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" onClick={() => void collectSnapshot()} disabled={loading || snapshot}><Database className="h-4 w-4" />データを保存</Button>
-                  <Button variant="outline" onClick={() => void refresh()} disabled={loading}><RefreshCw className="h-4 w-4" />画面を更新</Button>
-                </div>
-              </div>
-            </details>
-            {activeRun ? (
-              <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" size="sm" onClick={() => void tickRun()} disabled={loading || snapshot}><Target className="h-4 w-4" />今すぐ1回更新</Button>
-                <Button variant="outline" size="sm" onClick={() => void stopRun()} disabled={loading || snapshot}><Square className="h-4 w-4" />停止</Button>
-              </div>
-            ) : null}
-            <div className="grid gap-2 border-t pt-3 text-xs text-muted-foreground">
-              <p>{message}</p>
-              <p className="flex items-center gap-1.5"><Database className="h-3.5 w-3.5" />{activeRun ? `${activeRun.asset}を継続観察中` : "継続観察は停止中"}</p>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </details>
       </section>
+
+      <details className="rounded-lg border border-border bg-white shadow-sm">
+        <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3">
+          <span className="text-sm font-bold text-slate-950">{asset} 市場の予想レンジ</span>
+          <span className="text-base font-bold text-primary">{formatPrice(forecast?.impliedMedian)}</span>
+        </summary>
+        <div className="border-t p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{forecast?.marketCount ?? 0}市場</span>
+            <span>{forecast?.targetDate ? `対象日 ${forecast.targetDate}` : "対象日なし"}</span>
+          </div>
+          <ForecastRangeTrack forecast={forecast} />
+        </div>
+      </details>
 
       <section className="grid gap-4 xl:grid-cols-2">
         <ScoreboardCard asset={asset} backtests={backtests} onSelect={(id) => void loadBacktest(id)} />
@@ -434,48 +386,6 @@ export function PaperTradingDashboardClient() {
       </section>
 
       <DetailPanel paperRun={selectedPaperRun} backtest={selectedBacktest} loading={detailLoading} />
-    </div>
-  );
-}
-
-function WorkflowExplainer() {
-  return (
-    <section className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5" aria-label="検証の流れ">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-bold text-slate-950">検証の流れ</h2>
-        <p className="text-xs text-muted-foreground">過去検証 → 仮想売買 → 継続観察</p>
-      </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
-      <WorkflowStep
-        icon={BarChart3}
-        title="1. 過去検証"
-        body="市場価格だけで、どれくらい当たるかを確認します。"
-      />
-      <WorkflowStep
-        icon={Play}
-        title="2. 仮想売買"
-        body="実注文なしで、損益と失敗パターンを確認します。"
-      />
-      <WorkflowStep
-        icon={Activity}
-        title="3. 継続観察"
-        body="新しいデータで、成績が続くかを追跡します。"
-      />
-      </div>
-    </section>
-  );
-}
-
-function WorkflowStep({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
-  return (
-    <div className="flex items-start gap-3 rounded-md bg-slate-50 p-3">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-primary">
-        <Icon className="h-5 w-5" />
-      </span>
-      <div className="min-w-0">
-        <p className="font-bold text-slate-950">{title}</p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">{body}</p>
-      </div>
     </div>
   );
 }
@@ -495,82 +405,115 @@ function ModelSummaryPanel({
   activeRun: Run | null;
   updatedAt: string | null;
 }) {
-  const decision = aiEvaluations ? getAiModelDecision(aiEvaluations.historySummary) : getModelDecision(bestBacktest);
-  const DecisionIcon = decision.icon;
-  const paperSignal = getProfitSignal(latestPaperRun?.metrics?.totalReturnPct);
-  const paperValue = latestPaperRun ? formatPct(latestPaperRun.metrics?.totalReturnPct) : activeRun ? "計測中" : "未実行";
-  const paperNote = latestPaperRun ? `${modeLabel(latestPaperRun.mode)}の結果` : activeRun ? "結果が出るまで待機" : "仮想売買の結果なし";
-  const nextStep = activeRun ? `${activeRun.asset}の新しい結果を待ちます。` : decision.nextStep;
   const aiSummary = aiEvaluations?.historySummary;
-  const aiValue = formatNumber(aiSummary?.averageBrierScore, 3);
-  const aiNote = aiSummary ? `${aiSummary.resolved}件確定 / 市場との差 ${formatSignedNumber(aiSummary.improvementVsMarket)}` : "まだ結果が確定していません";
+  const decision = getAiModelDecision(aiSummary);
+  const DecisionIcon = decision.icon;
+  const baselineSignal = getModelSignal(bestBacktest?.metrics?.brierScore);
+  const comparison = getMarketComparison(aiSummary);
+  const paperSignal = getProfitSignal(latestPaperRun?.metrics?.totalReturnPct);
+  const PaperIcon = paperSignal.icon;
+  const paperValue = latestPaperRun ? formatPct(latestPaperRun.metrics?.totalReturnPct) : activeRun ? "計測中" : "未実行";
+  const paperNote = latestPaperRun ? paperSignal.label : activeRun ? `${activeRun.asset}を観察中` : "結果なし";
+  const resolved = aiSummary?.resolved ?? 0;
+  const total = aiSummary?.total ?? 0;
+  const resolvedProgress = total > 0 ? (resolved / total) * 100 : 0;
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex-row items-start justify-between space-y-0 border-b bg-slate-50/70">
-        <div>
-          <CardTitle>現在の判定</CardTitle>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">DeepSeekの結果確定分と、市場価格を基準にした検証を分けて表示しています。</p>
-        </div>
-        <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">実注文なし</span>
-      </CardHeader>
-      <CardContent className="grid gap-4 pt-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]">
-        <div className={`rounded-lg p-4 ${toneSoftClass(decision.tone)}`}>
-          <div className="flex items-start gap-3">
-            <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${toneIconClass(decision.tone)}`}><DecisionIcon className="h-6 w-6" /></span>
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-muted-foreground">モデルの信頼度</p>
-              <p className="mt-1 text-2xl font-bold leading-tight text-slate-950">{decision.label}</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">{decision.description}</p>
+    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="モデル成績の概要">
+      <div className="grid lg:grid-cols-[minmax(260px,0.9fr)_minmax(0,1.8fr)]">
+        <div className={`border-b p-5 lg:border-b-0 lg:border-r sm:p-6 ${toneSoftClass(decision.tone)}`}>
+          <div className="flex items-center gap-3">
+            <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${toneIconClass(decision.tone)}`}>
+              <DecisionIcon className="h-6 w-6" />
+            </span>
+            <p className="text-sm font-bold text-muted-foreground">AIモデル総合</p>
+          </div>
+          <h2 className="mt-5 text-4xl font-bold leading-none text-slate-950 sm:text-5xl">{decision.label}</h2>
+          <div className="mt-6">
+            <div className="flex items-center justify-between gap-3 text-xs font-bold text-muted-foreground">
+              <span>結果確定</span>
+              <span>{aiSummary ? `${resolved} / ${total}件` : "確認中"}</span>
             </div>
-          </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <SummaryMetric label="DeepSeek AI" value={aiValue} note={aiNote} tone={decision.tone} />
-            <SummaryMetric label={`${asset}市場価格`} value={formatNumber(bestBacktest?.metrics?.brierScore, 3)} note={bestBacktest ? `${bestBacktest.metrics?.markets ?? 0}市場 / ${bestBacktest.metrics?.observations ?? 0}時点` : "まだ実行されていません"} tone="neutral" />
-            <SummaryMetric label="仮想売買" value={paperValue} note={paperNote} tone={paperSignal.tone} />
+            <VisualMeter tone={decision.tone} value={resolvedProgress} className="mt-2 h-2.5" />
           </div>
         </div>
-        <div className="rounded-lg border border-border bg-white p-4">
-          <p className="text-sm font-bold text-slate-950">判定の根拠</p>
-          <div className="mt-3 grid gap-3">
-            <SummaryReason title="AI予測誤差" value={aiSummary ? formatNumber(aiSummary.averageBrierScore, 3) : "未計測"} note="小さいほど、AIの確率と結果の差が小さい" />
-            <SummaryReason title="市場との比較" value={aiSummary ? formatSignedNumber(aiSummary.improvementVsMarket) : "未計測"} note={decision.reason} />
-            <SummaryReason title="市場価格基準" value={bestBacktest ? `${bestBacktest.metrics?.markets ?? 0}市場` : "未実行"} note="市場価格だけで同じ結果を確認" />
-            <SummaryReason title="次にすること" value={activeRun ? "継続観察中" : "必要な時に実行"} note={nextStep} />
-          </div>
+        <div className="grid grid-cols-3 divide-x divide-border">
+          <ResultMetric
+            icon={Target}
+            label="市場比較"
+            value={comparison.value}
+            note={comparison.note}
+            tone={comparison.tone}
+          />
+          <ResultMetric
+            icon={BarChart3}
+            label={`${asset} 検証`}
+            value={baselineSignal.label}
+            note={bestBacktest ? `誤差 ${formatNumber(bestBacktest.metrics?.brierScore, 3)} / ${bestBacktest.metrics?.markets ?? 0}件` : "未実行"}
+            tone={baselineSignal.tone}
+            meter={errorMeter(bestBacktest?.metrics?.brierScore)}
+          />
+          <ResultMetric
+            icon={PaperIcon}
+            label="仮想損益"
+            value={paperValue}
+            note={paperNote}
+            tone={paperSignal.tone}
+            meter={profitMeter(latestPaperRun?.metrics?.totalReturnPct)}
+          />
         </div>
-      </CardContent>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3 text-xs text-muted-foreground">
-        <span>{activeRun ? `${activeRun.asset}を継続観察中` : "継続観察は停止中"}</span>
+        <span>{activeRun ? `${activeRun.asset}を観察中` : "観察停止中"}</span>
         <span>{updatedAt ? `最終更新 ${new Date(updatedAt).toLocaleTimeString("ja-JP")}` : "更新待ち"}</span>
       </div>
-    </Card>
+    </section>
   );
 }
 
-function SummaryMetric({ label, value, note, tone }: { label: string; value: string; note: string; tone: Tone }) {
+function ResultMetric({
+  icon: Icon,
+  label,
+  value,
+  note,
+  tone,
+  meter,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  note: string;
+  tone: Tone;
+  meter?: number;
+}) {
   return (
-    <div className={`rounded-md border px-3 py-2.5 ${toneBorderClass(tone)}`}>
-      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-bold text-slate-950">{value}</p>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{note}</p>
-    </div>
-  );
-}
-
-function SummaryReason({ title, value, note }: { title: string; value: string; note: string }) {
-  return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
-      <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <p className="text-xs font-semibold text-muted-foreground">{title}</p>
-          <p className="text-sm font-bold text-slate-950">{value}</p>
+    <div className="flex min-h-36 min-w-0 flex-col justify-between p-3 sm:min-h-40 sm:p-5">
+      <div>
+        <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold leading-4 text-muted-foreground sm:gap-2 sm:text-xs">
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md sm:h-8 sm:w-8 ${toneIconClass(tone)}`}><Icon className="h-4 w-4" /></span>
+          <span className="break-words">{label}</span>
         </div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">{note}</p>
+        <p className="mt-3 break-words text-xl font-bold leading-tight text-slate-950 sm:mt-4 sm:text-2xl">{value}</p>
+        <p className="mt-1 break-words text-[10px] font-semibold leading-4 text-muted-foreground sm:text-xs">{note}</p>
       </div>
+      {meter !== undefined ? <VisualMeter tone={tone} value={meter} className="mt-4" /> : null}
     </div>
   );
+}
+
+function getMarketComparison(summary: AiHistorySummary | undefined): { value: string; note: string; tone: Tone } {
+  if (!summary || summary.resolved === 0 || summary.improvementVsMarket === null || !summary.averageMarketBrierScore) {
+    return { value: "比較待ち", note: "確定後に表示", tone: "neutral" };
+  }
+
+  const relativeDifference = (summary.improvementVsMarket / summary.averageMarketBrierScore) * 100;
+  if (relativeDifference >= 1) {
+    return { value: `${relativeDifference.toFixed(1)}%`, note: "市場より誤差が少ない", tone: "good" };
+  }
+  if (relativeDifference <= -1) {
+    return { value: `${Math.abs(relativeDifference).toFixed(1)}%`, note: "市場より誤差が多い", tone: "bad" };
+  }
+  return { value: "ほぼ同じ", note: "市場との差は1%未満", tone: "watch" };
 }
 
 function ScoreboardCard({ asset, backtests, onSelect }: { asset: string; backtests: BacktestRun[]; onSelect: (id: string) => void }) {
@@ -775,10 +718,6 @@ function CompactList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function Range({ label, value, primary = false }: { label: string; value: number | null | undefined; primary?: boolean }) {
-  return <div className={primary ? "rounded-lg bg-primary p-3 text-primary-foreground" : "rounded-lg bg-secondary p-3"}><p className="text-xs font-semibold opacity-75">{label}</p><p className="mt-1 text-lg font-bold">{formatPrice(value)}</p></div>;
-}
-
 function bestScoredBacktest(backtests: BacktestRun[], asset: string) {
   return [...backtests]
     .filter((run) => run.asset === asset && run.metrics?.brierScore !== null && run.metrics?.brierScore !== undefined)
@@ -826,40 +765,18 @@ function getModelSignal(value: number | null | undefined): Signal {
   };
 }
 
-function getModelDecision(run: BacktestRun | null): ModelDecision {
-  const metrics = run?.metrics;
-  const score = metrics?.brierScore;
-  if (!metrics || score === null || score === undefined || !Number.isFinite(score)) {
+function getAiModelDecision(summary: AiHistorySummary | undefined): ModelDecision {
+  if (!summary) {
     return {
-      label: "未検証",
-      description: "過去検証を実行すると、モデルの信頼度を判定できます。",
+      label: "読込中",
+      description: "AI評価を確認しています。",
       tone: "neutral",
       icon: Gauge,
-      reason: "まだ比較できる過去検証がありません。",
-      nextStep: "市場価格で過去検証を実行し、最初の基準を作ります。",
+      reason: "評価データを取得しています。",
+      nextStep: "取得完了まで待ちます。",
     };
   }
-  const marketCount = metrics.markets;
-  if (marketCount < 10) {
-    return {
-      label: "データ不足",
-      description: "結果は出ていますが、判断にはもう少し市場数が必要です。",
-      tone: "watch",
-      icon: AlertCircle,
-      reason: `${marketCount}市場を確認。10市場未満のため慎重に見ます。`,
-      nextStep: "データを追加して、同じ傾向が続くか確認します。",
-    };
-  }
-  const signal = getModelSignal(score);
-  return {
-    ...signal,
-    reason: `${marketCount}市場を確認。結果が増えるほど判断が安定します。`,
-    nextStep: signal.tone === "good" ? "仮想売買の損益も確認し、安定しているか見ます。" : "市場数を増やし、同じ結果が出るか確認します。",
-  };
-}
-
-function getAiModelDecision(summary: AiHistorySummary | undefined): ModelDecision {
-  if (!summary || summary.resolved === 0 || summary.averageBrierScore === null) {
+  if (summary.resolved === 0 || summary.averageBrierScore === null) {
     return {
       label: "結果待ち",
       description: "市場が確定するまで、AIの成績は判定しません。",
