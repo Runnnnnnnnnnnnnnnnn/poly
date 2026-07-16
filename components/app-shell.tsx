@@ -141,7 +141,7 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
       <main className={cn("mx-auto max-w-7xl px-4 py-6 pb-24 md:px-5 md:py-10 md:pb-10", className)}>{children}</main>
       <footer className="border-t border-border bg-white">
         <div className="mx-auto grid max-w-7xl gap-2 px-4 py-6 text-sm text-muted-foreground md:flex md:items-center md:justify-between md:px-5">
-          <span>Paper only · 実注文なし</span>
+          <span>検証用表示・実注文なし</span>
           <span>Polymarket Watch</span>
         </div>
       </footer>

@@ -53,7 +53,7 @@ const usageSteps = [
   {
     icon: BarChart3,
     title: "詳細ページで検証材料を見る",
-    body: "テーマを開くと、確率推移、出来高、スプレッド、解決条件、収益計算を確認できます。バックテストでは価格履歴と判定条件を分けて見ます。",
+    body: "テーマを開くと、確率推移、出来高、スプレッド、解決条件、収益計算を確認できます。過去検証では価格履歴と判定条件を分けて見ます。",
   },
   {
     icon: Newspaper,
@@ -107,7 +107,7 @@ export default function OnboardingPage() {
               <p className="text-sm font-bold text-primary">Polymarket Watch</p>
               <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl md:text-5xl">Polymarketとは</h1>
               <p className="max-w-3xl text-sm leading-7 text-muted-foreground sm:text-base sm:leading-8">
-                Polymarketは、ニュースで話題になる出来事の「起きやすさ」を価格として読み取れる予測市場です。このサイトでは、その価格と履歴を使って、バックテストで評価モデルを改善するための材料を整理します。
+                Polymarketは、ニュースで話題になる出来事の「起きやすさ」を価格として読み取れる予測市場です。このサイトでは、その価格と履歴を使って、予測モデルを改善するための材料を整理します。
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[260px] lg:grid-cols-1">
@@ -155,7 +155,7 @@ export default function OnboardingPage() {
           <Card>
             <CardContent className="grid gap-4 p-5 sm:p-6">
               <p className="text-sm leading-7 text-slate-700 sm:text-base sm:leading-8">
-                Polymarketは、将来の出来事について市場参加者の見方を価格として集約する「予測市場(Prediction Market)」です。世論調査や専門家コメントと違い、参加者が売買しながら価格を更新していくため、ニュースへの反応や関心の高さが数字に表れやすいのが特徴です。バックテストでは、この価格を「市場が置いた確率」として扱い、実際の結果と比較します。
+                Polymarketは、将来の出来事について市場参加者の見方を価格として集約する「予測市場」です。世論調査や専門家コメントと違い、参加者が売買しながら価格を更新していくため、ニュースへの反応や関心の高さが数字に表れやすいのが特徴です。過去検証では、この価格を「市場が置いた確率」として扱い、実際の結果と比較します。
               </p>
               <div className="grid gap-3 md:grid-cols-3">
                 {basicsPoints.map((point) => {
@@ -181,7 +181,7 @@ export default function OnboardingPage() {
             <div className="grid gap-3 border-t border-border p-4 text-sm leading-6 text-muted-foreground sm:grid-cols-3 sm:p-5">
               <p className="rounded-md bg-slate-50 p-3">市場価格: その時点の参加者の確率見立て。</p>
               <p className="rounded-md bg-slate-50 p-3">出来高・流動性: モデル評価時の信頼度を調整する材料。</p>
-              <p className="rounded-md bg-slate-50 p-3">結果判定: Brier scoreやLog lossで検証する基準。</p>
+              <p className="rounded-md bg-slate-50 p-3">結果判定: 予測誤差や外れ罰則で精度を確認する基準。</p>
             </div>
           </details>
         </section>

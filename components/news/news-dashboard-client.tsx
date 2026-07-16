@@ -37,7 +37,7 @@ export function NewsDashboardClient({ initialData, initialMarkets }: { initialDa
   useEffect(() => {
     mountedRef.current = true;
 
-    // 静的スナップショット（公開版でAPI未接続）では自動更新しない。
+    // 公開版の保存データでは自動更新しない。
     if (isSnapshotMode()) {
       setSnapshot(true);
       return () => {
@@ -60,7 +60,7 @@ export function NewsDashboardClient({ initialData, initialMarkets }: { initialDa
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={snapshot ? data.status : bridgeError ? "error" : data.status} />
             <span className="text-sm text-muted-foreground">
-              {snapshot ? `スナップショット（${formatDateTime(data.updatedAt)} 時点）` : `最終更新 ${formatDateTime(data.updatedAt)}`}
+              {snapshot ? `公開版の保存データ（${formatDateTime(data.updatedAt)} 時点）` : `最終更新 ${formatDateTime(data.updatedAt)}`}
             </span>
             {!snapshot && bridgeError ? <span className="text-sm text-muted-foreground">更新を確認できません</span> : null}
           </div>

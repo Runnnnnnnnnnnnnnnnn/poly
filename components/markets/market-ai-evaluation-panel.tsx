@@ -98,7 +98,7 @@ export function MarketAiEvaluationPanel() {
                   AI予想
                 </h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  国内と国外から注目度が高いテーマを1件ずつ選び、DeepSeekと市場データで参考評価します。
+                  国内と国外から注目度が高いテーマを1件ずつ選び、市場データと関連情報から参考評価します。
                 </p>
               </div>
             </div>
@@ -106,12 +106,12 @@ export function MarketAiEvaluationPanel() {
               <StatusBadge status={snapshot ? "fallback" : error ? "error" : data?.status ?? "fallback"} />
               <span className="text-xs font-semibold text-muted-foreground">
                 {snapshot
-                  ? "公開版（スナップショット）では非表示"
+                  ? "公開版では準備中"
                   : data
-                    ? `${liveBackend ? "最終評価" : "公開版のAI予想（ビルド時点）"} ${formatDateTime(data.updatedAt)} / ${data.model}`
+                    ? `${liveBackend ? "最終評価" : "公開版のAI予想"} ${formatDateTime(data.updatedAt)}`
                     : "評価を取得中"}
               </span>
-              {liveBackend && error ? <span className="text-xs text-muted-foreground">取得失敗: {error}</span> : null}
+              {liveBackend && error ? <span className="text-xs text-muted-foreground">更新できませんでした</span> : null}
             </div>
           </div>
           {liveBackend ? (
@@ -129,8 +129,8 @@ export function MarketAiEvaluationPanel() {
           {!data?.items?.length ? (
             <div className="rounded-md border border-dashed border-border p-5 text-sm leading-6 text-muted-foreground lg:col-span-2">
               {snapshot
-                ? "この公開版（静的スナップショット）では、AI予想はリアルタイム生成されないため表示していません。最新データに接続したローカル版でご利用いただけます。"
-                : "AI評価を準備しています。ローカルAPIが起動していれば自動で更新されます。"}
+                ? "AI予想を準備しています。最新データに接続できる環境で表示されます。"
+                : "AI評価を準備しています。リアルタイム接続時は自動で更新されます。"}
             </div>
           ) : null}
         </div>
