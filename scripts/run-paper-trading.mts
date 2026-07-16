@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 import { createPaperRun, getPaperRun, tickPaperRun } from "../src/lib/paper-trading/service";
+import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
 
 const intervalMs = Math.max(30_000, Number(process.env.PAPER_INTERVAL_MS ?? 300_000));
 const asset = (process.env.ASSET ?? "BTC") as "BTC" | "ETH" | "SOL" | "XRP" | "OTHER";
@@ -32,9 +33,12 @@ if (!runId) {
 async function tick() {
   if (!runId) return;
   try {
+    await markPipelineAttempt("paper", `${asset}を評価中`);
     const run = await tickPaperRun(runId);
+    await markPipelineSuccess("paper", 1, `${asset}の仮想運用を更新`);
     console.log(JSON.stringify({ type: "paper-tick", runId, status: run?.status, cash: run?.finalCash, orders: run?.orders.length }));
   } catch (error) {
+    await markPipelineError("paper", error);
     console.error(error instanceof Error ? error.message : error);
   }
 }

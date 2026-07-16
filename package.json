@@ -19,6 +19,9 @@
     "backtest": "tsx scripts/run-backtest.mts",
     "paper:backtest": "tsx scripts/run-paper-backtest.mts",
     "collect:crypto": "tsx scripts/collect-crypto-snapshots.mts",
+    "monitor": "tsx scripts/run-monitoring.mts",
+    "service:install": "node scripts/install-macos-service.mjs",
+    "service:uninstall": "node scripts/install-macos-service.mjs --uninstall",
     "paper:trade": "tsx scripts/run-paper-trading.mts"
   },
   "overrides": {

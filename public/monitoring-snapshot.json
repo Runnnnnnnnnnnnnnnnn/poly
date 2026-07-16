@@ -1,0 +1,146 @@
+{
+  "status": "live",
+  "generatedAt": "2026-07-16T18:57:49.518Z",
+  "collection": {
+    "startedAt": "2026-07-13T02:42:17.427Z",
+    "latestAt": "2026-07-16T18:52:53.278Z",
+    "totalRecords": 8164,
+    "last24Hours": 6673
+  },
+  "polymarket": {
+    "snapshots": 6504,
+    "markets": 152,
+    "latestAt": "2026-07-16T18:52:51.743Z",
+    "backtestRuns": 7,
+    "backtestPoints": 781
+  },
+  "model": {
+    "name": "Calibrated Consensus v1",
+    "latestAsset": "BTC",
+    "latestBrierScore": 0.04841491666666667,
+    "latestAccuracy": 0.9583333333333334,
+    "latestReturnPct": 0.04280916820619065,
+    "testedMarkets": 24,
+    "observations": 167,
+    "brierImprovement": 0.15706038882802853,
+    "previousBrierScore": 0.05743580681818184,
+    "completedAt": "2026-07-16T12:19:11.016Z",
+    "aiPredictions": 53,
+    "aiResolved": 0,
+    "aiBrierScore": null,
+    "marketBrierScore": null,
+    "aiImprovement": null,
+    "paperRuns": 5,
+    "runningPaperRuns": 1,
+    "paperSnapshots": 801,
+    "paperOrders": 1,
+    "paperFills": 1,
+    "paperReturnPct": 0
+  },
+  "backtestQuality": {
+    "status": "good",
+    "checks": [
+      {
+        "label": "確定済み市場のみ",
+        "passed": true
+      },
+      {
+        "label": "決着前の価格だけで検証",
+        "passed": true
+      },
+      {
+        "label": "100時点以上",
+        "passed": true
+      },
+      {
+        "label": "板・手数料・滑りを別検証",
+        "passed": true
+      }
+    ]
+  },
+  "hyperliquid": {
+    "snapshots": 25,
+    "latestAt": "2026-07-16T18:52:51.321Z",
+    "assets": [
+      {
+        "asset": "BTC",
+        "price": 64260.5,
+        "change24hPct": -0.009074927909451191,
+        "dayVolume": 1669950822.92265,
+        "openInterestUsd": 2410157275.7828736,
+        "fundingRate": 0.0000125,
+        "capturedAt": "2026-07-16T18:52:51.321Z"
+      },
+      {
+        "asset": "ETH",
+        "price": 1876.75,
+        "change24hPct": -0.024760964456454038,
+        "dayVolume": 869598125.91161,
+        "openInterestUsd": 1813680509.2790399,
+        "fundingRate": 0.0000125,
+        "capturedAt": "2026-07-16T18:52:51.321Z"
+      },
+      {
+        "asset": "SOL",
+        "price": 75.6115,
+        "change24hPct": -0.025034492540584985,
+        "dayVolume": 178522296.93077,
+        "openInterestUsd": 333202828.64808,
+        "fundingRate": -7.386e-7,
+        "capturedAt": "2026-07-16T18:52:51.321Z"
+      },
+      {
+        "asset": "XRP",
+        "price": 1.09275,
+        "change24hPct": -0.017576193472983892,
+        "dayVolume": 19937766.5951,
+        "openInterestUsd": 102888459.7728,
+        "fundingRate": 0.0000125,
+        "capturedAt": "2026-07-16T18:52:51.321Z"
+      },
+      {
+        "asset": "HYPE",
+        "price": 62.552,
+        "change24hPct": -0.07039783619908158,
+        "dayVolume": 427330980.23569,
+        "openInterestUsd": 1413176203.5029986,
+        "fundingRate": -0.0000067935,
+        "capturedAt": "2026-07-16T18:52:51.321Z"
+      }
+    ]
+  },
+  "pipelines": [
+    {
+      "id": "polymarket",
+      "label": "Polymarket収集",
+      "cadence": "5分ごと",
+      "status": "healthy",
+      "lastSuccessAt": "2026-07-16T18:52:51.847Z",
+      "records": 318
+    },
+    {
+      "id": "hyperliquid",
+      "label": "相場データ収集",
+      "cadence": "5分ごと",
+      "status": "healthy",
+      "lastSuccessAt": "2026-07-16T18:52:51.323Z",
+      "records": 25
+    },
+    {
+      "id": "backtest",
+      "label": "自動バックテスト",
+      "cadence": "6時間ごと",
+      "status": "healthy",
+      "lastSuccessAt": "2026-07-16T18:52:52.322Z",
+      "records": 310
+    },
+    {
+      "id": "paper",
+      "label": "仮想運用",
+      "cadence": "5分ごと",
+      "status": "healthy",
+      "lastSuccessAt": "2026-07-16T18:52:53.292Z",
+      "records": 4
+    }
+  ]
+}

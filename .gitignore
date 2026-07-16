@@ -18,3 +18,4 @@ dev.db-journal
 prisma/dev.db
 prisma/dev.db-journal
 .paper-run-id
+.run-all.lock

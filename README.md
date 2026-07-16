@@ -18,6 +18,7 @@
 
 - Polymarket Gamma API
 - Polymarket CLOB public read endpoints
+- Hyperliquid public Info API
 - 国会会議録 API
 - e-Gov パブリックコメント RSS
 - 日本銀行 RSS
@@ -149,7 +150,7 @@ ASSET=BTC npm run paper:trade
 
 ## 統合起動
 
-画面とバックグラウンドworkerを一つのコマンドで起動できます。
+画面、Polymarket・Hyperliquidの5分間隔データ収集、6時間間隔の自動バックテスト、仮想運用workerを一つのコマンドで起動できます。二重起動はロックファイルで防止されます。
 
 ```sh
 npm run db:push
@@ -164,6 +165,15 @@ npm run dev:paper
 npm run build
 npm run start:paper
 ```
+
+macOSへのログイン後もバックエンドを自動起動し、停止時に再起動する場合:
+
+```sh
+npm run build
+npm run service:install
+```
+
+監視画面はPolymarketの保存件数、市場数、バックテスト観測数、予測誤差の前回比、仮想損益、各workerの最終成功時刻を表示します。HyperliquidのBTC/ETH/SOL/XRP/HYPEは相場環境の補助データとして保存し、モデル本体へ投入する前は「モデル入力候補」と明示します。
 
 For durable history, move `DATABASE_URL` from SQLite to a managed PostgreSQL database, run the collector as a scheduled worker, and keep raw API responses plus request timestamps in object storage or a warehouse. Do not rely on an in-process timer on serverless hosting because it may be stopped between requests. For public deployment, use a server-capable host such as Render, Fly.io, Railway, or a VPS, put the database and worker in the same deployment environment, add authentication/rate limiting to the backtest and collection routes, and expose only HTTPS. GitHub Pages can host the UI snapshot but cannot execute these runtime API routes.
 

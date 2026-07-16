@@ -34,6 +34,16 @@ function restore(moved) {
 const moved = [];
 let exitCode = 0;
 
+process.once("exit", () => restore(moved));
+process.once("SIGINT", () => {
+  restore(moved);
+  process.exit(130);
+});
+process.once("SIGTERM", () => {
+  restore(moved);
+  process.exit(143);
+});
+
 function isPortOpen(port) {
   return new Promise((resolve) => {
     const socket = createConnection({ host: "127.0.0.1", port });
@@ -98,6 +108,7 @@ try {
   // AI予想を鍵を使って生成し public/ai-evaluations.json に出力（鍵はサーバー側のみ・非致命）。
   // DEEPSEEK_API_KEY が無ければスクリプト側で参考データにフォールバックする。
   spawnSync("npx", ["tsx", "scripts/gen-ai-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
+  spawnSync("npx", ["tsx", "scripts/gen-monitoring-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
 
   rmSync(join(root, ".next"), { recursive: true, force: true });
   rmSync(join(root, "out"), { recursive: true, force: true });

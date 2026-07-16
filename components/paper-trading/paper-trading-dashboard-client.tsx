@@ -6,11 +6,14 @@ import {
   AlertCircle,
   BarChart3,
   CheckCircle2,
+  CircleDot,
   Database,
   Gauge,
+  Layers3,
   MinusCircle,
   Play,
   RefreshCw,
+  Server,
   ShieldCheck,
   Square,
   Target,
@@ -105,6 +108,46 @@ type AiEvaluationsResponse = {
   historySummary: AiHistorySummary;
 };
 
+type MonitoringSnapshot = {
+  status: "live" | "delayed" | "offline";
+  generatedAt: string;
+  collection: { startedAt: string | null; latestAt: string | null; totalRecords: number; last24Hours: number };
+  polymarket: { snapshots: number; markets: number; latestAt: string | null; backtestRuns: number; backtestPoints: number };
+  model: {
+    name: string;
+    latestAsset: string | null;
+    latestBrierScore: number | null;
+    latestAccuracy: number | null;
+    latestReturnPct: number | null;
+    testedMarkets: number;
+    observations: number;
+    brierImprovement: number | null;
+    previousBrierScore: number | null;
+    completedAt: string | null;
+    aiPredictions: number;
+    aiResolved: number;
+    aiBrierScore: number | null;
+    marketBrierScore: number | null;
+    aiImprovement: number | null;
+    paperRuns: number;
+    runningPaperRuns: number;
+    paperSnapshots: number;
+    paperOrders: number;
+    paperFills: number;
+    paperReturnPct: number | null;
+  };
+  backtestQuality: {
+    status: "good" | "building";
+    checks: Array<{ label: string; passed: boolean }>;
+  };
+  hyperliquid: {
+    snapshots: number;
+    latestAt: string | null;
+    assets: Array<{ asset: string; price: number; change24hPct: number | null; dayVolume: number; openInterestUsd: number; fundingRate: number; capturedAt: string }>;
+  };
+  pipelines: Array<{ id: string; label: string; cadence: string; status: "healthy" | "waiting" | "error"; lastSuccessAt: string | null; records: number }>;
+};
+
 const price = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const assets = ["BTC", "ETH", "SOL", "XRP"] as const;
 type Tone = "good" | "watch" | "bad" | "neutral";
@@ -116,11 +159,6 @@ type Signal = {
   icon: LucideIcon;
 };
 
-type ModelDecision = Signal & {
-  reason: string;
-  nextStep: string;
-};
-
 export function PaperTradingDashboardClient() {
   const [asset, setAsset] = useState<(typeof assets)[number]>("BTC");
   const [initialCash, setInitialCash] = useState("10000");
@@ -130,6 +168,7 @@ export function PaperTradingDashboardClient() {
   const [backtests, setBacktests] = useState<BacktestRun[]>([]);
   const [forecast, setForecast] = useState<Forecast | null>(null);
   const [aiEvaluations, setAiEvaluations] = useState<AiEvaluationsResponse | null>(null);
+  const [monitoring, setMonitoring] = useState<MonitoringSnapshot | null>(null);
   const [selectedPaperRun, setSelectedPaperRun] = useState<PaperRunDetail | null>(null);
   const [selectedBacktest, setSelectedBacktest] = useState<BacktestRun | null>(null);
   const [loading, setLoading] = useState(false);
@@ -157,8 +196,12 @@ export function PaperTradingDashboardClient() {
       setSnapshot(staticMode);
       if (staticMode) {
         const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-        const response = await fetch(`${base}/ai-evaluations.json`, { cache: "no-store" });
-        if (response.ok) setAiEvaluations(await response.json());
+        const [aiResponse, monitoringResponse] = await Promise.all([
+          fetch(`${base}/ai-evaluations.json`, { cache: "no-store" }),
+          fetch(`${base}/monitoring-snapshot.json`, { cache: "no-store" }),
+        ]);
+        if (aiResponse.ok) setAiEvaluations(await aiResponse.json());
+        if (monitoringResponse.ok) setMonitoring(await monitoringResponse.json());
         setMessage("公開版は保存データの閲覧専用です。仮想売買を実行するにはAPIへ接続してください。");
         setUpdatedAt(new Date().toISOString());
         return;
@@ -167,14 +210,16 @@ export function PaperTradingDashboardClient() {
       const aiRequest = shouldFetchAi
         ? fetchLocalApi<AiEvaluationsResponse>("/api/ai/evaluations").catch(() => null)
         : Promise.resolve(null);
-      const [runsPayload, forecastPayload, backtestsPayload] = await Promise.all([
+      const [runsPayload, forecastPayload, backtestsPayload, monitoringPayload] = await Promise.all([
         fetchLocalApi<{ items: Run[] }>("/api/paper-trading/runs"),
         fetchLocalApi<Forecast>(`/api/backtests/forecast?asset=${asset}`),
         fetchLocalApi<{ items: BacktestRun[] }>("/api/backtests?limit=20"),
+        fetchLocalApi<MonitoringSnapshot>("/api/monitoring"),
       ]);
       setRuns(runsPayload.items ?? []);
       setForecast(forecastPayload);
       setBacktests(backtestsPayload.items ?? []);
+      setMonitoring(monitoringPayload);
       setUpdatedAt(new Date().toISOString());
 
       const aiPayload = await aiRequest;
@@ -315,16 +360,19 @@ export function PaperTradingDashboardClient() {
     <div className="space-y-4 pb-24">
       <section className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-primary"><Activity className="h-4 w-4" />モデル検証</div>
-          <h1 className="mt-1 text-2xl font-bold leading-tight text-slate-950 md:text-3xl">モデル成績</h1>
+          <div className="flex items-center gap-2 text-xs font-bold text-primary"><Activity className="h-4 w-4" />MODEL DEVELOPMENT</div>
+          <h1 className="mt-1 text-2xl font-bold leading-tight text-slate-950 md:text-3xl">予測モデル開発モニター</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Polymarketのデータを蓄積し、バックテストと仮想運用で継続改善</p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-          <ShieldCheck className="h-4 w-4" />
-          {snapshot ? "閲覧専用" : "実注文なし"}
+        <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${!snapshot && monitoring?.status === "live" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+          <span className={`h-2.5 w-2.5 rounded-full ${!snapshot && monitoring?.status === "live" ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
+          {snapshot ? "公開スナップショット" : monitoring?.status === "live" ? "稼働中" : monitoring?.status === "delayed" ? "更新遅延" : "接続確認中"}
         </div>
       </section>
 
-      <ModelSummaryPanel asset={asset} aiEvaluations={aiEvaluations} bestBacktest={bestBacktest} latestPaperRun={latestPaperRun} activeRun={activeRun} updatedAt={updatedAt} />
+      <DevelopmentMonitor snapshot={monitoring} readOnly={snapshot} />
+
+      <ModelSummaryPanel asset={asset} monitoring={monitoring} bestBacktest={bestBacktest} latestPaperRun={latestPaperRun} activeRun={activeRun} updatedAt={updatedAt} />
 
       <section className="rounded-lg border border-border bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -380,6 +428,8 @@ export function PaperTradingDashboardClient() {
         </div>
       </details>
 
+      <MonitoringDetails snapshot={monitoring} />
+
       <section className="grid gap-4 xl:grid-cols-2">
         <ScoreboardCard asset={asset} backtests={backtests} onSelect={(id) => void loadBacktest(id)} />
         <PaperRunsCard asset={asset} runs={runs} updatedAt={updatedAt} onSelect={(id) => void loadPaperRun(id)} />
@@ -390,33 +440,155 @@ export function PaperTradingDashboardClient() {
   );
 }
 
+function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapshot | null; readOnly: boolean }) {
+  const improvement = snapshot?.model.brierImprovement;
+  const healthyPipelines = snapshot?.pipelines.filter((pipeline) => pipeline.status === "healthy").length ?? 0;
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="開発稼働状況">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
+        <div className="flex items-center gap-2">
+          <Server className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-bold text-slate-950">データ収集・検証基盤</h2>
+        </div>
+        <div className="flex items-center gap-3 text-xs font-bold">
+          {improvement !== null && improvement !== undefined ? (
+            <span className={improvement >= 0 ? "text-emerald-700" : "text-rose-700"}>
+              予測誤差 {Math.abs(improvement * 100).toFixed(1)}%{improvement >= 0 ? "改善" : "悪化"}
+            </span>
+          ) : null}
+          <span className="text-muted-foreground">{readOnly ? "公開時点" : `${healthyPipelines}/${snapshot?.pipelines.length ?? 4} 稼働`}</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
+        <MonitorMetric label="蓄積データ" value={formatCompact(snapshot?.collection.totalRecords)} note={`24時間 +${formatCompact(snapshot?.collection.last24Hours)}`} />
+        <MonitorMetric label="Polymarket市場" value={formatCompact(snapshot?.polymarket.markets)} note={`${formatCompact(snapshot?.polymarket.snapshots)}件保存`} />
+        <MonitorMetric label="バックテスト" value={formatCompact(snapshot?.polymarket.backtestPoints)} note="決着前の価格で検証" />
+        <MonitorMetric label="連続蓄積" value={formatElapsed(snapshot?.collection.startedAt)} note={relativeTime(snapshot?.collection.latestAt)} />
+      </div>
+      <div className="grid grid-cols-2 border-t sm:grid-cols-4 sm:divide-x sm:divide-border">
+        {(snapshot?.pipelines ?? fallbackPipelines).map((pipeline) => (
+          <div key={pipeline.id} className="flex items-center justify-between gap-2 border-b px-3 py-2.5 odd:border-r sm:border-b-0 sm:border-r-0 sm:px-4 sm:py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${readOnly ? "bg-slate-300" : pipeline.status === "healthy" ? "bg-emerald-500" : pipeline.status === "error" ? "bg-rose-500" : "bg-amber-400"}`} />
+              <span className="truncate text-xs font-bold text-slate-800">{pipeline.label}</span>
+            </div>
+            <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">{pipeline.cadence}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MonitorMetric({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="min-w-0 p-4 sm:p-5">
+      <p className="text-[11px] font-bold text-muted-foreground sm:text-xs">{label}</p>
+      <p className="mt-2 break-words text-2xl font-bold leading-none text-slate-950 sm:text-3xl">{value}</p>
+      <p className="mt-2 truncate text-[10px] font-semibold text-muted-foreground sm:text-xs">{note}</p>
+    </div>
+  );
+}
+
+function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
+  const model = snapshot?.model;
+  const passedChecks = snapshot?.backtestQuality.checks.filter((check) => check.passed).length ?? 0;
+  return (
+    <section className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-bold text-slate-950">バックテスト品質</h2>
+          </div>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${snapshot?.backtestQuality.status === "good" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}`}>
+            {passedChecks}/{snapshot?.backtestQuality.checks.length ?? 4} 合格
+          </span>
+        </div>
+        <div className="mt-5 grid grid-cols-3 divide-x divide-border">
+          <CompactMetric label="的中率" value={formatPct(model?.latestAccuracy)} />
+          <CompactMetric label="予測誤差" value={formatNumber(model?.latestBrierScore, 3)} good />
+          <CompactMetric label="検証損益" value={formatPct(model?.latestReturnPct)} good={(model?.latestReturnPct ?? 0) > 0} />
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2 border-t pt-4">
+          {(snapshot?.backtestQuality.checks ?? []).map((check) => (
+            <span key={check.label} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold ${check.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+              {check.passed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleDot className="h-3.5 w-3.5" />}
+              {check.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Layers3 className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-bold text-slate-950">相場環境データ</h2>
+          </div>
+          <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">モデル入力候補</span>
+        </div>
+        <div className="mt-4 divide-y divide-border">
+          {(snapshot?.hyperliquid.assets ?? []).map((item) => (
+            <div key={item.asset} className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-3 py-3">
+              <span className="text-sm font-bold text-slate-950">{item.asset}</span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-slate-950">{formatMarketPrice(item.price)}</p>
+                <p className="truncate text-[10px] font-semibold text-muted-foreground">24h出来高 {formatUsdCompact(item.dayVolume)}</p>
+              </div>
+              <span className={`text-sm font-bold ${(item.change24hPct ?? 0) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.change24hPct)}</span>
+            </div>
+          ))}
+          {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
+        </div>
+        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Hyperliquidの価格・出来高・建玉・資金調達率を補助データとして5分ごとに保存</p>
+      </div>
+    </section>
+  );
+}
+
+function CompactMetric({ label, value, good = false }: { label: string; value: string; good?: boolean }) {
+  return (
+    <div className="min-w-0 px-3 first:pl-0 last:pr-0 sm:px-4">
+      <p className="text-[10px] font-bold text-muted-foreground sm:text-xs">{label}</p>
+      <p className={`mt-2 break-words text-xl font-bold sm:text-2xl ${good ? "text-emerald-700" : "text-slate-950"}`}>{value}</p>
+    </div>
+  );
+}
+
+const fallbackPipelines = [
+  { id: "polymarket", label: "Polymarket収集", cadence: "5分ごと", status: "waiting" as const },
+  { id: "hyperliquid", label: "相場データ収集", cadence: "5分ごと", status: "waiting" as const },
+  { id: "backtest", label: "自動バックテスト", cadence: "6時間ごと", status: "waiting" as const },
+  { id: "paper", label: "仮想運用", cadence: "5分ごと", status: "waiting" as const },
+];
+
 function ModelSummaryPanel({
   asset,
-  aiEvaluations,
+  monitoring,
   bestBacktest,
   latestPaperRun,
   activeRun,
   updatedAt,
 }: {
   asset: string;
-  aiEvaluations: AiEvaluationsResponse | null;
+  monitoring: MonitoringSnapshot | null;
   bestBacktest: BacktestRun | null;
   latestPaperRun: Run | null;
   activeRun: Run | null;
   updatedAt: string | null;
 }) {
-  const aiSummary = aiEvaluations?.historySummary;
-  const decision = getAiModelDecision(aiSummary);
+  const decision = getModelSignal(bestBacktest?.metrics?.brierScore);
   const DecisionIcon = decision.icon;
   const baselineSignal = getModelSignal(bestBacktest?.metrics?.brierScore);
-  const comparison = getMarketComparison(aiSummary);
+  const comparison = getBacktestComparison(monitoring);
   const paperSignal = getProfitSignal(latestPaperRun?.metrics?.totalReturnPct);
   const PaperIcon = paperSignal.icon;
   const paperValue = latestPaperRun ? formatPct(latestPaperRun.metrics?.totalReturnPct) : activeRun ? "計測中" : "未実行";
   const paperNote = latestPaperRun ? paperSignal.label : activeRun ? `${activeRun.asset}を観察中` : "結果なし";
-  const resolved = aiSummary?.resolved ?? 0;
-  const total = aiSummary?.total ?? 0;
-  const resolvedProgress = total > 0 ? (resolved / total) * 100 : 0;
+  const observations = bestBacktest?.metrics?.observations ?? 0;
+  const testedMarkets = bestBacktest?.metrics?.markets ?? 0;
+  const validationProgress = clamp((observations / 200) * 100, 0, 100);
 
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="モデル成績の概要">
@@ -426,21 +598,21 @@ function ModelSummaryPanel({
             <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${toneIconClass(decision.tone)}`}>
               <DecisionIcon className="h-6 w-6" />
             </span>
-            <p className="text-sm font-bold text-muted-foreground">AIモデル総合</p>
+            <p className="text-sm font-bold text-muted-foreground">モデル総合</p>
           </div>
           <h2 className="mt-5 text-4xl font-bold leading-none text-slate-950 sm:text-5xl">{decision.label}</h2>
           <div className="mt-6">
             <div className="flex items-center justify-between gap-3 text-xs font-bold text-muted-foreground">
-              <span>結果確定</span>
-              <span>{aiSummary ? `${resolved} / ${total}件` : "確認中"}</span>
+              <span>検証データ</span>
+              <span>{testedMarkets}市場 / {observations}時点</span>
             </div>
-            <VisualMeter tone={decision.tone} value={resolvedProgress} className="mt-2 h-2.5" />
+            <VisualMeter tone={decision.tone} value={validationProgress} className="mt-2 h-2.5" />
           </div>
         </div>
         <div className="grid grid-cols-3 divide-x divide-border">
           <ResultMetric
             icon={Target}
-            label="市場比較"
+            label="前回比"
             value={comparison.value}
             note={comparison.note}
             tone={comparison.tone}
@@ -501,19 +673,18 @@ function ResultMetric({
   );
 }
 
-function getMarketComparison(summary: AiHistorySummary | undefined): { value: string; note: string; tone: Tone } {
-  if (!summary || summary.resolved === 0 || summary.improvementVsMarket === null || !summary.averageMarketBrierScore) {
-    return { value: "比較待ち", note: "確定後に表示", tone: "neutral" };
+function getBacktestComparison(snapshot: MonitoringSnapshot | null): { value: string; note: string; tone: Tone } {
+  const improvement = snapshot?.model.brierImprovement;
+  if (improvement === null || improvement === undefined) {
+    return { value: "基準作成中", note: "次回検証から比較", tone: "neutral" };
   }
-
-  const relativeDifference = (summary.improvementVsMarket / summary.averageMarketBrierScore) * 100;
-  if (relativeDifference >= 1) {
-    return { value: `${relativeDifference.toFixed(1)}%`, note: "市場より誤差が少ない", tone: "good" };
+  if (improvement > 0) {
+    return { value: `${(improvement * 100).toFixed(1)}%改善`, note: "前回より誤差が減少", tone: "good" };
   }
-  if (relativeDifference <= -1) {
-    return { value: `${Math.abs(relativeDifference).toFixed(1)}%`, note: "市場より誤差が多い", tone: "bad" };
+  if (improvement < 0) {
+    return { value: `${Math.abs(improvement * 100).toFixed(1)}%悪化`, note: "条件の見直し対象", tone: "bad" };
   }
-  return { value: "ほぼ同じ", note: "市場との差は1%未満", tone: "watch" };
+  return { value: "変化なし", note: "前回と同水準", tone: "watch" };
 }
 
 function ScoreboardCard({ asset, backtests, onSelect }: { asset: string; backtests: BacktestRun[]; onSelect: (id: string) => void }) {
@@ -765,78 +936,6 @@ function getModelSignal(value: number | null | undefined): Signal {
   };
 }
 
-function getAiModelDecision(summary: AiHistorySummary | undefined): ModelDecision {
-  if (!summary) {
-    return {
-      label: "読込中",
-      description: "AI評価を確認しています。",
-      tone: "neutral",
-      icon: Gauge,
-      reason: "評価データを取得しています。",
-      nextStep: "取得完了まで待ちます。",
-    };
-  }
-  if (summary.resolved === 0 || summary.averageBrierScore === null) {
-    return {
-      label: "結果待ち",
-      description: "市場が確定するまで、AIの成績は判定しません。",
-      tone: "neutral",
-      icon: Gauge,
-      reason: `${summary?.pending ?? 0}件が結果待ちです。未確定の予想を成績に含めていません。`,
-      nextStep: "市場が確定した後に、AIと市場価格の誤差を比較します。",
-    };
-  }
-  if (summary.resolved < 10) {
-    return {
-      label: "データ不足",
-      description: "確定結果が少ないため、良し悪しを断定しません。",
-      tone: "watch",
-      icon: AlertCircle,
-      reason: `${summary.resolved}件が確定。10件以上になるまで参考値として扱います。`,
-      nextStep: "予想を継続し、確定件数を増やします。",
-    };
-  }
-  const improvement = summary.improvementVsMarket;
-  if (improvement === null) {
-    return {
-      label: "比較待ち",
-      description: "市場価格との比較値がまだありません。",
-      tone: "watch",
-      icon: AlertCircle,
-      reason: `${summary.resolved}件が確定していますが、比較値を計算できません。`,
-      nextStep: "次回更新で市場価格との比較を再計算します。",
-    };
-  }
-  if (improvement >= 0.005) {
-    return {
-      label: "市場より良好",
-      description: "確定結果では、AIの確率誤差が市場価格より小さい状態です。",
-      tone: "good",
-      icon: CheckCircle2,
-      reason: `${summary.resolved}件で、AI ${formatNumber(summary.averageBrierScore, 3)} / 市場 ${formatNumber(summary.averageMarketBrierScore, 3)}。`,
-      nextStep: "仮想売買の損益と、別期間でも同じ傾向が続くか確認します。",
-    };
-  }
-  if (improvement <= -0.005) {
-    return {
-      label: "市場より弱い",
-      description: "現時点では、市場価格を上回る根拠が確認できません。",
-      tone: "bad",
-      icon: AlertCircle,
-      reason: `${summary.resolved}件で、AI ${formatNumber(summary.averageBrierScore, 3)} / 市場 ${formatNumber(summary.averageMarketBrierScore, 3)}。`,
-      nextStep: "ニュースの関連性、確率の補正、対象テーマを見直します。",
-    };
-  }
-  return {
-    label: "差は小さい",
-    description: "市場価格との差は小さく、優位性はまだ確認できません。",
-    tone: "watch",
-    icon: AlertCircle,
-    reason: `${summary.resolved}件で比較。AIと市場の差は${formatSignedNumber(improvement)}です。`,
-    nextStep: "確定件数を増やして、偶然ではないか確認します。",
-  };
-}
-
 function getProfitSignal(value: number | null | undefined): Signal {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return {
@@ -966,12 +1065,44 @@ function formatNumber(value: number | null | undefined, digits = 2) {
   return value === null || value === undefined || !Number.isFinite(value) ? "-" : value.toFixed(digits);
 }
 
-function formatPct(value: number | null | undefined) {
-  return value === null || value === undefined || !Number.isFinite(value) ? "-" : `${(value * 100).toFixed(2)}%`;
+function formatCompact(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  if (Math.abs(value) < 10_000) return new Intl.NumberFormat("ja-JP").format(value);
+  return new Intl.NumberFormat("ja-JP", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-function formatSignedNumber(value: number | null | undefined) {
-  return value === null || value === undefined || !Number.isFinite(value) ? "-" : `${value >= 0 ? "+" : ""}${value.toFixed(3)}`;
+function formatElapsed(startedAt: string | null | undefined) {
+  if (!startedAt) return "-";
+  const elapsedHours = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 3_600_000));
+  const days = Math.floor(elapsedHours / 24);
+  const hours = elapsedHours % 24;
+  return days > 0 ? `${days}日 ${hours}時間` : `${hours}時間`;
+}
+
+function relativeTime(value: string | null | undefined) {
+  if (!value) return "更新待ち";
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
+  if (minutes < 1) return "最終収集 1分以内";
+  if (minutes < 60) return `最終収集 ${minutes}分前`;
+  return `最終収集 ${Math.floor(minutes / 60)}時間前`;
+}
+
+function formatMarketPrice(value: number) {
+  const digits = value >= 1_000 ? 0 : value >= 10 ? 2 : 4;
+  return `$${new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(value)}`;
+}
+
+function formatUsdCompact(value: number) {
+  return `$${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
+}
+
+function formatSignedPct(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
+}
+
+function formatPct(value: number | null | undefined) {
+  return value === null || value === undefined || !Number.isFinite(value) ? "-" : `${(value * 100).toFixed(2)}%`;
 }
 
 function formatUsd(value: number | null | undefined) {

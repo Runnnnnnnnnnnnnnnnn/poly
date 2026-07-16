@@ -30,34 +30,60 @@ model MarketSnapshot {
   @@index([marketId, capturedAt])
 }
 
+model HyperliquidSnapshot {
+  id               String   @id
+  asset            String
+  midPrice         Float
+  markPrice        Float
+  oraclePrice      Float
+  previousDayPrice Float
+  dayVolume        Float
+  openInterest     Float
+  fundingRate      Float
+  capturedAt       DateTime @default(now())
+
+  @@index([asset, capturedAt])
+  @@index([capturedAt])
+}
+
+model PipelineHeartbeat {
+  id            String    @id
+  status        String
+  records       Int       @default(0)
+  message       String?
+  lastAttemptAt DateTime
+  lastSuccessAt DateTime?
+  updatedAt     DateTime  @updatedAt
+}
+
 model PredictionMarket {
-  id           String    @id
-  asset        String
-  tokenId      String
-  title        String
-  slug         String?
-  endDate      DateTime?
-  resolved     Boolean   @default(false)
-  result       Int?
-  firstSeenAt  DateTime  @default(now())
-  lastSeenAt   DateTime  @default(now())
+  id          String    @id
+  asset       String
+  tokenId     String
+  title       String
+  slug        String?
+  endDate     DateTime?
+  resolved    Boolean   @default(false)
+  result      Int?
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
 
   @@index([asset, endDate])
   @@index([resolved, endDate])
 }
 
 model BacktestRun {
-  id              String          @id
-  asset           String
-  status          String
-  threshold       Float
-  initialCapital  Float
-  marketCount     Int             @default(0)
-  metricsJson     String?
-  error           String?
-  startedAt       DateTime        @default(now())
-  completedAt     DateTime?
-  points          BacktestPoint[]
+  id             String          @id
+  asset          String
+  status         String
+  threshold      Float
+  initialCapital Float
+  marketCount    Int             @default(0)
+  metricsJson    String?
+  error          String?
+  startedAt      DateTime        @default(now())
+  completedAt    DateTime?
+  points         BacktestPoint[]
 }
 
 model BacktestPoint {
@@ -104,41 +130,41 @@ model AiEvaluationSnapshot {
 }
 
 model PaperAccount {
-  id           String            @id
-  name         String
-  initialCash  Float
-  cashBalance  Float
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  runs         PaperTradingRun[]
+  id          String            @id
+  name        String
+  initialCash Float
+  cashBalance Float
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  runs        PaperTradingRun[]
 }
 
 model PaperTradingRun {
-  id                String                 @id
-  accountId         String
-  asset             String
-  mode              String
-  strategy          String
-  status            String
-  initialCash       Float
-  finalCash         Float?
-  configJson        String
-  metricsJson       String?
-  error             String?
-  startedAt         DateTime               @default(now())
-  completedAt       DateTime?
-  account           PaperAccount           @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  orders            PaperOrder[]
-  fills             PaperFill[]             @relation("PaperRunFills")
-  positions         PaperPosition[]
-  equitySnapshots   PaperEquitySnapshot[]
+  id              String                @id
+  accountId       String
+  asset           String
+  mode            String
+  strategy        String
+  status          String
+  initialCash     Float
+  finalCash       Float?
+  configJson      String
+  metricsJson     String?
+  error           String?
+  startedAt       DateTime              @default(now())
+  completedAt     DateTime?
+  account         PaperAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  orders          PaperOrder[]
+  fills           PaperFill[]           @relation("PaperRunFills")
+  positions       PaperPosition[]
+  equitySnapshots PaperEquitySnapshot[]
 
   @@index([accountId, startedAt])
   @@index([asset, mode, status])
 }
 
 model PaperOrder {
-  id                String       @id
+  id                String          @id
   runId             String
   marketId          String
   tokenId           String
@@ -148,12 +174,12 @@ model PaperOrder {
   requestedPrice    Float
   requestedQuantity Float
   filledPrice       Float?
-  filledQuantity    Float        @default(0)
-  fee               Float        @default(0)
-  slippage          Float        @default(0)
+  filledQuantity    Float           @default(0)
+  fee               Float           @default(0)
+  slippage          Float           @default(0)
   status            String
   reason            String?
-  submittedAt      DateTime     @default(now())
+  submittedAt       DateTime        @default(now())
   filledAt          DateTime?
   run               PaperTradingRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   fills             PaperFill[]
@@ -163,21 +189,21 @@ model PaperOrder {
 }
 
 model PaperFill {
-  id          String          @id
-  runId       String
-  orderId     String
-  marketId    String
-  tokenId     String
-  outcome     String
-  side        String
-  price       Float
-  quantity    Float
-  notional    Float
-  fee         Float
-  slippage    Float
-  filledAt    DateTime        @default(now())
-  run         PaperTradingRun @relation("PaperRunFills", fields: [runId], references: [id], onDelete: Cascade)
-  order       PaperOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id       String          @id
+  runId    String
+  orderId  String
+  marketId String
+  tokenId  String
+  outcome  String
+  side     String
+  price    Float
+  quantity Float
+  notional Float
+  fee      Float
+  slippage Float
+  filledAt DateTime        @default(now())
+  run      PaperTradingRun @relation("PaperRunFills", fields: [runId], references: [id], onDelete: Cascade)
+  order    PaperOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([runId, filledAt])
   @@index([marketId, filledAt])

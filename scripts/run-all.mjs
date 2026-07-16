@@ -1,4 +1,21 @@
 import { spawn } from "node:child_process";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const lockPath = resolve(".run-all.lock");
+try {
+  writeFileSync(lockPath, String(process.pid), { flag: "wx" });
+} catch {
+  const existingPid = Number(readFileSync(lockPath, "utf8"));
+  try {
+    process.kill(existingPid, 0);
+    console.error(`supervisor already running (pid ${existingPid})`);
+    process.exit(0);
+  } catch {
+    rmSync(lockPath, { force: true });
+    writeFileSync(lockPath, String(process.pid), { flag: "wx" });
+  }
+}
 
 const production = process.env.PAPER_PRODUCTION === "1";
 const appPort = process.env.APP_PORT || process.env.PORT || "3001";
@@ -13,6 +30,11 @@ const processes = [
     name: "worker",
     command: process.execPath,
     args: ["node_modules/tsx/dist/cli.mjs", "scripts/run-paper-trading.mts"],
+  },
+  {
+    name: "monitor",
+    command: process.execPath,
+    args: ["node_modules/tsx/dist/cli.mjs", "scripts/run-monitoring.mts"],
   },
 ];
 const children = new Map();
@@ -33,6 +55,7 @@ function startProcess(config) {
 function shutdown(code = 0) {
   if (closing) return;
   closing = true;
+  rmSync(lockPath, { force: true });
   for (const child of children.values()) child.kill("SIGTERM");
   setTimeout(() => process.exit(code), 250);
 }
@@ -40,6 +63,7 @@ function shutdown(code = 0) {
 for (const processConfig of processes) startProcess(processConfig);
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
+process.on("exit", () => rmSync(lockPath, { force: true }));
 
 console.log(
   production
