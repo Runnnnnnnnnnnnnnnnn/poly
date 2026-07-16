@@ -6,7 +6,7 @@ import { Button, type ButtonProps } from "@/components/ui/button";
 import { OPEN_CONCIERGE_EVENT, type ConciergeOpenContext } from "@/src/lib/ai/concierge-context";
 
 export function AskConciergeButton({
-  label = "AIコンシェルジュに質問する",
+  label = "AIリサーチ相談",
   context,
   variant = "secondary",
 }: {

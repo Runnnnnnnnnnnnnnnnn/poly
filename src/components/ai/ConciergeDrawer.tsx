@@ -100,7 +100,7 @@ export function ConciergeDrawer() {
         {
           role: "assistant",
           content:
-            "この公開版（静的スナップショット）では、AIリサーチアシスタントはリアルタイム応答できません。価格・出来高・ニュース・解決条件などの表示データはそのままご覧いただけます。AIとの対話は、最新データに接続したローカル版でご利用ください。",
+            "現在の公開ページでは、AIリサーチ相談のリアルタイム応答は利用できません。価格・出来高・ニュース・解決条件など、画面に表示されている情報はそのまま確認できます。",
           status: "fallback",
         },
       ]);
@@ -134,12 +134,12 @@ export function ConciergeDrawer() {
         },
       ]);
       setSources(payload.sources ?? []);
-    } catch (error) {
+    } catch {
       setMessages((current) => [
         ...current,
         {
           role: "assistant",
-          content: `AIコンシェルジュの取得に失敗しました。${error instanceof Error ? error.message : ""}`,
+          content: "回答を取得できませんでした。少し時間を置いてからもう一度お試しください。",
           status: "error",
         },
       ]);
@@ -185,7 +185,7 @@ export function ConciergeDrawer() {
                   <Bot className="h-5 w-5" />
                 </span>
                 <div>
-                  <h2 className="font-bold">Polymarket Concierge</h2>
+                  <h2 className="font-bold">リサーチ相談</h2>
                   <p className="text-xs text-muted-foreground">{contextLabel(activeContext)}</p>
                 </div>
               </div>
@@ -214,7 +214,7 @@ export function ConciergeDrawer() {
             <div className="border-t border-border bg-white p-4">
               {snapshot ? (
                 <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                  公開版（スナップショット）では、AIとのリアルタイム対話は利用できません。表示中のデータの読み方は下の例から確認できます。
+                  現在の公開ページでは、AIとのリアルタイム対話は利用できません。表示中のデータの読み方は下の例から確認できます。
                 </p>
               ) : null}
               <SuggestedQuestions questions={suggestedQuestions} onSelect={(question) => void sendMessage(question)} />

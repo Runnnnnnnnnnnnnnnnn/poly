@@ -415,8 +415,8 @@ export function fallbackDetail(id: string): MarketDetail {
   return {
     ...market,
     description:
-      "公開データの取得に失敗した場合に表示する参考用の説明です。Polymarketの市場ルールと関連情報を確認してください。",
-    resolutionSource: "Polymarket market page and official resolution source",
+      "公開データの更新を確認できない場合に表示する参考用の説明です。Polymarketの市場ルールと関連情報を確認してください。",
+    resolutionSource: "Polymarketの市場ページと公式判定情報",
     clobTokenIds: [],
     outcomes: ["Yes", "No"],
     priceHistory: [

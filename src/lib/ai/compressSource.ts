@@ -34,7 +34,7 @@ export function newsToSourceCard(item: NewsItem): SourceCard {
     relevanceScore: item.status === "live" ? 0.8 : 0.45,
     reliability: item.kind === "公式情報" ? "high" : "medium",
     whyItMatters: "市場価格の背景にある一次情報や制度変更を確認する材料になります。",
-    notableUncertainties: item.status === "live" ? [] : ["fallback data のため最新性は確認が必要です。"],
+    notableUncertainties: item.status === "live" ? [] : ["保存データのため、最新性は別途確認が必要です。"],
   };
 }
 

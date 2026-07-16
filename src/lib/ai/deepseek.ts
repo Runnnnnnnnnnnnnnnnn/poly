@@ -138,11 +138,11 @@ export async function answerWithDeepSeek(input: z.infer<typeof chatRequestSchema
       answer: applyAnswerGuardrails(firstMessage?.content ?? fallbackAnswer(latestUserText, contextPack)),
       sources: fallbackSources,
     };
-  } catch (error) {
+  } catch {
     return {
       status: "error" as const,
       model: getDeepSeekModel(),
-      answer: `${fallbackAnswer(latestUserText, contextPack)}\n\nDeepSeek APIの呼び出しは失敗しました。${error instanceof Error ? error.message : "原因不明"}`,
+      answer: `${fallbackAnswer(latestUserText, contextPack)}\n\n補足: リアルタイムのAI回答を取得できなかったため、画面内の情報をもとに整理しています。`,
       sources: fallbackSources,
     };
   }
@@ -189,6 +189,12 @@ function fallbackAnswer(question: string, contextPack: Awaited<ReturnType<typeof
   }
 
   return applyAnswerGuardrails(
-    `結論: Polymarket Watchでは、予測市場のテーマ、確率、倍率、関連情報を確認できます。\n\n根拠:\n- 市場価格は参加者の見方を表す参考値です。\n- 公式情報、報道、市場データを分けて見ます。\n- 現在の市場データ状態は ${contextPack.dataStatus} です。\n\n質問: ${question}`,
+      `結論: Polymarket Watchでは、予測市場のテーマ、確率、倍率、関連情報を確認できます。\n\n根拠:\n- 市場価格は参加者の見方を表す参考値です。\n- 公式情報、報道、市場データを分けて見ます。\n- 現在の市場データ状態は ${dataStatusLabel(contextPack.dataStatus)} です。\n\n質問: ${question}`,
   );
+}
+
+function dataStatusLabel(status: string) {
+  if (status === "live") return "リアルタイム更新";
+  if (status === "error") return "更新確認中";
+  return "保存データ";
 }

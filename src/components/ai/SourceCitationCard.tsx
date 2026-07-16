@@ -11,8 +11,14 @@ export function SourceCitationCard({ source }: { source: SourceCard }) {
     >
       <span className="font-semibold text-slate-800">{source.title}</span>
       <span className="text-muted-foreground">
-        {source.source} / {formatDateTime(source.publishedAt)} / 信頼度 {source.reliability}
+        {source.source} / {formatDateTime(source.publishedAt)} / 信頼度 {reliabilityLabel(source.reliability)}
       </span>
     </a>
   );
+}
+
+function reliabilityLabel(value: SourceCard["reliability"]) {
+  if (value === "high") return "高";
+  if (value === "medium") return "標準";
+  return "要確認";
 }

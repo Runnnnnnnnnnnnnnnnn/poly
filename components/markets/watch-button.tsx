@@ -5,18 +5,20 @@ import { Eye, EyeOff } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
+const WATCHLIST_KEY = "polymarket-watch.watchlist";
+
 export function WatchButton({ marketId }: { marketId: string }) {
   const [watched, setWatched] = useState(false);
 
   useEffect(() => {
-    const items = JSON.parse(localStorage.getItem("jmw-watchlist") ?? "[]") as string[];
+    const items = readWatchlist();
     setWatched(items.includes(marketId));
   }, [marketId]);
 
   function toggle() {
-    const items = JSON.parse(localStorage.getItem("jmw-watchlist") ?? "[]") as string[];
+    const items = readWatchlist();
     const next = watched ? items.filter((item) => item !== marketId) : [...new Set([...items, marketId])];
-    localStorage.setItem("jmw-watchlist", JSON.stringify(next));
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(next));
     setWatched(!watched);
   }
 
@@ -26,4 +28,16 @@ export function WatchButton({ marketId }: { marketId: string }) {
       {watched ? "ウォッチ解除" : "ウォッチする"}
     </Button>
   );
+}
+
+function readWatchlist() {
+  try {
+    const raw = localStorage.getItem(WATCHLIST_KEY) ?? localStorage.getItem("jmw-watchlist") ?? "[]";
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    localStorage.removeItem(WATCHLIST_KEY);
+    localStorage.removeItem("jmw-watchlist");
+    return [];
+  }
 }
