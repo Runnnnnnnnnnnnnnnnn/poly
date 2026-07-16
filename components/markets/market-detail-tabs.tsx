@@ -5,10 +5,11 @@ import { AlertCircle, BarChart3, Calculator, CheckCircle2, FileText, Gauge, News
 
 import { CalculatorClient } from "@/components/calculator-client";
 import { ProbabilityChart, VolumeChart } from "@/components/charts/market-charts";
+import { DataUsagePanel } from "@/components/data-usage-panel";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { MarketDetail, NewsItem, RateResponse } from "@/lib/types";
+import type { MarketDetail, NewsItem, RateResponse, SourceStatus } from "@/lib/types";
 import { cn, formatDate, formatPayoutMultiplier, formatPercent, formatUsd } from "@/lib/utils";
 
 const tabs = [
@@ -21,7 +22,7 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 
-export function MarketDetailTabs({ market, rate, themeNews }: { market: MarketDetail; rate: RateResponse; themeNews: NewsItem[] }) {
+export function MarketDetailTabs({ market, rate, themeNews, sourceStatuses = [] }: { market: MarketDetail; rate: RateResponse; themeNews: NewsItem[]; sourceStatuses?: SourceStatus[] }) {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   return (
@@ -50,6 +51,7 @@ export function MarketDetailTabs({ market, rate, themeNews }: { market: MarketDe
 
       {activeTab === "overview" ? (
         <div className="grid gap-4">
+          <DataUsagePanel mode="detail" sourceStatuses={sourceStatuses} compact />
           <MarketReadinessPanel
             probability={market.probability}
             liquidity={market.liquidity}

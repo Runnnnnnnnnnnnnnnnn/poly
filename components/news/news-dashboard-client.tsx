@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCcw } from "lucide-react";
 
+import { DataUsagePanel } from "@/components/data-usage-panel";
 import { NewsList } from "@/components/news/news-list";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -76,6 +77,7 @@ export function NewsDashboardClient({ initialData, initialMarkets }: { initialDa
           話題になっているニュースと、その背景確認に使える関連テーマを並べて表示します。
         </p>
       </div>
+      <DataUsagePanel mode="news" sourceStatuses={data.sourceStatuses} compact />
       <NewsList items={data.items} markets={markets} />
     </section>
   );

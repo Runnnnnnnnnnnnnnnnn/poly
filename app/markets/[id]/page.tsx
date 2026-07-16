@@ -68,7 +68,7 @@ export default async function MarketDetailPage({ params }: { params: Promise<{ i
           </div>
         </div>
 
-        <MarketDetailTabs market={market} rate={rate} themeNews={themeNews} />
+        <MarketDetailTabs market={market} rate={rate} themeNews={themeNews} sourceStatuses={data.sourceStatuses} />
       </section>
     </AppShell>
   );
