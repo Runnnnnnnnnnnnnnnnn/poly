@@ -1,6 +1,7 @@
 import type { BacktestPoint, BacktestRun } from "@prisma/client";
 
 import { prisma } from "@/src/lib/server/prisma";
+import { calculateBacktestMetrics } from "@/src/lib/backtest/metrics";
 import { discoverCryptoMarkets, fetchHistoricalProbability } from "@/src/lib/backtest/polymarket";
 import type { BacktestMetrics, BacktestResult, CryptoAsset, CryptoForecast, CryptoMarket } from "@/src/lib/backtest/types";
 
@@ -87,18 +88,18 @@ export async function runBacktest(options: {
     for (const dataset of usable) {
       const result = dataset.market.result as 0 | 1;
       let lastProbability: number | null = null;
-      let marketPnl = 0;
+      let traded = false;
       for (const observation of dataset.history) {
         const probability = clamp(observation.probability, 0.0001, 0.9999);
         const brierScore = (probability - result) ** 2;
         const logLoss = -(result * Math.log(probability) + (1 - result) * Math.log(1 - probability));
         const position = probability >= threshold ? 1 : probability <= 1 - threshold ? -1 : 0;
-        const pnl = position === 1
+        const pnl = !traded && position === 1
           ? stake * ((result === 1 ? 1 / probability : 0) - 1)
-          : position === -1
+          : !traded && position === -1
             ? stake * ((result === 0 ? 1 / (1 - probability) : 0) - 1)
             : 0;
-        marketPnl = pnl;
+        if (position !== 0) traded = true;
         points.push({
           id: crypto.randomUUID(),
           runId,
@@ -121,14 +122,12 @@ export async function runBacktest(options: {
         firstProbability: dataset.history[0]?.probability ?? null,
         lastProbability,
       });
-      // PnL is measured once per market at the final available observation.
-      if (points.length > 0) points[points.length - 1].pnl = marketPnl;
     }
 
     if (points.length > 0) {
       await prisma.backtestPoint.createMany({ data: points });
     }
-    const metrics = calculateMetrics(points, initialCapital, usable.length);
+    const metrics = calculateBacktestMetrics(points, initialCapital, usable.length);
     const completedAt = new Date();
     const completed = await prisma.backtestRun.update({
       where: { id: runId },
@@ -205,36 +204,6 @@ export async function getCryptoForecast(asset: CryptoAsset, targetDate?: string)
   };
 }
 
-function calculateMetrics(points: Array<Omit<BacktestPoint, "run">>, initialCapital: number, marketCount: number): BacktestMetrics {
-  if (points.length === 0) {
-    return { markets: marketCount, observations: 0, accuracy: null, brierScore: null, logLoss: null, calibration: [], tradedMarkets: 0, totalPnl: 0, returnPct: 0 };
-  }
-  const lastByMarket = new Map<string, Omit<BacktestPoint, "run">>();
-  for (const point of points) lastByMarket.set(point.marketId, point);
-  const evaluationPoints = Array.from(lastByMarket.values());
-  const calibration = Array.from({ length: 10 }, (_, index) => {
-    const bucket = evaluationPoints.filter((point) => Math.min(9, Math.floor(point.predictedProbability * 10)) === index);
-    return {
-      bucket: `${index * 10}-${index === 9 ? 100 : (index + 1) * 10}%`,
-      predicted: average(bucket.map((point) => point.predictedProbability)),
-      actual: average(bucket.map((point) => point.actualOutcome)),
-      count: bucket.length,
-    };
-  }).filter((bucket) => bucket.count > 0);
-  const totalPnl = evaluationPoints.reduce((sum, point) => sum + point.pnl, 0);
-  return {
-    markets: marketCount,
-    observations: points.length,
-    accuracy: average(evaluationPoints.map((point) => (point.predictedProbability >= 0.5 ? 1 : 0) === point.actualOutcome ? 1 : 0)),
-    brierScore: average(evaluationPoints.map((point) => point.brierScore)),
-    logLoss: average(evaluationPoints.map((point) => point.logLoss)),
-    calibration,
-    tradedMarkets: Array.from(lastByMarket.values()).filter((point) => point.position !== 0).length,
-    totalPnl,
-    returnPct: totalPnl / initialCapital,
-  };
-}
-
 function toMarketCreate(market: CryptoMarket, seenAt: Date) {
   return {
     id: market.id,
@@ -272,7 +241,6 @@ function parseMetrics(value: string | null) {
 
 function toDate(value: string | null) { return value && !Number.isNaN(new Date(value).getTime()) ? new Date(value) : null; }
 function clamp(value: number, min: number, max: number) { return Math.min(max, Math.max(min, value)); }
-function average(values: number[]) { return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0; }
 
 function parseCryptoThreshold(title: string) {
   const match = title.match(/(?:above|over|reach|at\s+or\s+above|higher\s+than)[^$€£\d]{0,20}[$€£]?\s*([\d,.]+)/i);

@@ -1,11 +1,13 @@
 "use client";
 
 const LOCAL_API_STORAGE_KEY = "jmw.localApiBase";
+const LOCAL_API_TOKEN_STORAGE_KEY = "jmw.localApiToken";
 const DEFAULT_STATIC_LOCAL_API_BASE = process.env.NEXT_PUBLIC_LOCAL_API_BASE ?? "";
 
 export function initializeLocalApiBaseFromUrl() {
   if (typeof window === "undefined") return "";
   const apiBase = getUrlApiBase();
+  initializeLocalApiTokenFromUrl();
   if (!apiBase) return getLocalApiBase();
   setLocalApiBase(apiBase);
   return apiBase;
@@ -36,6 +38,31 @@ export function setLocalApiBase(value: string) {
     window.localStorage.removeItem(LOCAL_API_STORAGE_KEY);
   }
   window.dispatchEvent(new Event("local-api-base-changed"));
+}
+
+export function initializeLocalApiTokenFromUrl() {
+  if (typeof window === "undefined") return "";
+  const token = getUrlApiToken();
+  if (token) setLocalApiToken(token);
+  return getLocalApiToken();
+}
+
+export function getLocalApiToken() {
+  if (typeof window === "undefined") return "";
+  const fromUrl = getUrlApiToken();
+  if (fromUrl) {
+    const saved = window.localStorage.getItem(LOCAL_API_TOKEN_STORAGE_KEY);
+    if (saved !== fromUrl) window.localStorage.setItem(LOCAL_API_TOKEN_STORAGE_KEY, fromUrl);
+    return fromUrl;
+  }
+  return window.localStorage.getItem(LOCAL_API_TOKEN_STORAGE_KEY)?.trim() ?? "";
+}
+
+export function setLocalApiToken(value: string) {
+  const normalized = value.trim();
+  if (normalized) window.localStorage.setItem(LOCAL_API_TOKEN_STORAGE_KEY, normalized);
+  else window.localStorage.removeItem(LOCAL_API_TOKEN_STORAGE_KEY);
+  window.dispatchEvent(new Event("local-api-token-changed"));
 }
 
 export function localApiUrl(path: string) {
@@ -85,12 +112,14 @@ export function isAiAvailable() {
 }
 
 export async function fetchLocalApi<T>(path: string, init: RequestInit = {}) {
+  const token = getLocalApiToken();
   const response = await fetch(localApiUrl(path), {
     ...init,
     cache: "no-store",
     headers: {
       "content-type": "application/json",
       ...init.headers,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
   });
 
@@ -104,12 +133,14 @@ export async function fetchLocalApi<T>(path: string, init: RequestInit = {}) {
 
 /** AIエンドポイント（aiApiBase 優先）に対する GET。 */
 export async function fetchAi<T>(path: string, init: RequestInit = {}) {
+  const token = getLocalApiToken();
   const response = await fetch(aiEndpoint(path), {
     ...init,
     cache: "no-store",
     headers: {
       "content-type": "application/json",
       ...init.headers,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
   });
 
@@ -125,4 +156,10 @@ function getUrlApiBase() {
   if (typeof window === "undefined") return "";
   const params = new URLSearchParams(window.location.search);
   return (params.get("api") || params.get("apiBase") || "").trim().replace(/\/$/, "");
+}
+
+function getUrlApiToken() {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  return (params.get("apiToken") || params.get("token") || "").trim();
 }

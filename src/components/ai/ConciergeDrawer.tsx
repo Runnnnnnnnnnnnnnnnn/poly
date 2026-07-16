@@ -17,7 +17,7 @@ import {
   OPEN_CONCIERGE_EVENT,
   type ConciergeOpenContext,
 } from "@/src/lib/ai/concierge-context";
-import { aiEndpoint, isAiAvailable } from "@/src/lib/localApiClient";
+import { fetchAi, isAiAvailable } from "@/src/lib/localApiClient";
 
 type ChatResponse = {
   status: "live" | "fallback" | "error" | "guarded";
@@ -110,9 +110,8 @@ export function ConciergeDrawer() {
     setLoading(true);
 
     try {
-      const response = await fetch(aiEndpoint("/api/ai/chat"), {
+      const payload = await fetchAi<ChatResponse>("/api/ai/chat", {
         method: "POST",
-        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           marketId,
           context: activeContext,
@@ -123,7 +122,6 @@ export function ConciergeDrawer() {
             .map((message) => ({ role: message.role, content: message.content })),
         }),
       });
-      const payload = (await response.json()) as ChatResponse;
       setMessages((current) => [
         ...current,
         {

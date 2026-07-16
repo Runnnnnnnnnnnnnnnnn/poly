@@ -57,6 +57,7 @@ const gammaMarketSchema = z
     liquidityNum: z.number().optional(),
     active: z.boolean().optional(),
     closed: z.boolean().optional(),
+    resolved: z.boolean().optional(),
     archived: z.boolean().optional(),
     enableOrderBook: z.boolean().optional(),
   })
@@ -188,6 +189,24 @@ export async function fetchMarkets(): Promise<{
 }
 
 export const fetchJapanMarkets = fetchMarkets;
+
+export async function fetchResolvedOutcome(id: string): Promise<0 | 1 | null> {
+  try {
+    const response = await fetchWithTimeout(`${GAMMA_API}/markets/${encodeURIComponent(id)}`);
+    if (!response.ok) return null;
+    const market = gammaMarketSchema.parse(await response.json());
+    if (!market.closed && !market.resolved) return null;
+    const outcomes = safeJsonArray(market.outcomes).map(String);
+    const prices = safeJsonArray(market.outcomePrices).map(toNumber);
+    const yesPrice = prices[findYesIndex(outcomes)] ?? prices[0] ?? null;
+    const noPrice = prices[findNoIndex(outcomes)] ?? prices[1] ?? null;
+    if (yesPrice !== null && yesPrice >= 0.999) return 1;
+    if (noPrice !== null && noPrice >= 0.999) return 0;
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export async function fetchMarketDetail(
   id: string,

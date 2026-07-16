@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { fetchNewsItems } from "@/lib/adapters/news";
-import { fetchMarketDetail, fetchMarkets } from "@/lib/adapters/polymarket";
+import { fetchMarketDetail, fetchMarkets, fetchResolvedOutcome } from "@/lib/adapters/polymarket";
 import {
   filterMarketGroups,
   groupMarkets,
@@ -59,6 +59,7 @@ export async function getMarketAiEvaluations(): Promise<MarketAiEvaluationsRespo
   const items = mergeEvaluations(baseline, refined);
   const status: DataStatus = refined ? "live" : process.env.DEEPSEEK_API_KEY ? "error" : "fallback";
   await persistEvaluationHistory(items).catch(() => undefined);
+  await settleEvaluationHistory().catch(() => undefined);
   const history = await listEvaluationHistory(30).catch(() => []);
 
   return {
@@ -352,7 +353,8 @@ async function persistEvaluationHistory(items: MarketAiEvaluation[]) {
   await Promise.all(
     items.map((item) => {
       const evaluatedAt = new Date(item.evaluatedAt);
-      const id = `${item.marketId}:${evaluatedAt.getTime()}`;
+      const evaluationWindow = Math.floor(evaluatedAt.getTime() / (15 * 60 * 1000));
+      const id = `${item.marketId}:${evaluationWindow}`;
       return prisma.aiEvaluationSnapshot.upsert({
         where: { id },
         create: {
@@ -391,6 +393,28 @@ async function persistEvaluationHistory(items: MarketAiEvaluation[]) {
   );
 }
 
+async function settleEvaluationHistory() {
+  const pending = await prisma.aiEvaluationSnapshot.findMany({
+    where: { resolvedOutcome: null },
+    orderBy: { recordedAt: "desc" },
+    take: 30,
+    select: { id: true, marketId: true, aiProbability: true },
+  });
+  const marketIds = Array.from(new Set(pending.map((row) => row.marketId)));
+  const outcomes = await Promise.all(marketIds.map(async (marketId) => [marketId, await fetchResolvedOutcome(marketId)] as const));
+  const resolvedByMarket = new Map(outcomes.filter((entry): entry is readonly [string, 0 | 1] => entry[1] !== null));
+  await Promise.all(
+    pending.flatMap((row) => {
+      const outcome = resolvedByMarket.get(row.marketId);
+      if (outcome === undefined) return [];
+      return prisma.aiEvaluationSnapshot.update({
+        where: { id: row.id },
+        data: { resolvedOutcome: outcome, brierScore: (row.aiProbability - outcome) ** 2 },
+      });
+    }),
+  );
+}
+
 async function listEvaluationHistory(limit: number): Promise<MarketAiEvaluationHistoryEntry[]> {
   const rows = await prisma.aiEvaluationSnapshot.findMany({
     orderBy: { recordedAt: "desc" },
@@ -419,11 +443,16 @@ async function listEvaluationHistory(limit: number): Promise<MarketAiEvaluationH
 
 function summarizeEvaluationHistory(history: MarketAiEvaluationHistoryEntry[]): MarketAiEvaluationHistorySummary {
   const resolved = history.filter((entry) => entry.brierScore !== null);
+  const marketBrierScores = resolved.map((entry) => (entry.marketProbability - (entry.resolvedOutcome as 0 | 1)) ** 2);
+  const averageBrierScore = resolved.length ? averageNumber(resolved.map((entry) => entry.brierScore as number)) : null;
+  const averageMarketBrierScore = marketBrierScores.length ? averageNumber(marketBrierScores) : null;
   return {
     total: history.length,
     pending: history.length - resolved.length,
     resolved: resolved.length,
-    averageBrierScore: resolved.length ? averageNumber(resolved.map((entry) => entry.brierScore as number)) : null,
+    averageBrierScore,
+    averageMarketBrierScore,
+    improvementVsMarket: averageBrierScore !== null && averageMarketBrierScore !== null ? averageMarketBrierScore - averageBrierScore : null,
     latestRecordedAt: history[0]?.recordedAt ?? null,
   };
 }

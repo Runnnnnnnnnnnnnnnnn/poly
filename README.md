@@ -52,7 +52,7 @@ Expose `http://localhost:3000` with an HTTPS tunnel such as Cloudflare Tunnel or
 node scripts/demo-link.mjs https://your-tunnel-url.trycloudflare.com
 ```
 
-Send the generated URL. It includes `?api=...`, so the GitHub Pages UI stores the tunnel URL and then reads markets, news, FX, and DeepSeek chat from your local server. The API key stays only in your `.env` on your machine.
+Send the generated URL. It includes `?api=...` and the local `API_ACCESS_TOKEN`, so the GitHub Pages UI can securely read markets, news, FX, paper-trading results, and DeepSeek chat from your local server. The token is read from `.env` by the script and is never committed.
 
 ## Validation
 
@@ -70,7 +70,10 @@ E_STAT_APP_ID=""
 DEEPSEEK_API_KEY=""
 DEEPSEEK_BASE_URL="https://api.deepseek.com"
 DEEPSEEK_MODEL="deepseek-v4-flash"
+API_ACCESS_TOKEN="generate-a-long-random-token"
 ```
+
+`API_ACCESS_TOKEN` protects every runtime `/api/*` route. Use a long random value, keep it in `.env`, and regenerate it if a shared URL is exposed. The GitHub Pages version is read-only and displays a static snapshot when the local server is unavailable.
 
 `DEEPSEEK_MODEL` is configurable. The default is `deepseek-v4-flash`, based on the current DeepSeek official docs. The older `deepseek-chat` and `deepseek-reasoner` names are not used as defaults.
 
@@ -107,7 +110,6 @@ For GitHub Pages, `npm run build:pages` generates a static UI snapshot in `out/`
 - Slack notifications
 - Email notifications
 - Admin screen
-- Backtesting
 - Static snapshot export for GitHub Pages
 
 ## Crypto prediction backtest API
@@ -143,7 +145,7 @@ npm run paper:backtest
 ASSET=BTC npm run paper:trade
 ```
 
-`paper:trade` は live paper run を作成して5分ごとに公開データを評価します。これは実注文ではありませんが、公開する場合はrun APIに認証を追加してください。
+`paper:trade` は live paper run を作成して5分ごとに公開データを評価します。これは実注文ではありません。runtime APIは `API_ACCESS_TOKEN` で保護されます。
 
 ## 統合起動
 

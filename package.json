@@ -6,6 +6,7 @@
     "dev": "next dev",
     "start": "next start",
     "lint": "next lint",
+    "test": "tsx scripts/test.mts",
     "typecheck": "tsc --noEmit",
     "build": "DATABASE_URL=${DATABASE_URL:-file:./dev.db} SKIP_TITLE_AI=1 prisma generate && SKIP_TITLE_AI=1 next build",
     "build:pages": "node scripts/build-pages.mjs",

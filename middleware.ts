@@ -14,15 +14,15 @@ function allowedOrigins() {
 
 function corsHeaders(request: NextRequest) {
   const origin = request.headers.get("origin");
-  const allowOrigin = origin && allowedOrigins().has(origin) ? origin : defaultAllowedOrigins[0];
-
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
+
+  if (origin && allowedOrigins().has(origin)) headers["Access-Control-Allow-Origin"] = origin;
+  return headers;
 }
 
 export function middleware(request: NextRequest) {
@@ -33,6 +33,16 @@ export function middleware(request: NextRequest) {
       status: 204,
       headers,
     });
+  }
+
+  const expectedToken = process.env.API_ACCESS_TOKEN?.trim();
+  const authorization = request.headers.get("authorization") ?? "";
+  const suppliedToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
+  if (!expectedToken) {
+    return NextResponse.json({ error: "API_ACCESS_TOKEN is not configured" }, { status: 503, headers });
+  }
+  if (!suppliedToken || suppliedToken !== expectedToken) {
+    return NextResponse.json({ error: "API authentication required" }, { status: 401, headers });
   }
 
   const response = NextResponse.next();

@@ -166,6 +166,8 @@ export type MarketAiEvaluationHistorySummary = {
   pending: number;
   resolved: number;
   averageBrierScore: number | null;
+  averageMarketBrierScore: number | null;
+  improvementVsMarket: number | null;
   latestRecordedAt: string | null;
 };
 

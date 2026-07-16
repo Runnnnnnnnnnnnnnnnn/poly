@@ -48,7 +48,7 @@ type EngineState = {
   orders: number;
   filledOrders: number;
   rejectedOrders: number;
-  forecasts: Map<string, ForecastPoint>;
+  forecasts: ForecastPoint[];
 };
 
 export async function createPaperAccount(name = "default", initialCash = DEFAULT_CONFIG.initialCash) {
@@ -160,7 +160,29 @@ export async function getPaperRun(runId: string) {
 export async function stopPaperRun(runId: string) {
   const run = await prisma.paperTradingRun.findUniqueOrThrow({ where: { id: runId }, include: { account: true } });
   if (run.status === "running") {
-    await prisma.paperTradingRun.update({ where: { id: runId }, data: { status: "stopped", finalCash: run.account.cashBalance, completedAt: new Date() } });
+    const config = normalizeConfig(JSON.parse(run.configJson) as Partial<PaperStrategyConfig>);
+    const markets = await discoverCryptoMarkets({ includeResolved: true, asset: run.asset as CryptoAsset, limit: Math.max(100, config.maxMarkets) }).catch(() => []);
+    const marketById = new Map(markets.map((market) => [market.id, market]));
+    const openPositions = await prisma.paperPosition.findMany({ where: { runId, status: "OPEN" } });
+    const positionsValue = openPositions.reduce((sum, position) => {
+      const market = marketById.get(position.marketId);
+      if (!market || market.currentProbability === null) return sum;
+      const probability = position.outcome === "YES" ? market.currentProbability : 1 - market.currentProbability;
+      return sum + position.quantity * probability;
+    }, 0);
+    const finalEquity = run.account.cashBalance + positionsValue;
+    await prisma.paperEquitySnapshot.create({
+      data: {
+        id: crypto.randomUUID(),
+        runId,
+        capturedAt: new Date(),
+        cash: run.account.cashBalance,
+        positionsValue,
+        equity: finalEquity,
+        unrealizedPnl: positionsValue - openPositions.reduce((sum, position) => sum + position.costBasis, 0),
+      },
+    });
+    await prisma.paperTradingRun.update({ where: { id: runId }, data: { status: "stopped", finalCash: finalEquity, completedAt: new Date() } });
   }
   return getPaperRun(runId);
 }
@@ -177,35 +199,44 @@ async function executeHistoricalRun(runId: string, accountId: string, asset: Cry
       return null;
     }
   }))).filter((dataset): dataset is Dataset => Boolean(dataset && dataset.history.length > 0));
-  const state: EngineState = { cash: config.initialCash, open: new Map(), equity: [config.initialCash], fees: 0, orders: 0, filledOrders: 0, rejectedOrders: 0, forecasts: new Map() };
+  const state: EngineState = { cash: config.initialCash, open: new Map(), equity: [config.initialCash], fees: 0, orders: 0, filledOrders: 0, rejectedOrders: 0, forecasts: [] };
   const events = datasets.flatMap((dataset) => dataset.history.map((point) => ({ dataset, point, at: new Date(point.timestamp).getTime() }))).sort((a, b) => a.at - b.at);
   const settled = new Set<string>();
   const training = datasets;
+  const historicalProbabilities = new Map<string, number>();
 
-  for (const event of events) {
+  for (const [eventIndex, event] of events.entries()) {
+    historicalProbabilities.set(event.dataset.market.id, event.point.probability);
+    const eventTimestamp = new Date(event.at + eventIndex);
     for (const dataset of datasets) {
-      if (!settled.has(dataset.market.id) && dataset.settleAt <= event.at && state.open.has(dataset.market.id) && dataset.market.result !== null) {
-        await settlePosition(runId, state, state.open.get(dataset.market.id) as OpenPosition, dataset.market.result);
+      if (!settled.has(dataset.market.id) && dataset.settleAt <= event.at) {
         settled.add(dataset.market.id);
+        if (state.open.has(dataset.market.id) && dataset.market.result !== null) {
+          await settlePosition(runId, state, state.open.get(dataset.market.id) as OpenPosition, dataset.market.result, eventTimestamp);
+        }
       }
     }
-    if (state.open.has(event.dataset.market.id)) continue;
     const priorTraining = training.filter((dataset) => dataset.settleAt < event.at);
-    await considerTrade(runId, state, event.dataset.market, event.point.probability, priorTraining, config, {
-      yesPrice: null,
-      yesDepth: [],
-      noPrice: null,
-      noDepth: [],
-      minOrderSize: event.dataset.market.minOrderSize || 5,
-    });
+    if (!settled.has(event.dataset.market.id) && !state.open.has(event.dataset.market.id)) {
+      await considerTrade(runId, state, event.dataset.market, event.point.probability, priorTraining, config, {
+        yesPrice: null,
+        yesDepth: [],
+        noPrice: null,
+        noDepth: [],
+        minOrderSize: event.dataset.market.minOrderSize || 5,
+      }, eventTimestamp);
+    }
     const fair = calibratedProbability(event.point.probability, priorTraining, config);
-    state.forecasts.set(event.dataset.market.id, { probability: event.point.probability, fairProbability: fair.probability, result: event.dataset.market.result as 0 | 1 });
-    await saveEquitySnapshot(runId, state, [event.dataset.market]);
+    state.forecasts.push({ probability: event.point.probability, fairProbability: fair.probability, result: event.dataset.market.result as 0 | 1 });
+    await saveEquitySnapshot(runId, state, datasets.map((dataset) => dataset.market), eventTimestamp, historicalProbabilities);
   }
   for (const dataset of datasets) {
-    if (state.open.has(dataset.market.id) && dataset.market.result !== null) await settlePosition(runId, state, state.open.get(dataset.market.id) as OpenPosition, dataset.market.result);
+    if (state.open.has(dataset.market.id) && dataset.market.result !== null) {
+      const settlementTime = Number.isFinite(dataset.settleAt) ? new Date(dataset.settleAt) : new Date();
+      await settlePosition(runId, state, state.open.get(dataset.market.id) as OpenPosition, dataset.market.result, settlementTime);
+    }
   }
-  await saveEquitySnapshot(runId, state, []);
+  await saveEquitySnapshot(runId, state, datasets.map((dataset) => dataset.market), new Date((events.at(-1)?.at ?? Date.now()) + events.length), historicalProbabilities);
   await finalizeRun(runId, accountId, state, config, datasets.length);
 }
 
@@ -217,6 +248,7 @@ async function considerTrade(
   training: Dataset[],
   config: PaperStrategyConfig,
   book: { yesPrice: number | null; yesDepth: Array<{ price: number; size: number }>; noPrice: number | null; noDepth: Array<{ price: number; size: number }>; minOrderSize: number },
+  timestamp = new Date(),
 ) {
   const feeConfig = market.feesEnabled ? config : { ...config, takerFeeRate: 0 };
   const fair = calibratedProbability(probability, training, config);
@@ -252,7 +284,6 @@ async function considerTrade(
   if (totalCost > state.cash || quantity <= 0) return;
   state.orders += 1;
   const orderId = crypto.randomUUID();
-  const timestamp = new Date();
   await prisma.paperOrder.create({
     data: {
       id: orderId,
@@ -283,25 +314,26 @@ async function considerTrade(
   state.open.set(market.id, { positionId, marketId: market.id, outcome: selected.outcome, tokenId: selected.tokenId as string, quantity, costBasis: totalCost });
 }
 
-async function settlePosition(runId: string, state: EngineState, position: OpenPosition, result: 0 | 1) {
+async function settlePosition(runId: string, state: EngineState, position: OpenPosition, result: 0 | 1, closedAt = new Date()) {
   const won = (position.outcome === "YES" && result === 1) || (position.outcome === "NO" && result === 0);
   const settlementValue = won ? position.quantity : 0;
   state.cash += settlementValue;
-  await prisma.paperPosition.update({ where: { id: position.positionId }, data: { settlementValue, realizedPnl: settlementValue - position.costBasis, status: "CLOSED", closedAt: new Date() } });
+  await prisma.paperPosition.update({ where: { id: position.positionId }, data: { settlementValue, realizedPnl: settlementValue - position.costBasis, status: "CLOSED", closedAt } });
   state.open.delete(position.marketId);
 }
 
-async function saveEquitySnapshot(runId: string, state: EngineState, markets: CryptoMarket[]) {
+async function saveEquitySnapshot(runId: string, state: EngineState, markets: CryptoMarket[], capturedAt = new Date(), probabilities?: Map<string, number>) {
   const values = markets.map((market) => {
     const position = state.open.get(market.id);
-    if (!position || market.currentProbability === null) return 0;
-    return position.quantity * (position.outcome === "YES" ? market.currentProbability : 1 - market.currentProbability);
+    const probability = probabilities ? probabilities.get(market.id) ?? null : market.currentProbability;
+    if (!position || probability === null || probability === undefined) return 0;
+    return position.quantity * (position.outcome === "YES" ? probability : 1 - probability);
   });
   const positionsValue = values.reduce((sum, value) => sum + value, 0);
   const equity = state.cash + positionsValue;
   state.equity.push(equity);
   const costBasis = Array.from(state.open.values()).reduce((sum, position) => sum + position.costBasis, 0);
-  await prisma.paperEquitySnapshot.create({ data: { id: crypto.randomUUID(), runId, capturedAt: new Date(), cash: state.cash, positionsValue, equity, unrealizedPnl: positionsValue - costBasis } });
+  await prisma.paperEquitySnapshot.create({ data: { id: crypto.randomUUID(), runId, capturedAt, cash: state.cash, positionsValue, equity, unrealizedPnl: positionsValue - costBasis } });
 }
 
 async function finalizeRun(runId: string, accountId: string, state: EngineState, config: PaperStrategyConfig, settledMarkets: number) {
@@ -327,7 +359,7 @@ async function calculateMetrics(runId: string, state: EngineState, config: Paper
   });
   const mean = average(returns);
   const std = Math.sqrt(average(returns.map((value) => (value - mean) ** 2)));
-  const forecasts = Array.from(state.forecasts.values());
+  const forecasts = state.forecasts;
   return {
     startingCash: config.initialCash,
     endingCash: state.cash,
@@ -350,7 +382,7 @@ async function calculateMetrics(runId: string, state: EngineState, config: Paper
 
 async function loadState(runId: string, cash: number): Promise<EngineState> {
   const positions = await prisma.paperPosition.findMany({ where: { runId, status: "OPEN" } });
-  return { cash, open: new Map(positions.map((position) => [position.marketId, { positionId: position.id, marketId: position.marketId, outcome: position.outcome as "YES" | "NO", tokenId: position.tokenId, quantity: position.quantity, costBasis: position.costBasis }])), equity: [], fees: 0, orders: 0, filledOrders: 0, rejectedOrders: 0, forecasts: new Map() };
+  return { cash, open: new Map(positions.map((position) => [position.marketId, { positionId: position.id, marketId: position.marketId, outcome: position.outcome as "YES" | "NO", tokenId: position.tokenId, quantity: position.quantity, costBasis: position.costBasis }])), equity: [], fees: 0, orders: 0, filledOrders: 0, rejectedOrders: 0, forecasts: [] };
 }
 
 async function loadTrainingSamples(markets: CryptoMarket[], limit: number) {
