@@ -497,18 +497,36 @@ function relateNews(market: MarketSummary, items: NewsItem[]) {
   const scored = items
     .map((item) => {
       const newsText = [item.title, item.summary, item.relatedMarket ?? "", item.category].join(" ").toLowerCase();
-      let score = item.category === market.category ? 5 : 0;
-      if (item.relatedMarket && marketText.includes(item.relatedMarket.toLowerCase())) score += 8;
-      for (const token of newsText.split(/[^a-z0-9ぁ-んァ-ヶ一-龠ー/]+/u).filter((part) => part.length >= 2 && !/^\d+$/.test(part)).slice(0, 24)) {
+      let score = categoryCompatible(item.category, market.category) ? 6 : 0;
+      if (item.relatedMarket) {
+        const related = item.relatedMarket.toLowerCase();
+        if (marketText.includes(related) || related.includes(market.category.toLowerCase())) score += 10;
+      }
+      for (const token of importantNewsTokens(newsText)) {
         if (marketText.includes(token)) score += token.length > 4 ? 2 : 1;
       }
+      if (/日本経済新聞|日経|Reuters|ロイター|Bloomberg|ブルームバーグ/.test(item.source)) score += 1;
       return { item, score };
     })
-    .filter((entry) => entry.score >= 4)
+    .filter((entry) => entry.score >= 6)
     .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
     .map((entry) => entry.item);
-  if (scored.length > 0) return scored;
-  return items.slice(0, 4);
+  return scored;
+}
+
+function categoryCompatible(newsCategory: NewsItem["category"], marketCategory: MarketSummary["category"]) {
+  if (newsCategory === marketCategory) return true;
+  if ((newsCategory === "為替" || newsCategory === "日銀" || newsCategory === "金融") && ["為替", "日銀", "金融"].includes(marketCategory)) return true;
+  if ((newsCategory === "規制" || newsCategory === "政策") && ["規制", "政治", "選挙"].includes(marketCategory)) return true;
+  return false;
+}
+
+function importantNewsTokens(text: string) {
+  return Array.from(new Set(text.split(/[^a-z0-9ぁ-んァ-ヶ一-龠ー/]+/u)))
+    .filter((part) => part.length >= 2 && !/^\d+$/.test(part))
+    .filter((part) => !["ニュース", "市場", "日本", "関連", "速報", "今日", "明日", "今年", "について", "する", "した", "いる", "ある"].includes(part))
+    .slice(0, 28);
 }
 
 function buildWatchPoints(market: MarketSummary) {

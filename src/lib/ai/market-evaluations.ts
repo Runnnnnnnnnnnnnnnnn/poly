@@ -12,6 +12,8 @@ import {
 import type {
   DataStatus,
   MarketAiEvaluation,
+  MarketAiEvaluationHistoryEntry,
+  MarketAiEvaluationHistorySummary,
   MarketAiEvaluationsResponse,
   MarketDetail,
   MarketSummary,
@@ -20,6 +22,7 @@ import type {
 } from "@/lib/types";
 import { clamp, fetchWithTimeout, formatPercent, formatUsd } from "@/lib/utils";
 import { getDeepSeekModel } from "@/src/lib/ai/deepseek";
+import { prisma } from "@/src/lib/server/prisma";
 
 const EVALUATION_TABS: MarketThemeTabId[] = ["japan", "global"];
 
@@ -55,12 +58,16 @@ export async function getMarketAiEvaluations(): Promise<MarketAiEvaluationsRespo
   const refined = await refineWithDeepSeek(baseline, candidates, newsResult.items).catch(() => null);
   const items = mergeEvaluations(baseline, refined);
   const status: DataStatus = refined ? "live" : process.env.DEEPSEEK_API_KEY ? "error" : "fallback";
+  await persistEvaluationHistory(items).catch(() => undefined);
+  const history = await listEvaluationHistory(30).catch(() => []);
 
   return {
     status,
     updatedAt: new Date().toISOString(),
     model: getDeepSeekModel(),
     items,
+    history,
+    historySummary: summarizeEvaluationHistory(history),
     sourceStatuses,
   };
 }
@@ -338,4 +345,89 @@ function formatSignedPercent(value: number) {
 
 function getDeepSeekBaseUrl() {
   return (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "");
+}
+
+async function persistEvaluationHistory(items: MarketAiEvaluation[]) {
+  if (items.length === 0) return;
+  await Promise.all(
+    items.map((item) => {
+      const evaluatedAt = new Date(item.evaluatedAt);
+      const id = `${item.marketId}:${evaluatedAt.getTime()}`;
+      return prisma.aiEvaluationSnapshot.upsert({
+        where: { id },
+        create: {
+          id,
+          marketId: item.marketId,
+          tabId: item.tabId,
+          tabLabel: item.tabLabel,
+          title: item.title,
+          marketProbability: item.marketProbability,
+          aiProbability: item.aiProbability,
+          expectedReturnYes: item.expectedReturnYes,
+          expectedReturnNo: item.expectedReturnNo,
+          rating: item.rating,
+          confidence: item.confidence,
+          model: item.model,
+          status: item.status,
+          reasonsJson: JSON.stringify(item.reasons),
+          evidenceJson: JSON.stringify(item.evidence),
+          evaluatedAt,
+        },
+        update: {
+          title: item.title,
+          marketProbability: item.marketProbability,
+          aiProbability: item.aiProbability,
+          expectedReturnYes: item.expectedReturnYes,
+          expectedReturnNo: item.expectedReturnNo,
+          rating: item.rating,
+          confidence: item.confidence,
+          model: item.model,
+          status: item.status,
+          reasonsJson: JSON.stringify(item.reasons),
+          evidenceJson: JSON.stringify(item.evidence),
+        },
+      });
+    }),
+  );
+}
+
+async function listEvaluationHistory(limit: number): Promise<MarketAiEvaluationHistoryEntry[]> {
+  const rows = await prisma.aiEvaluationSnapshot.findMany({
+    orderBy: { recordedAt: "desc" },
+    take: Math.min(Math.max(limit, 1), 100),
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    marketId: row.marketId,
+    tabLabel: row.tabLabel,
+    title: row.title,
+    marketProbability: row.marketProbability,
+    aiProbability: row.aiProbability,
+    expectedReturnYes: row.expectedReturnYes,
+    expectedReturnNo: row.expectedReturnNo,
+    rating: row.rating as MarketAiEvaluation["rating"],
+    confidence: row.confidence as MarketAiEvaluation["confidence"],
+    evaluatedAt: row.evaluatedAt.toISOString(),
+    recordedAt: row.recordedAt.toISOString(),
+    model: row.model,
+    status: row.status as DataStatus,
+    resolvedOutcome: row.resolvedOutcome === 0 || row.resolvedOutcome === 1 ? row.resolvedOutcome : null,
+    brierScore: row.brierScore,
+  }));
+}
+
+function summarizeEvaluationHistory(history: MarketAiEvaluationHistoryEntry[]): MarketAiEvaluationHistorySummary {
+  const resolved = history.filter((entry) => entry.brierScore !== null);
+  return {
+    total: history.length,
+    pending: history.length - resolved.length,
+    resolved: resolved.length,
+    averageBrierScore: resolved.length ? averageNumber(resolved.map((entry) => entry.brierScore as number)) : null,
+    latestRecordedAt: history[0]?.recordedAt ?? null,
+  };
+}
+
+function averageNumber(values: number[]) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }

@@ -1,24 +1,48 @@
 import { spawn } from "node:child_process";
 
 const production = process.env.PAPER_PRODUCTION === "1";
+const appPort = process.env.APP_PORT || process.env.PORT || "3001";
 const env = { ...process.env };
-const children = [
-  spawn(process.execPath, ["node_modules/next/dist/bin/next", production ? "start" : "dev"], { env, stdio: "inherit" }),
-  spawn(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/run-paper-trading.mts"], { env, stdio: "inherit" }),
+const processes = [
+  {
+    name: "web",
+    command: process.execPath,
+    args: ["node_modules/next/dist/bin/next", production ? "start" : "dev", "--hostname", "127.0.0.1", "--port", appPort],
+  },
+  {
+    name: "worker",
+    command: process.execPath,
+    args: ["node_modules/tsx/dist/cli.mjs", "scripts/run-paper-trading.mts"],
+  },
 ];
+const children = new Map();
 
 let closing = false;
+function startProcess(config) {
+  if (closing) return;
+  const child = spawn(config.command, config.args, { env, stdio: "inherit" });
+  children.set(config.name, child);
+  child.on("exit", (code, signal) => {
+    children.delete(config.name);
+    if (closing) return;
+    console.error(`${config.name} stopped (${signal || (code ?? 0)}). restarting in 2s...`);
+    setTimeout(() => startProcess(config), 2000);
+  });
+}
+
 function shutdown(code = 0) {
   if (closing) return;
   closing = true;
-  for (const child of children) child.kill("SIGTERM");
+  for (const child of children.values()) child.kill("SIGTERM");
   setTimeout(() => process.exit(code), 250);
 }
 
-for (const child of children) child.on("exit", (code) => {
-  if (!closing && code && code !== 0) shutdown(code);
-});
+for (const processConfig of processes) startProcess(processConfig);
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
-console.log(production ? "paper app + worker started in production mode" : "paper app + worker started in development mode");
+console.log(
+  production
+    ? `paper app + worker supervisor started on 127.0.0.1:${appPort} in production mode`
+    : `paper app + worker supervisor started on 127.0.0.1:${appPort} in development mode`,
+);

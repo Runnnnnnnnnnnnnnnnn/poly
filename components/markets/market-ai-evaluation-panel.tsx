@@ -6,7 +6,7 @@ import { Bot, History, RefreshCcw } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { MarketAiEvaluation, MarketAiEvaluationsResponse } from "@/lib/types";
+import type { MarketAiEvaluation, MarketAiEvaluationHistoryEntry, MarketAiEvaluationsResponse } from "@/lib/types";
 import { cn, formatDateTime, formatPercent } from "@/lib/utils";
 import { fetchAi, isAiAvailable } from "@/src/lib/localApiClient";
 
@@ -18,6 +18,8 @@ type HistoryEntry = Pick<
   "id" | "tabLabel" | "marketId" | "title" | "marketProbability" | "aiProbability" | "expectedReturnYes" | "expectedReturnNo" | "rating" | "confidence" | "evaluatedAt" | "model"
 > & {
   recordedAt: string;
+  brierScore?: number | null;
+  resolvedOutcome?: 0 | 1 | null;
 };
 
 export function MarketAiEvaluationPanel() {
@@ -82,7 +84,11 @@ export function MarketAiEvaluationPanel() {
     };
   }, [refresh]);
 
-  const latestHistory = useMemo(() => history.slice(0, 6), [history]);
+  const latestHistory = useMemo(() => {
+    const serverHistory = data?.history?.length ? data.history.map(normalizeHistoryEntry) : [];
+    return (serverHistory.length ? serverHistory : history).slice(0, 6);
+  }, [data?.history, history]);
+  const historySummary = data?.historySummary;
 
   return (
     <section className="grid gap-4" aria-labelledby="ai-evaluation-title">
@@ -135,6 +141,12 @@ export function MarketAiEvaluationPanel() {
           ) : null}
         </div>
 
+        <div className="grid grid-cols-3 gap-2">
+          <SmallMetric label="評価履歴" value={`${historySummary?.total ?? latestHistory.length}件`} />
+          <SmallMetric label="検証待ち" value={`${historySummary?.pending ?? latestHistory.length}件`} />
+          <SmallMetric label="平均Brier" value={formatScore(historySummary?.averageBrierScore ?? null)} />
+        </div>
+
         <details className="rounded-md border border-border bg-slate-50 p-3">
           <summary className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-800">
             <History className="h-4 w-4 text-primary" />
@@ -150,7 +162,9 @@ export function MarketAiEvaluationPanel() {
                       {item.tabLabel} / AI {formatPercent(item.aiProbability)} / 市場 {formatPercent(item.marketProbability)} / {formatDateTime(item.recordedAt)}
                     </p>
                   </div>
-                  <Badge variant="outline">検証待ち</Badge>
+                  <Badge variant={item.brierScore === null || item.brierScore === undefined ? "outline" : "live"}>
+                    {item.brierScore === null || item.brierScore === undefined ? "検証待ち" : `Brier ${formatScore(item.brierScore)}`}
+                  </Badge>
                 </div>
               ))}
             </div>
@@ -265,9 +279,34 @@ function previousForItem(item: MarketAiEvaluation, history: HistoryEntry[]) {
   return history.find((entry) => entry.id === item.id && entry.evaluatedAt !== item.evaluatedAt);
 }
 
+function normalizeHistoryEntry(item: MarketAiEvaluationHistoryEntry): HistoryEntry {
+  return {
+    id: item.id,
+    tabLabel: item.tabLabel,
+    marketId: item.marketId,
+    title: item.title,
+    marketProbability: item.marketProbability,
+    aiProbability: item.aiProbability,
+    expectedReturnYes: item.expectedReturnYes,
+    expectedReturnNo: item.expectedReturnNo,
+    rating: item.rating,
+    confidence: item.confidence,
+    evaluatedAt: item.evaluatedAt,
+    model: item.model,
+    recordedAt: item.recordedAt,
+    brierScore: item.brierScore,
+    resolvedOutcome: item.resolvedOutcome,
+  };
+}
+
 function formatReturn(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "-";
   return `${value >= 0 ? "+" : ""}${Math.round(value * 100)}%`;
+}
+
+function formatScore(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "-";
+  return value.toFixed(3);
 }
 
 function formatSignedPercent(value: number) {

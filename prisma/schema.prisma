@@ -77,6 +77,32 @@ model BacktestPoint {
   @@index([marketId, observedAt])
 }
 
+model AiEvaluationSnapshot {
+  id                String   @id
+  marketId          String
+  tabId             String
+  tabLabel          String
+  title             String
+  marketProbability Float
+  aiProbability     Float
+  expectedReturnYes Float?
+  expectedReturnNo  Float?
+  rating            String
+  confidence        String
+  model             String
+  status            String
+  reasonsJson       String
+  evidenceJson      String
+  evaluatedAt       DateTime
+  recordedAt        DateTime @default(now())
+  resolvedOutcome   Int?
+  brierScore        Float?
+
+  @@index([marketId, recordedAt])
+  @@index([evaluatedAt])
+  @@index([status, recordedAt])
+}
+
 model PaperAccount {
   id           String            @id
   name         String

@@ -157,6 +157,7 @@ export function ConciergeDrawer() {
     <>
       <button
         type="button"
+        aria-label="リサーチ相談を開く"
         onClick={() => {
           const resolved = inferConciergeContextFromPath(pathname, {});
           setContext(resolved);
@@ -170,10 +171,10 @@ export function ConciergeDrawer() {
           setSources([]);
           setOpen(true);
         }}
-        className="fixed bottom-5 right-5 z-40 inline-flex h-12 items-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground shadow-soft hover:bg-primary/90"
+        className="fixed bottom-5 right-5 z-40 hidden h-12 items-center justify-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground shadow-soft hover:bg-primary/90 sm:inline-flex"
       >
         <MessageSquare className="h-4 w-4" />
-        リサーチ相談
+        <span>リサーチ相談</span>
       </button>
 
       {open ? (

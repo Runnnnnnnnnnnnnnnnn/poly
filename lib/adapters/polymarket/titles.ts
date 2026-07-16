@@ -221,8 +221,20 @@ function knownJapaneseTitle(title: string) {
   const bitcoinDip = title.match(/Bitcoin dip to \$?([\d,]+) in ([A-Za-z]+)/i);
   if (bitcoinDip) return `ビットコインは${translateMonth(bitcoinDip[2])}に${bitcoinDip[1]}ドルまで下落する？`;
 
-  const tokyoTemperature = title.match(/highest temperature in Tokyo be ([\d.]+)°C on ([A-Za-z]+ \d{1,2})/i);
+  const tokyoTemperature = title.match(/highest temperature in Tokyo (?:on )?(?:.+?\s)?be ([\d.]+)°C on ([A-Za-z]+ \d{1,2}(?:, \d{4})?)/i);
   if (tokyoTemperature) return `東京の最高気温は${translateShortDate(tokyoTemperature[2])}に${tokyoTemperature[1]}度になる？`;
+
+  const nikkeiUpDown = title.match(/Nikkei 225 \(?NIK\)? Up or Down on ([A-Za-z]+ \d{1,2}(?:, \d{4})?)/i);
+  if (nikkeiUpDown) return `日経平均は${translateShortDate(nikkeiUpDown[1])}に前日比で上昇する？`;
+
+  const genericUpDown = title.match(/^(.+?) Up or Down on ([A-Za-z]+ \d{1,2}(?:, \d{4})?)$/i);
+  if (genericUpDown) return `${translatePhrase(genericUpDown[1])}は${translateShortDate(genericUpDown[2])}に上昇する？`;
+
+  const simpleMatchup = title.match(/^([A-Za-z .'-]+)\s+(?:vs\.?|x)\s+([A-Za-z .'-]+)$/i);
+  if (simpleMatchup) return `${translateCountryOrPerson(simpleMatchup[1])}対${translateCountryOrPerson(simpleMatchup[2])}`;
+
+  const sportsTotal = title.match(/^(Over|Under)\s+([\d.]+)\s+(?:goals|points|runs)\s+in\s+(.+)$/i);
+  if (sportsTotal) return `${translateMatchupPhrase(sportsTotal[3])}の合計得点は${sportsTotal[2]}${sportsTotal[1].toLowerCase() === "over" ? "超" : "未満"}になる？`;
 
   const japanPrimeMinister = title.match(/^(?:Will\s+)?(.+?) be (?:the\s+)?Prime Minister of (?:Japan|日本) as (?:a\s+)?result of (?:the\s+)?(20\d{2}) snap (?:election|選挙)/i);
   if (japanPrimeMinister) return `${translatePerson(japanPrimeMinister[1])}氏は${japanPrimeMinister[2]}年の解散総選挙を受けて日本の首相になる？`;
@@ -316,6 +328,17 @@ function translatePerson(value: string) {
   return people[normalized] ?? translatePhrase(normalized);
 }
 
+function translateCountryOrPerson(value: string) {
+  const country = translateCountry(value);
+  return country === value.trim() ? translatePerson(value).replace(/氏$/, "") : country;
+}
+
+function translateMatchupPhrase(value: string) {
+  const matchup = value.trim().match(/^(.+?)\s+(?:vs\.?|x)\s+(.+)$/i);
+  if (matchup) return `${translateCountryOrPerson(matchup[1])}対${translateCountryOrPerson(matchup[2])}`;
+  return translatePhrase(value);
+}
+
 function translateParty(value: string) {
   return value.toLowerCase() === "democratic" ? "民主党" : "共和党";
 }
@@ -336,8 +359,8 @@ function translateOrganization(value: string) {
 function translateShortDate(value: string) {
   const normalized = value.replace(/\?+$/, "").trim();
   if (/end of June/i.test(normalized)) return "6月末";
-  const monthDay = normalized.match(/June (\d{1,2})/i);
-  if (monthDay) return `6月${monthDay[1]}日`;
+  const monthDay = normalized.match(/([A-Za-z]+) (\d{1,2})(?:, (20\d{2}))?/i);
+  if (monthDay) return `${monthDay[3] ? `${monthDay[3]}年` : ""}${translateMonth(monthDay[1])}${monthDay[2]}日`;
   return normalized;
 }
 

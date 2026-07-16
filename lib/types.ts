@@ -142,10 +142,39 @@ export type MarketAiEvaluation = {
   status: DataStatus;
 };
 
+export type MarketAiEvaluationHistoryEntry = {
+  id: string;
+  marketId: string;
+  tabLabel: string;
+  title: string;
+  marketProbability: number;
+  aiProbability: number;
+  expectedReturnYes: number | null;
+  expectedReturnNo: number | null;
+  rating: AiEvaluationRating;
+  confidence: AiEvaluationConfidence;
+  evaluatedAt: string;
+  recordedAt: string;
+  model: string;
+  status: DataStatus;
+  resolvedOutcome: 0 | 1 | null;
+  brierScore: number | null;
+};
+
+export type MarketAiEvaluationHistorySummary = {
+  total: number;
+  pending: number;
+  resolved: number;
+  averageBrierScore: number | null;
+  latestRecordedAt: string | null;
+};
+
 export type MarketAiEvaluationsResponse = {
   status: DataStatus;
   updatedAt: string;
   model: string;
   items: MarketAiEvaluation[];
+  history: MarketAiEvaluationHistoryEntry[];
+  historySummary: MarketAiEvaluationHistorySummary;
   sourceStatuses: SourceStatus[];
 };

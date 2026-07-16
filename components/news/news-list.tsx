@@ -116,6 +116,7 @@ function findRelatedThemeGroups(item: NewsItem, markets: MarketSummary[]) {
       let score = 0;
       const categoryScore = categoryMatchScore(item.category, group);
       score += categoryScore;
+      score += aliasMatchScore(newsText, group.id);
       if ((item.category === "為替" || item.category === "日銀") && categoryScore === 0) return { group, score: 0 };
       if (relatedMarketText && relatedMarketText !== "polymarket") {
         const groupLabel = normalize(group.label);
@@ -141,6 +142,21 @@ function categoryMatchScore(category: NewsItem["category"], group: MarketThemeGr
   if (category === "金融" && group.tags.includes("finance")) return 4;
   if ((category === "規制" || category === "政治" || category === "政策") && group.tags.includes("politics")) return 4;
   return 0;
+}
+
+function aliasMatchScore(newsText: string, groupId: string) {
+  const aliases: Record<string, string[]> = {
+    "theme:usd-jpy": ["usd/jpy", "ドル円", "円相場", "為替", "yen", "boj", "日銀"],
+    "theme:nikkei-225": ["日経平均", "nikkei", "日本株", "半導体株"],
+    "theme:boj-policy": ["日銀", "植田", "金融政策", "利上げ", "利下げ", "boj"],
+    "theme:japan-election": ["選挙", "首相", "内閣", "衆院", "参院"],
+    "theme:japan-crypto-regulation": ["暗号資産", "ステーブルコイン", "金融庁", "税制"],
+    "theme:world-cup-2026": ["ワールドカップ", "fifa", "サッカー"],
+    "theme:us-politics": ["米大統領", "trump", "biden", "democrat", "republican"],
+    "theme:iran-geopolitics": ["イラン", "イスラエル", "停戦", "中東"],
+    "theme:ai-tech": ["ai", "半導体", "nvidia", "openai"],
+  };
+  return (aliases[groupId] ?? []).reduce((score, alias) => score + (newsText.includes(alias) ? 8 : 0), 0);
 }
 
 function formatProbabilityRange(group: MarketThemeGroup) {
