@@ -49,11 +49,24 @@ function isPortOpen(port) {
   });
 }
 
+function getDevPortsToCheck() {
+  const configured = process.env.PAGES_BUILD_DEV_PORTS || process.env.PAGES_BUILD_DEV_PORT || "3000,3001,3002,3003,3004,3005";
+  return configured
+    .split(",")
+    .map((port) => Number(port.trim()))
+    .filter((port) => Number.isInteger(port) && port > 0 && port < 65536);
+}
+
 if (!process.env.CI && process.env.ALLOW_PAGES_BUILD_WITH_DEV_SERVER !== "1") {
-  const devPort = Number(process.env.PAGES_BUILD_DEV_PORT || 3000);
-  if (await isPortOpen(devPort)) {
+  const openPorts = [];
+  for (const port of getDevPortsToCheck()) {
+    if (await isPortOpen(port)) openPorts.push(port);
+  }
+  if (openPorts.length > 0) {
     console.error(
-      `Refusing to run build:pages while a local server is listening on 127.0.0.1:${devPort}. Stop the dev server first, or set ALLOW_PAGES_BUILD_WITH_DEV_SERVER=1 if this is intentional.`,
+      `Refusing to run build:pages while local servers are listening on ${openPorts
+        .map((port) => `127.0.0.1:${port}`)
+        .join(", ")}. Stop the dev server first, or set ALLOW_PAGES_BUILD_WITH_DEV_SERVER=1 if this is intentional.`,
     );
     process.exit(1);
   }
@@ -85,6 +98,9 @@ try {
   // AI予想を鍵を使って生成し public/ai-evaluations.json に出力（鍵はサーバー側のみ・非致命）。
   // DEEPSEEK_API_KEY が無ければスクリプト側で参考データにフォールバックする。
   spawnSync("npx", ["tsx", "scripts/gen-ai-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
+
+  rmSync(join(root, ".next"), { recursive: true, force: true });
+  rmSync(join(root, "out"), { recursive: true, force: true });
 
   const next = spawnSync("npx", ["next", "build"], { cwd: root, env, stdio: "inherit" });
   if (next.status !== 0) {
