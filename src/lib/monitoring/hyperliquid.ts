@@ -23,47 +23,63 @@ const contextSchema = z.object({
 
 const responseSchema = z.tuple([metaSchema, z.array(contextSchema)]);
 
+export type HyperliquidMarketState = {
+  asset: string;
+  midPrice: number;
+  markPrice: number;
+  oraclePrice: number;
+  previousDayPrice: number;
+  dayVolume: number;
+  openInterest: number;
+  fundingRate: number;
+  capturedAt: Date;
+};
+
 export async function collectHyperliquidSnapshots() {
   await markPipelineAttempt("hyperliquid", "主要5銘柄を取得中");
   try {
-    const response = await fetchWithTimeout(
-      HYPERLIQUID_INFO_API,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "metaAndAssetCtxs" }),
-      },
-      20_000,
-    );
-    if (!response.ok) throw new Error(`Hyperliquid info ${response.status}`);
-
-    const [meta, contexts] = responseSchema.parse(await response.json());
-    const capturedAt = new Date();
-    const snapshots = meta.universe.flatMap((asset, index) => {
-      const context = contexts[index];
-      if (!trackedAssets.has(asset.name) || !context) return [];
-      const markPrice = toNumber(context.markPx);
-      const midPrice = toNumber(context.midPx) || markPrice;
-      if (midPrice <= 0 || markPrice <= 0) return [];
-      return [{
-        id: `${asset.name}:${capturedAt.getTime()}`,
-        asset: asset.name,
-        midPrice,
-        markPrice,
-        oraclePrice: toNumber(context.oraclePx),
-        previousDayPrice: toNumber(context.prevDayPx),
-        dayVolume: toNumber(context.dayNtlVlm),
-        openInterest: toNumber(context.openInterest),
-        fundingRate: toNumber(context.funding),
-        capturedAt,
-      }];
-    });
+    const states = await fetchHyperliquidMarketStates();
+    const snapshots = states.map((state) => ({ ...state, id: `${state.asset}:${state.capturedAt.getTime()}` }));
 
     if (snapshots.length) await prisma.hyperliquidSnapshot.createMany({ data: snapshots });
     await markPipelineSuccess("hyperliquid", snapshots.length, `${snapshots.length}銘柄を保存`);
-    return { capturedAt: capturedAt.toISOString(), saved: snapshots.length, assets: snapshots.map((item) => item.asset) };
+    return { capturedAt: states[0]?.capturedAt.toISOString() ?? new Date().toISOString(), saved: snapshots.length, assets: snapshots.map((item) => item.asset) };
   } catch (error) {
     await markPipelineError("hyperliquid", error);
     throw error;
   }
+}
+
+export async function fetchHyperliquidMarketStates(): Promise<HyperliquidMarketState[]> {
+  const response = await fetchWithTimeout(
+    HYPERLIQUID_INFO_API,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "metaAndAssetCtxs" }),
+    },
+    20_000,
+  );
+  if (!response.ok) throw new Error(`Hyperliquid info ${response.status}`);
+
+  const [meta, contexts] = responseSchema.parse(await response.json());
+  const capturedAt = new Date();
+  return meta.universe.flatMap((asset, index) => {
+    const context = contexts[index];
+    if (!trackedAssets.has(asset.name) || !context) return [];
+    const markPrice = toNumber(context.markPx);
+    const midPrice = toNumber(context.midPx) || markPrice;
+    if (midPrice <= 0 || markPrice <= 0) return [];
+    return [{
+      asset: asset.name,
+      midPrice,
+      markPrice,
+      oraclePrice: toNumber(context.oraclePx),
+      previousDayPrice: toNumber(context.prevDayPx),
+      dayVolume: toNumber(context.dayNtlVlm),
+      openInterest: toNumber(context.openInterest),
+      fundingRate: toNumber(context.funding),
+      capturedAt,
+    }];
+  });
 }

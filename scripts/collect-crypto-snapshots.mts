@@ -1,6 +1,6 @@
 import { collectCryptoSnapshots } from "../src/lib/backtest/service";
 
-const intervalMs = Math.max(30_000, Number(process.env.COLLECT_INTERVAL_MS ?? 300_000));
+const intervalMs = Math.max(60_000, Number(process.env.COLLECT_INTERVAL_MS ?? 60_000));
 
 async function collect() {
   try {

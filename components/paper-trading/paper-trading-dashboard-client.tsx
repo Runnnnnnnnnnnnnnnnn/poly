@@ -102,7 +102,19 @@ type HoldoutSlice = {
 type MonitoringSnapshot = {
   status: "live" | "delayed" | "offline";
   generatedAt: string;
-  collection: { startedAt: string | null; latestAt: string | null; totalRecords: number; last24Hours: number };
+  collection: {
+    startedAt: string | null;
+    latestAt: string | null;
+    totalRecords: number;
+    last24Hours: number;
+    synchronizedPrices?: {
+      records: number;
+      last24Hours: number;
+      latestAt: string | null;
+      maximumSkewMs: number | null;
+      targetCadenceMinutes: number;
+    };
+  };
   tradeReadiness: {
     objective: string;
     currentStage: "backtest" | "shadow";
@@ -988,6 +1000,7 @@ function PaperExperimentPanel({ snapshot }: { snapshot: MonitoringSnapshot | nul
 
 function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapshot | null; readOnly: boolean }) {
   const healthyPipelines = snapshot?.pipelines.filter((pipeline) => pipeline.status === "healthy").length ?? 0;
+  const synchronizedPrices = snapshot?.collection.synchronizedPrices;
   const operationRows = [
     {
       label: "異常通知",
@@ -1016,7 +1029,11 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
       </div>
       <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
         <MonitorMetric label="蓄積データ" value={formatCompact(snapshot?.collection.totalRecords)} note={`24時間 +${formatCompact(snapshot?.collection.last24Hours)}`} />
-        <MonitorMetric label="24時間の追加" value={`+${formatCompact(snapshot?.collection.last24Hours)}`} note={`${formatCompact(snapshot?.polymarket.markets)}市場を追跡`} />
+        <MonitorMetric
+          label="1分価格同期"
+          value={formatCompact(synchronizedPrices?.records)}
+          note={synchronizedPrices?.records ? `最大ずれ ${formatMilliseconds(synchronizedPrices.maximumSkewMs)}` : "新しい記録を収集中"}
+        />
         <MonitorMetric label="最終テスト" value={`${snapshot?.model.testedEvents ?? 0}件`} note="未使用期間で評価" />
         <MonitorMetric label="連続蓄積" value={formatElapsed(snapshot?.collection.startedAt)} note={relativeTime(snapshot?.collection.latestAt)} />
       </div>
@@ -1114,7 +1131,9 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           ))}
           {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
         </div>
-        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Polymarketの乖離とHyperliquidの値動き・資金調達率を比較し、実際の価格とコストで損益を計測。価格 {formatPct(modelFeatureCoverage(snapshot))} / 資金調達 {formatPct(snapshot?.model.fundingFeatureCoverage)}</p>
+        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
+          過去検証はHyperliquidの1時間足を使用。現在はCLOB板・判定参照価格・Hyperliquid価格を1分ごとに同時保存し、高精度検証用データを{formatCompact(snapshot?.collection.synchronizedPrices?.records)}件蓄積しています。
+        </p>
       </div>
       </div>
     </details>
@@ -1131,8 +1150,8 @@ function CompactMetric({ label, value }: { label: string; value: string }) {
 }
 
 const fallbackPipelines = [
-  { id: "polymarket", label: "Polymarket収集", cadence: "5分ごと", status: "waiting" as const },
-  { id: "hyperliquid", label: "相場データ収集", cadence: "5分ごと", status: "waiting" as const },
+  { id: "polymarket", label: "価格同期収集", cadence: "1分ごと", status: "waiting" as const },
+  { id: "hyperliquid", label: "相場データ収集", cadence: "1分ごと", status: "waiting" as const },
   { id: "backtest", label: "モデル再検証", cadence: "6時間ごと", status: "waiting" as const },
   { id: "paper", label: "Poly仮想運用", cadence: "5分ごと", status: "waiting" as const },
   { id: "combined-shadow", label: "組み合わせ市場確認", cadence: "5分ごと", status: "waiting" as const },
@@ -1880,10 +1899,6 @@ function formatShadowRule(rule: MonitoringSnapshot["combinedShadow"]["signalRule
   return "予測方向に追随";
 }
 
-function modelFeatureCoverage(snapshot: MonitoringSnapshot | null) {
-  return snapshot?.model.structuralFeatureCoverage ?? null;
-}
-
 function formatEvaluationPeriod(start: string | null | undefined, end: string | null | undefined) {
   if (!start || !end) return "検証期間を準備中";
   const formatter = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "2-digit" });
@@ -1909,6 +1924,11 @@ function formatJapanDateTime(value: string) {
 function formatMinutes(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   return value < 60 ? `${Math.round(value)}分` : `${(value / 60).toFixed(1)}時間`;
+}
+
+function formatMilliseconds(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  return value < 1_000 ? `${Math.round(value)}ms` : `${(value / 1_000).toFixed(1)}秒`;
 }
 
 function formatBasisBps(value: number | null | undefined) {

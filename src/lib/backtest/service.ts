@@ -2,8 +2,15 @@ import type { BacktestPoint, BacktestRun } from "@prisma/client";
 
 import { prisma } from "@/src/lib/server/prisma";
 import { calculateBacktestMetrics } from "@/src/lib/backtest/metrics";
-import { discoverCryptoMarkets, fetchHistoricalProbability } from "@/src/lib/backtest/polymarket";
+import { discoverCryptoMarkets, fetchCurrentBooks, fetchHistoricalProbability } from "@/src/lib/backtest/polymarket";
 import type { BacktestMetrics, BacktestResult, CryptoAsset, CryptoForecast, CryptoMarket } from "@/src/lib/backtest/types";
+import {
+  calculatePriceBasisPct,
+  fetchPolymarketReferencePrices,
+  selectReferencePrice,
+  type SupportedReferenceAsset,
+} from "@/src/lib/combined-trading/polymarket-reference";
+import { fetchHyperliquidMarketStates } from "@/src/lib/monitoring/hyperliquid";
 
 const DEFAULT_INITIAL_CAPITAL = 1_000;
 const DEFAULT_THRESHOLD = 0.55;
@@ -12,11 +19,34 @@ export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; 
   const markets = await discoverCryptoMarkets({ includeResolved: false, limit: options.limit ?? 80 });
   const assets = options.assets?.length ? new Set(options.assets) : null;
   const selected = markets.filter((market) => !assets || assets.has(market.asset));
+  const referenceAssets = Array.from(new Set(selected.map((market) => market.asset).filter(isSupportedReferenceAsset)));
+  const [books, referencePrices, hyperliquidStates] = await Promise.all([
+    fetchCurrentBooks(selected.map((market) => market.tokenId)).catch(() => new Map()),
+    fetchPolymarketReferencePrices(referenceAssets).catch(() => []),
+    fetchHyperliquidMarketStates().catch(() => []),
+  ]);
+  const hyperliquidByAsset = new Map(hyperliquidStates.map((state) => [state.asset, state]));
   const capturedAt = new Date();
   let saved = 0;
+  let synchronized = 0;
 
   for (const market of selected) {
     if (market.currentProbability === null) continue;
+    const book = books.get(market.tokenId);
+    const bestBid = book?.bids[0]?.price ?? null;
+    const bestAsk = book?.asks[0]?.price ?? null;
+    const probability = bestBid !== null && bestAsk !== null && bestAsk >= bestBid
+      ? clamp((bestBid + bestAsk) / 2, 0.0001, 0.9999)
+      : market.currentProbability;
+    const hyperliquid = hyperliquidByAsset.get(market.asset);
+    const reference = isSupportedReferenceAsset(market.asset)
+      ? selectReferencePrice(referencePrices, market.asset, market.referenceSource)
+      : null;
+    const captureSkewMs = calculateCaptureSkewMs([
+      book?.capturedAt ?? null,
+      hyperliquid?.capturedAt ?? null,
+      reference?.capturedAt ? new Date(reference.capturedAt) : null,
+    ]);
     await prisma.predictionMarket.upsert({
       where: { id: market.id },
       create: toMarketCreate(market, capturedAt),
@@ -32,18 +62,45 @@ export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; 
       data: {
         id: `${market.id}:${capturedAt.getTime()}`,
         marketId: market.id,
-        probability: market.currentProbability,
-        yesPrice: market.currentProbability,
-        noPrice: 1 - market.currentProbability,
+        probability,
+        yesPrice: probability,
+        noPrice: 1 - probability,
         volume: market.volume,
         liquidity: market.liquidity,
+        bestBid,
+        bestAsk,
+        spread: bestBid !== null && bestAsk !== null && bestAsk >= bestBid ? bestAsk - bestBid : null,
+        clobCapturedAt: book?.capturedAt ?? null,
+        hyperliquidMidPrice: hyperliquid?.midPrice ?? null,
+        hyperliquidMarkPrice: hyperliquid?.markPrice ?? null,
+        hyperliquidOraclePrice: hyperliquid?.oraclePrice ?? null,
+        hyperliquidFundingRate: hyperliquid?.fundingRate ?? null,
+        hyperliquidCapturedAt: hyperliquid?.capturedAt ?? null,
+        referencePrice: reference?.price ?? null,
+        referenceSource: reference?.source ?? null,
+        referenceCapturedAt: reference?.capturedAt ? new Date(reference.capturedAt) : null,
+        priceBasisPct: hyperliquid && reference ? calculatePriceBasisPct(hyperliquid.midPrice, reference.price) : null,
+        captureSkewMs,
         capturedAt,
       },
     });
     saved += 1;
+    if (bestBid !== null && bestAsk !== null && hyperliquid && reference && captureSkewMs !== null && captureSkewMs <= 60_000) synchronized += 1;
   }
 
-  return { capturedAt: capturedAt.toISOString(), discovered: selected.length, saved };
+  return {
+    capturedAt: capturedAt.toISOString(),
+    discovered: selected.length,
+    saved,
+    synchronized,
+    synchronizationCoverage: saved ? synchronized / saved : 0,
+  };
+}
+
+export function calculateCaptureSkewMs(values: Array<Date | null>) {
+  const timestamps = values.flatMap((value) => value && Number.isFinite(value.getTime()) ? [value.getTime()] : []);
+  if (timestamps.length !== values.length || timestamps.length < 2) return null;
+  return Math.max(...timestamps) - Math.min(...timestamps);
 }
 
 export async function runBacktest(options: {
@@ -241,6 +298,9 @@ function parseMetrics(value: string | null) {
 
 function toDate(value: string | null) { return value && !Number.isNaN(new Date(value).getTime()) ? new Date(value) : null; }
 function clamp(value: number, min: number, max: number) { return Math.min(max, Math.max(min, value)); }
+function isSupportedReferenceAsset(asset: CryptoAsset): asset is SupportedReferenceAsset {
+  return asset === "BTC" || asset === "ETH" || asset === "SOL" || asset === "XRP";
+}
 
 function parseCryptoThreshold(title: string) {
   const match = title.match(/(?:above|over|reach|at\s+or\s+above|higher\s+than)[^$€£\d]{0,20}[$€£]?\s*([\d,.]+)/i);

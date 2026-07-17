@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
+import { calculateCaptureSkewMs } from "../src/lib/backtest/service";
 import { compareTestnetPositions, normalizeExchangeOrderStatus } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
 import { applyCombinedSignalRule, calculateCombinedClose } from "../src/lib/combined-trading/service";
@@ -40,6 +41,12 @@ assert.equal(parseTerminalPriceCondition("Will ETH dip below $3,000 in June?"), 
 assert.ok(Math.abs(probabilityForCondition(100, 0.1, { kind: "above", lower: 100, upper: null }) - 0.5) < 1e-6);
 assert.ok(probabilityForCondition(100, 0.1, { kind: "above", lower: 90, upper: null }) > 0.5);
 const fundingHour = 60 * 60 * 1_000;
+assert.equal(calculateCaptureSkewMs([
+  new Date("2026-01-01T00:00:00.000Z"),
+  new Date("2026-01-01T00:00:00.750Z"),
+  new Date("2026-01-01T00:00:01.200Z"),
+]), 1_200);
+assert.equal(calculateCaptureSkewMs([new Date("2026-01-01T00:00:00Z"), null]), null);
 const fundingPoints = Array.from({ length: 31 }, (_, hour) => ({ time: hour * fundingHour, rate: 0.00001 }));
 const fundingSummary = summarizeFundingAt(fundingPoints, 24 * fundingHour, 24 * fundingHour, 30 * fundingHour);
 assert.ok(Math.abs((fundingSummary.prior24h ?? 0) - 0.00024) < 1e-12);

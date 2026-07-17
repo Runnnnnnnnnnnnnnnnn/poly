@@ -53,6 +53,10 @@ const bookSchema = z.object({
   min_order_size: z.union([z.string(), z.number()]).optional(),
   tick_size: z.union([z.string(), z.number()]).optional(),
 }).passthrough();
+const batchBookSchema = z.array(bookSchema.extend({
+  asset_id: z.string(),
+  timestamp: z.union([z.string(), z.number()]).optional(),
+}));
 
 const SEARCHES = ["bitcoin", "btc", "ethereum", "eth", "solana", "sol", "xrp", "crypto price"];
 const CRYPTO_PRICES_TAG_ID = "1312";
@@ -295,7 +299,27 @@ export async function fetchCurrentBook(tokenId: string) {
   url.searchParams.set("token_id", tokenId);
   const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 15_000);
   if (!response.ok) throw new Error(`book ${response.status}`);
-  const book = bookSchema.parse(await response.json());
+  return normalizeBook(bookSchema.parse(await response.json()));
+}
+
+export async function fetchCurrentBooks(tokenIds: string[]) {
+  const unique = Array.from(new Set(tokenIds.filter(Boolean))).slice(0, 500);
+  if (!unique.length) return new Map<string, ReturnType<typeof normalizeBook> & { capturedAt: Date }>();
+  const response = await fetchWithTimeout(`${CLOB_API}/books`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(unique.map((tokenId) => ({ token_id: tokenId }))),
+  }, 20_000);
+  if (!response.ok) throw new Error(`books ${response.status}`);
+  const fallbackCapturedAt = new Date();
+  return new Map(batchBookSchema.parse(await response.json()).map((book) => [
+    book.asset_id,
+    { ...normalizeBook(book), capturedAt: parseBookTimestamp(book.timestamp) ?? fallbackCapturedAt },
+  ]));
+}
+
+function normalizeBook(book: z.infer<typeof bookSchema>) {
   const bids = book.bids.map((level) => ({ price: toNumber(level.price), size: toNumber(level.size) })).filter((level) => level.price > 0 && level.size > 0);
   const asks = book.asks.map((level) => ({ price: toNumber(level.price), size: toNumber(level.size) })).filter((level) => level.price > 0 && level.size > 0);
   return {
@@ -304,6 +328,15 @@ export async function fetchCurrentBook(tokenId: string) {
     minOrderSize: Math.max(0, toNumber(book.min_order_size)),
     tickSize: toNumber(book.tick_size) || 0.01,
   };
+}
+
+function parseBookTimestamp(value: string | number | undefined) {
+  if (value === undefined) return null;
+  const numeric = Number(value);
+  const date = Number.isFinite(numeric)
+    ? new Date(numeric < 1_000_000_000_000 ? numeric * 1_000 : numeric)
+    : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function inferAsset(text: string): CryptoAsset | null {

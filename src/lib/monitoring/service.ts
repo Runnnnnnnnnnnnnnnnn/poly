@@ -25,6 +25,8 @@ export async function getMonitoringSnapshot() {
   const [
     polymarketAggregate,
     polymarketLast24Hours,
+    synchronizedAggregate,
+    synchronizedLast24Hours,
     marketCount,
     backtestPointCount,
     backtestRunCount,
@@ -47,6 +49,27 @@ export async function getMonitoringSnapshot() {
   ] = await Promise.all([
     prisma.marketSnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
     prisma.marketSnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
+    prisma.marketSnapshot.aggregate({
+      where: {
+        bestBid: { not: null },
+        bestAsk: { not: null },
+        hyperliquidMidPrice: { not: null },
+        referencePrice: { not: null },
+        captureSkewMs: { lte: 60_000 },
+      },
+      _count: { _all: true },
+      _max: { capturedAt: true, captureSkewMs: true },
+    }),
+    prisma.marketSnapshot.count({
+      where: {
+        capturedAt: { gte: last24Hours },
+        bestBid: { not: null },
+        bestAsk: { not: null },
+        hyperliquidMidPrice: { not: null },
+        referencePrice: { not: null },
+        captureSkewMs: { lte: 60_000 },
+      },
+    }),
     prisma.predictionMarket.count(),
     prisma.backtestPoint.count(),
     prisma.backtestRun.count({ where: { status: "completed" } }),
@@ -198,6 +221,13 @@ export async function getMonitoringSnapshot() {
       latestAt: newestDataAt?.toISOString() ?? null,
       totalRecords: polymarketAggregate._count._all + hyperAggregate._count._all + backtestPointCount + paperEquityAggregate._count._all + aiRows.length + combinedDecisionCount + combinedSnapshotAggregate._count._all,
       last24Hours: polymarketLast24Hours + hyperLast24Hours + paperEquityLast24Hours + combinedSnapshotsLast24Hours,
+      synchronizedPrices: {
+        records: synchronizedAggregate._count._all,
+        last24Hours: synchronizedLast24Hours,
+        latestAt: synchronizedAggregate._max.capturedAt?.toISOString() ?? null,
+        maximumSkewMs: synchronizedAggregate._max.captureSkewMs ?? null,
+        targetCadenceMinutes: 1,
+      },
     },
     tradeReadiness: {
       objective: "Polymarketの予測をシグナルにしてHyperliquidで売買する",
@@ -502,8 +532,8 @@ function pipelineStatuses(input: {
 }) {
   const heartbeatMap = new Map(input.heartbeats.map((item) => [item.id, item]));
   return [
-    pipeline("polymarket", "Polymarket収集", "5分ごと", input.polymarketAt, heartbeatMap.get("polymarket"), input.now),
-    pipeline("hyperliquid", "相場データ収集", "5分ごと", input.hyperliquidAt, heartbeatMap.get("hyperliquid"), input.now),
+    pipeline("polymarket", "価格同期収集", "1分ごと", input.polymarketAt, heartbeatMap.get("polymarket"), input.now),
+    pipeline("hyperliquid", "相場データ収集", "1分ごと", input.hyperliquidAt, heartbeatMap.get("hyperliquid"), input.now),
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("paper", "Poly仮想運用", "5分ごと", input.paperAt, heartbeatMap.get("paper"), input.now),
     pipeline("combined-shadow", "組み合わせ市場確認", "5分ごと", input.combinedAt, heartbeatMap.get("combined-shadow"), input.now),

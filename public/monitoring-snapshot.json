@@ -1,11 +1,18 @@
 {
   "status": "live",
-  "generatedAt": "2026-07-17T13:26:33.205Z",
+  "generatedAt": "2026-07-17T13:59:24.826Z",
   "collection": {
     "startedAt": "2026-07-13T02:42:17.427Z",
-    "latestAt": "2026-07-17T13:25:33.724Z",
-    "totalRecords": 29169,
-    "last24Hours": 26132
+    "latestAt": "2026-07-17T13:58:59.290Z",
+    "totalRecords": 31263,
+    "last24Hours": 27712,
+    "synchronizedPrices": {
+      "records": 1142,
+      "last24Hours": 1142,
+      "latestAt": "2026-07-17T13:58:59.139Z",
+      "maximumSkewMs": 59743,
+      "targetCadenceMinutes": 1
+    }
   },
   "tradeReadiness": {
     "objective": "Polymarketの予測をシグナルにしてHyperliquidで売買する",
@@ -44,7 +51,7 @@
   "combinedShadow": {
     "status": "running",
     "startedAt": "2026-07-17T12:39:28.325Z",
-    "updatedAt": "2026-07-17T13:21:33.717Z",
+    "updatedAt": "2026-07-17T13:55:52.479Z",
     "initialEquity": 10000,
     "equity": 10000,
     "returnPct": 0,
@@ -143,8 +150,8 @@
       "medianReferenceCaptureLagSeconds": null
     },
     "funnel": {
-      "scans": 11,
-      "scannedMarkets": 137,
+      "scans": 19,
+      "scannedMarkets": 126,
       "structuredMarkets": 35,
       "horizonEligibleMarkets": 0,
       "groupedEvents": 0,
@@ -173,7 +180,7 @@
       "priceBasisPct": null,
       "ladderViolations": null,
       "nextWindowAt": "2026-07-18T12:00:00.000Z",
-      "observedAt": "2026-07-17T13:21:33.717Z"
+      "observedAt": "2026-07-17T13:55:52.479Z"
     },
     "testnet": {
       "environment": "testnet",
@@ -193,9 +200,9 @@
     }
   },
   "polymarket": {
-    "snapshots": 25704,
+    "snapshots": 27624,
     "markets": 180,
-    "latestAt": "2026-07-17T13:21:34.267Z",
+    "latestAt": "2026-07-17T13:58:59.139Z",
     "backtestRuns": 7,
     "backtestPoints": 781
   },
@@ -928,14 +935,14 @@
     "maximumExecutionTimingErrorMinutes": 0.95,
     "probabilityLadderEvents": 240,
     "probabilityLadderViolationEvents": 0,
-    "aiPredictions": 196,
+    "aiPredictions": 200,
     "aiResolved": 0,
     "aiBrierScore": null,
     "marketBrierScore": null,
     "aiImprovement": null,
     "paperRuns": 6,
     "runningPaperRuns": 1,
-    "paperSnapshots": 1040,
+    "paperSnapshots": 1047,
     "paperOrders": 7,
     "paperFills": 7,
     "paperReturnPct": 0
@@ -946,12 +953,12 @@
     "status": "running",
     "realMoney": false,
     "initialCash": 10000,
-    "equity": 8326.313207116631,
-    "returnPct": -0.16736867928833687,
-    "unrealizedPnl": -1673.68679288337,
+    "equity": 8319.594666684377,
+    "returnPct": -0.16804053333156221,
+    "unrealizedPnl": -1680.405333315623,
     "openPositions": 6,
     "fills": 6,
-    "updatedAt": "2026-07-17T13:21:49.964Z"
+    "updatedAt": "2026-07-17T13:56:09.185Z"
   },
   "backtestQuality": {
     "status": "underperforming",
@@ -1015,53 +1022,53 @@
     ]
   },
   "hyperliquid": {
-    "snapshots": 1230,
-    "latestAt": "2026-07-17T13:21:33.969Z",
+    "snapshots": 1345,
+    "latestAt": "2026-07-17T13:58:55.654Z",
     "assets": [
       {
         "asset": "BTC",
-        "price": 62968.5,
-        "change24hPct": -0.019792963885429615,
-        "dayVolume": 1835519879.913203,
-        "openInterestUsd": 2515495205.73708,
+        "price": 63168.5,
+        "change24hPct": -0.018558799310162688,
+        "dayVolume": 1826727311.861377,
+        "openInterestUsd": 2558835022.5792003,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-17T13:21:33.969Z"
+        "capturedAt": "2026-07-17T13:58:55.654Z"
       },
       {
         "asset": "ETH",
-        "price": 1818.45,
-        "change24hPct": -0.03484422270580112,
-        "dayVolume": 849163938.0556802,
-        "openInterestUsd": 1730252319.2802367,
+        "price": 1826.75,
+        "change24hPct": -0.029769492245591667,
+        "dayVolume": 871407942.66626,
+        "openInterestUsd": 1738148234.2840204,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-17T13:21:33.969Z"
+        "capturedAt": "2026-07-17T13:58:55.654Z"
       },
       {
         "asset": "SOL",
-        "price": 73.8595,
-        "change24hPct": -0.03305011520737333,
-        "dayVolume": 170455167.10706,
-        "openInterestUsd": 325735464.93479997,
-        "fundingRate": -4.157e-7,
-        "capturedAt": "2026-07-17T13:21:33.969Z"
+        "price": 74.2485,
+        "change24hPct": -0.027040308208407415,
+        "dayVolume": 175731926.4134203,
+        "openInterestUsd": 326461897.8267419,
+        "fundingRate": -0.0000016314,
+        "capturedAt": "2026-07-17T13:58:55.654Z"
       },
       {
         "asset": "XRP",
-        "price": 1.07475,
-        "change24hPct": -0.0314949986482832,
-        "dayVolume": 17830676.68960001,
-        "openInterestUsd": 99890508.4474,
-        "fundingRate": 0.0000117316,
-        "capturedAt": "2026-07-17T13:21:33.969Z"
+        "price": 1.07995,
+        "change24hPct": -0.026545880656210552,
+        "dayVolume": 20224554.4259,
+        "openInterestUsd": 101132824.32000001,
+        "fundingRate": 0.0000120714,
+        "capturedAt": "2026-07-17T13:58:55.654Z"
       },
       {
         "asset": "HYPE",
-        "price": 59.9845,
-        "change24hPct": -0.0878269464720196,
-        "dayVolume": 660688901.7468102,
-        "openInterestUsd": 1349533685.8115995,
+        "price": 60.4435,
+        "change24hPct": -0.07750831781691658,
+        "dayVolume": 677650836.7353095,
+        "openInterestUsd": 1364104888.9703999,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-17T13:21:33.969Z"
+        "capturedAt": "2026-07-17T13:58:55.654Z"
       }
     ]
   },
@@ -1069,43 +1076,43 @@
     "alerts": {
       "status": "healthy",
       "message": "異常なし",
-      "lastSuccessAt": "2026-07-17T13:25:33.724Z",
+      "lastSuccessAt": "2026-07-17T13:58:52.492Z",
       "webhookConfigured": false
     },
     "tunnel": {
       "mode": "quick",
       "status": "healthy",
-      "publicUrl": "https://mug-save-alaska-dock.trycloudflare.com",
+      "publicUrl": "https://vehicles-phantom-cassette-namely.trycloudflare.com",
       "fixedUrl": false,
       "fallback": false,
-      "publishedAt": "2026-07-17T13:25:22.176Z",
-      "lastCheckedAt": "2026-07-17T13:26:23.323Z",
+      "publishedAt": "2026-07-17T13:56:16.434Z",
+      "lastCheckedAt": "2026-07-17T13:59:19.028Z",
       "consecutiveFailures": 0,
-      "updatedAt": "2026-07-17T13:26:23.323Z"
+      "updatedAt": "2026-07-17T13:59:19.028Z"
     },
     "backup": {
       "status": "healthy",
       "encrypted": true,
       "copies": 14,
-      "latestAt": "2026-07-17T13:21:33.374Z"
+      "latestAt": "2026-07-17T13:55:52.117Z"
     }
   },
   "pipelines": [
     {
       "id": "polymarket",
-      "label": "Polymarket収集",
-      "cadence": "5分ごと",
+      "label": "価格同期収集",
+      "cadence": "1分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-17T13:21:34.363Z",
-      "records": 19518
+      "lastSuccessAt": "2026-07-17T13:58:59.290Z",
+      "records": 21358
     },
     {
       "id": "hyperliquid",
       "label": "相場データ収集",
-      "cadence": "5分ごと",
+      "cadence": "1分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-17T13:21:33.972Z",
-      "records": 1230
+      "lastSuccessAt": "2026-07-17T13:58:55.657Z",
+      "records": 1345
     },
     {
       "id": "backtest",
@@ -1120,24 +1127,24 @@
       "label": "Poly仮想運用",
       "cadence": "5分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-17T13:21:49.981Z",
-      "records": 241
+      "lastSuccessAt": "2026-07-17T13:56:09.196Z",
+      "records": 248
     },
     {
       "id": "combined-shadow",
       "label": "組み合わせ市場確認",
       "cadence": "5分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-17T13:21:35.593Z",
-      "records": 92
+      "lastSuccessAt": "2026-07-17T13:55:54.375Z",
+      "records": 100
     },
     {
       "id": "forward-experiment",
       "label": "次期モデル検証",
       "cadence": "5分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-17T13:21:36.515Z",
-      "records": 16
+      "lastSuccessAt": "2026-07-17T13:55:54.966Z",
+      "records": 32
     }
   ]
 }

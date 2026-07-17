@@ -137,7 +137,7 @@ curl -X POST http://localhost:3000/api/backtests \
   -d '{"asset":"BTC","threshold":0.55,"initialCapital":1000,"limit":40}'
 ```
 
-List runs with `GET /api/backtests`, inspect one with `GET /api/backtests/{id}`, and collect a live snapshot with `POST /api/backtests/collect`. For continuous local collection, run `npm run collect:crypto`; the default interval is five minutes and can be changed with `COLLECT_INTERVAL_MS`.
+List runs with `GET /api/backtests`, inspect one with `GET /api/backtests/{id}`, and collect a live snapshot with `POST /api/backtests/collect`. For continuous local collection, run `npm run collect:crypto`; the default interval is one minute and can be changed with `COLLECT_INTERVAL_MS`.
 
 `GET /api/backtests/forecast?asset=BTC` also converts a common Polymarket threshold ladder into a market-implied median and p10/p25/p75/p90 price range. It is intentionally an implied range, not an independent price model; markets with different target dates are not mixed.
 

@@ -18,16 +18,31 @@ model WatchlistItem {
 }
 
 model MarketSnapshot {
-  id          String   @id
-  marketId    String
-  probability Float
-  yesPrice    Float
-  noPrice     Float
-  volume      Float
-  liquidity   Float
-  capturedAt  DateTime @default(now())
+  id                     String    @id
+  marketId               String
+  probability            Float
+  yesPrice               Float
+  noPrice                Float
+  volume                 Float
+  liquidity              Float
+  bestBid                Float?
+  bestAsk                Float?
+  spread                 Float?
+  clobCapturedAt         DateTime?
+  hyperliquidMidPrice    Float?
+  hyperliquidMarkPrice   Float?
+  hyperliquidOraclePrice Float?
+  hyperliquidFundingRate Float?
+  hyperliquidCapturedAt  DateTime?
+  referencePrice         Float?
+  referenceSource        String?
+  referenceCapturedAt    DateTime?
+  priceBasisPct          Float?
+  captureSkewMs          Int?
+  capturedAt             DateTime  @default(now())
 
   @@index([marketId, capturedAt])
+  @@index([capturedAt, captureSkewMs])
 }
 
 model HyperliquidSnapshot {

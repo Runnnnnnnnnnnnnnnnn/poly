@@ -5,7 +5,7 @@ import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../
 import { collectHyperliquidSnapshots } from "../src/lib/monitoring/hyperliquid";
 import { prisma } from "../src/lib/server/prisma";
 
-const collectIntervalMs = Math.max(60_000, Number(process.env.COLLECT_INTERVAL_MS ?? 300_000));
+const collectIntervalMs = Math.max(60_000, Number(process.env.COLLECT_INTERVAL_MS ?? 60_000));
 const backtestIntervalMs = Math.max(60 * 60 * 1_000, Number(process.env.BACKTEST_INTERVAL_MS ?? 6 * 60 * 60 * 1_000));
 let collecting = false;
 let backtesting = false;
@@ -20,7 +20,18 @@ async function collectCycle() {
       collectHyperliquidSnapshots(),
     ]);
     if (polymarket.status === "fulfilled") {
-      await markPipelineSuccess("polymarket", polymarket.value.saved, `${polymarket.value.saved}市場を保存`);
+      if (polymarket.value.saved > 0 && polymarket.value.synchronizationCoverage >= 0.5) {
+        await markPipelineSuccess(
+          "polymarket",
+          polymarket.value.saved,
+          `${polymarket.value.saved}市場 / 同期${polymarket.value.synchronized}件 (${Math.round(polymarket.value.synchronizationCoverage * 100)}%)`,
+        );
+      } else {
+        await markPipelineError(
+          "polymarket",
+          new Error(`価格同期率が不足: ${polymarket.value.synchronized}/${polymarket.value.saved}市場`),
+        );
+      }
       console.log(JSON.stringify({ type: "polymarket-snapshot", ...polymarket.value }));
     } else {
       await markPipelineError("polymarket", polymarket.reason);
