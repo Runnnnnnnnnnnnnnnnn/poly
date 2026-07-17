@@ -110,7 +110,10 @@ try {
   // AI予想を鍵を使って生成し public/ai-evaluations.json に出力（鍵はサーバー側のみ・非致命）。
   // DEEPSEEK_API_KEY が無ければスクリプト側で参考データにフォールバックする。
   spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/gen-ai-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
-  spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/gen-monitoring-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
+  // CI only has the small repository fixture DB. Keep the runtime snapshot committed by the collector.
+  if (!process.env.CI) {
+    spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/gen-monitoring-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
+  }
 
   rmSync(join(root, ".next"), { recursive: true, force: true });
   rmSync(join(root, "out"), { recursive: true, force: true });

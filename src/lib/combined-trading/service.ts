@@ -8,8 +8,13 @@ import {
   type CombinedSignalScan,
 } from "@/src/lib/combined-trading/live-signal";
 import { isForwardControlExperimentKey, isForwardStrategyExperimentKey } from "@/src/lib/combined-trading/forward-evaluation";
+import {
+  isShortTermDirectionExperimentKey,
+  scanShortTermDirectionSignal,
+} from "@/src/lib/combined-trading/short-term-direction";
 import { calculatePriceBasisPct, fetchPolymarketReferencePrices, selectReferencePrice } from "@/src/lib/combined-trading/polymarket-reference";
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
+import { fetchHyperliquidMarketStates } from "@/src/lib/monitoring/hyperliquid";
 import { prisma } from "@/src/lib/server/prisma";
 
 export type CombinedShadowConfig = {
@@ -21,7 +26,7 @@ export type CombinedShadowConfig = {
   minimumSignalZ: number;
   minimumTrendZ: number;
   minimumFunding24h: number;
-  signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum" | "polymarket-funding-consensus";
+  signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum" | "polymarket-funding-consensus";
   modelVersion: string | null;
   positionPct: number;
   maxPositionNotional: number;
@@ -96,14 +101,19 @@ export async function ensureCombinedShadowRun(configOverride: Partial<CombinedSh
   });
 }
 
-export async function tickCombinedShadowRun(runId?: string, now = new Date(), precomputedScan?: CombinedSignalScan) {
+export async function tickCombinedShadowRun(
+  runId?: string,
+  now = new Date(),
+  precomputedScan?: CombinedSignalScan,
+  precomputedPrices?: Map<string, number>,
+) {
   let run = runId
     ? await prisma.combinedShadowRun.findUniqueOrThrow({ where: { id: runId } })
     : await ensureCombinedShadowRun();
   if (run.status !== "running") throw new Error(`combined shadow run is ${run.status}`);
   const config = normalizeConfig(parseJson<Partial<CombinedShadowConfig>>(run.configJson) ?? {});
   let positions = await prisma.combinedShadowPosition.findMany({ where: { runId: run.id, status: "OPEN" }, orderBy: { openedAt: "asc" } });
-  let prices = await latestPrices(positions.map((position) => position.asset));
+  let prices = await latestPrices(positions.map((position) => position.asset), precomputedPrices);
 
   for (const position of positions) {
     const markPrice = prices.get(position.asset);
@@ -142,7 +152,7 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date(), pr
   }
 
   positions = await prisma.combinedShadowPosition.findMany({ where: { runId: run.id, status: "OPEN" }, orderBy: { openedAt: "asc" } });
-  prices = await latestPrices(positions.map((position) => position.asset));
+  prices = await latestPrices(positions.map((position) => position.asset), precomputedPrices);
   positionsPnl = openPositionsPnl(positions, prices, config, now);
   equity = run.cash + positionsPnl;
 
@@ -177,17 +187,17 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date(), pr
     action = selection?.alreadyObserved ? "SKIP" : "WAIT";
     reason = selection?.reason ?? scan.reason;
   } else {
-    const opened = await openShadowPosition(run, executableSignal as CombinedLiveSignal, equity, config, now);
+    const opened = await openShadowPosition(run, signal, executableSignal as CombinedLiveSignal, equity, config, now);
     run = opened.run;
     positions.push(opened.position);
     prices.set(opened.position.asset, signal.spotPrice);
     await maybeMirrorTestnetOrder(run, opened.position, "OPEN", signal.spotPrice);
     action = executableSignal?.side === "LONG" ? "OPEN_LONG" : "OPEN_SHORT";
-    reason = `${signal.asset}・${signal.horizonHours}時間を${executableSignal?.side === "LONG" ? "ロング" : "ショート"}で仮想発注`;
+    reason = `${signal.asset}・${formatSignalHorizon(signal.horizonHours)}を${executableSignal?.side === "LONG" ? "ロング" : "ショート"}で仮想発注`;
   }
 
   positions = await prisma.combinedShadowPosition.findMany({ where: { runId: run.id, status: "OPEN" }, orderBy: { openedAt: "asc" } });
-  prices = await latestPrices(positions.map((position) => position.asset));
+  prices = await latestPrices(positions.map((position) => position.asset), precomputedPrices);
   if (signal) prices.set(signal.asset, prices.get(signal.asset) ?? signal.spotPrice);
   positionsPnl = openPositionsPnl(positions, prices, config, now);
   equity = run.cash + positionsPnl;
@@ -307,9 +317,23 @@ export async function setCombinedShadowEmergencyStop(stopped: boolean) {
 export async function tickActiveForwardRuns(now = new Date()) {
   const runs = await findActiveForwardRuns();
   if (!runs.length) throw new Error("固定フォワード検証が起動していません");
-  const scan = await scanCombinedLiveSignal(now);
+  const [longHorizonScan, shortTermScan, markPrices] = await Promise.all([
+    scanCombinedLiveSignal(now),
+    runs.some((run) => isShortTermDirectionExperimentKey(parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.experimentKey))
+      ? scanShortTermDirectionSignal(now)
+      : Promise.resolve(null),
+    loadCombinedMarkPrices(now),
+  ]);
   const statuses = [];
-  for (const run of runs) statuses.push(await tickCombinedShadowRun(run.id, now, scan));
+  for (const run of runs) {
+    const key = parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.experimentKey;
+    statuses.push(await tickCombinedShadowRun(
+      run.id,
+      now,
+      isShortTermDirectionExperimentKey(key) && shortTermScan ? shortTermScan : longHorizonScan,
+      markPrices,
+    ));
+  }
   return statuses;
 }
 
@@ -317,7 +341,9 @@ async function findActiveForwardRuns() {
   const runs = await prisma.combinedShadowRun.findMany({ where: { status: "running" }, orderBy: { startedAt: "desc" } });
   return runs.filter((run) => {
     const key = parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.experimentKey;
-    return isForwardStrategyExperimentKey(key) || isForwardControlExperimentKey(key);
+    return isForwardStrategyExperimentKey(key)
+      || isForwardControlExperimentKey(key)
+      || isShortTermDirectionExperimentKey(key);
   });
 }
 
@@ -328,9 +354,16 @@ async function findPrimaryForwardRun() {
     ?? null;
 }
 
-async function openShadowPosition(run: CombinedShadowRun, signal: CombinedLiveSignal, equity: number, config: CombinedShadowConfig, now: Date) {
-  const sideMultiplier = signal.side === "LONG" ? 1 : -1;
-  const entryPrice = signal.spotPrice * (1 + sideMultiplier * config.slippagePerSide);
+async function openShadowPosition(
+  run: CombinedShadowRun,
+  marketSignal: CombinedLiveSignal,
+  executableSignal: CombinedLiveSignal,
+  equity: number,
+  config: CombinedShadowConfig,
+  now: Date,
+) {
+  const sideMultiplier = executableSignal.side === "LONG" ? 1 : -1;
+  const entryPrice = marketSignal.spotPrice * (1 + sideMultiplier * config.slippagePerSide);
   const notional = Math.max(0, Math.min(equity * config.positionPct, config.maxPositionNotional));
   const quantity = notional / entryPrice;
   const entryFee = notional * config.takerFeePerSide;
@@ -339,28 +372,28 @@ async function openShadowPosition(run: CombinedShadowRun, signal: CombinedLiveSi
     data: {
       id: positionId,
       runId: run.id,
-      eventId: signal.eventId,
-      marketId: signal.marketId,
-      asset: signal.asset,
-      side: signal.side,
+      eventId: marketSignal.eventId,
+      marketId: marketSignal.marketId,
+      asset: marketSignal.asset,
+      side: executableSignal.side,
       quantity,
       entryPrice,
-      markPrice: signal.spotPrice,
-      impliedTarget: signal.impliedTarget,
-      signalZ: signal.signalZ,
-      polymarketSide: config.signalRule === "polymarket-funding-consensus" ? signal.side : null,
-      entrySpotPrice: signal.spotPrice,
-      entryTrendZ6h: signal.trendZ6h,
-      entryFunding24h: signal.hyperliquidFunding24h,
-      horizonHours: signal.horizonHours,
-      priceBasisPct: signal.priceBasisPct,
-      entryReferencePrice: signal.polymarketReferencePrice,
-      entryReferenceSource: signal.referenceSource,
-      entryReferenceCapturedAt: signal.referenceCapturedAt ? new Date(signal.referenceCapturedAt) : null,
+      markPrice: marketSignal.spotPrice,
+      impliedTarget: marketSignal.impliedTarget,
+      signalZ: marketSignal.signalZ,
+      polymarketSide: marketSignal.side,
+      entrySpotPrice: marketSignal.spotPrice,
+      entryTrendZ6h: marketSignal.trendZ6h,
+      entryFunding24h: marketSignal.hyperliquidFunding24h,
+      horizonHours: marketSignal.horizonHours,
+      priceBasisPct: marketSignal.priceBasisPct,
+      entryReferencePrice: marketSignal.polymarketReferencePrice,
+      entryReferenceSource: marketSignal.referenceSource,
+      entryReferenceCapturedAt: marketSignal.referenceCapturedAt ? new Date(marketSignal.referenceCapturedAt) : null,
       entryFee,
       status: "OPEN",
       openedAt: now,
-      exitAt: new Date(signal.exitAt),
+      exitAt: new Date(marketSignal.exitAt),
     },
   });
   await prisma.combinedExecutionOrder.create({
@@ -370,13 +403,13 @@ async function openShadowPosition(run: CombinedShadowRun, signal: CombinedLiveSi
       positionId,
       environment: "SHADOW",
       clientOrderId: shadowClientOrderId(run.id, positionId, "OPEN"),
-      asset: signal.asset,
-      side: signal.side,
+      asset: marketSignal.asset,
+      side: executableSignal.side,
       action: "OPEN",
       quantity,
-      referencePrice: signal.spotPrice,
+      referencePrice: marketSignal.spotPrice,
       status: "FILLED",
-      reason: `rule=${config.signalRule} signalZ=${signal.signalZ.toFixed(4)} target=${signal.impliedTarget.toFixed(2)}`,
+      reason: `rule=${config.signalRule} signalZ=${marketSignal.signalZ.toFixed(4)} target=${marketSignal.impliedTarget.toFixed(2)}`,
     },
   });
   const updatedRun = await prisma.combinedShadowRun.update({ where: { id: run.id }, data: { cash: run.cash - entryFee } });
@@ -442,6 +475,13 @@ function combinedSignalRejectionReason(
 ) {
   if (isHyperliquidSignalRule(config.signalRule) && Math.abs(signal.trendZ6h) < config.minimumTrendZ) {
     return `6時間値動き${Math.abs(signal.trendZ6h).toFixed(2)}が基準${config.minimumTrendZ.toFixed(2)}未満`;
+  }
+  if (config.signalRule === "trend-confirmed") {
+    if (Math.abs(signal.trendZ6h) < config.minimumTrendZ) {
+      return `開始後の値動き${Math.abs(signal.trendZ6h).toFixed(2)}が基準${config.minimumTrendZ.toFixed(2)}未満`;
+    }
+    const trendSide = signal.trendZ6h >= 0 ? "LONG" : "SHORT";
+    if (trendSide !== signal.side) return "Polymarketの方向とHyperliquidの開始後トレンドが一致していません";
   }
   if (isFundingSignalRule(config.signalRule) && (signal.hyperliquidFunding24h === null || Math.abs(signal.hyperliquidFunding24h) < config.minimumFunding24h)) {
     return signal.hyperliquidFunding24h === null
@@ -610,8 +650,28 @@ async function maybeMirrorTestnetOrder(run: CombinedShadowRun, position: Combine
   }
 }
 
-async function latestPrices(assets: string[]) {
+export async function loadCombinedMarkPrices(now = new Date()) {
+  const liveStates = await fetchHyperliquidMarketStates().catch(() => []);
+  if (liveStates.length) return new Map(liveStates.map((state) => [state.asset, state.midPrice]));
+  const rows = await prisma.hyperliquidSnapshot.findMany({
+    where: { asset: { in: ["BTC", "ETH", "SOL", "XRP"] }, capturedAt: { lte: now } },
+    orderBy: { capturedAt: "desc" },
+    take: 40,
+  });
   const prices = new Map<string, number>();
+  for (const row of rows) if (!prices.has(row.asset) && row.midPrice > 0) prices.set(row.asset, row.midPrice);
+  return prices;
+}
+
+async function latestPrices(assets: string[], precomputed?: Map<string, number>) {
+  const prices = new Map<string, number>();
+  if (precomputed) {
+    for (const asset of Array.from(new Set(assets))) {
+      const price = precomputed.get(asset);
+      if (price) prices.set(asset, price);
+    }
+    return prices;
+  }
   for (const asset of Array.from(new Set(assets))) {
     const latest = await prisma.hyperliquidSnapshot.findFirst({ where: { asset }, orderBy: { capturedAt: "desc" } });
     if (latest?.midPrice) prices.set(asset, latest.midPrice);
@@ -695,6 +755,7 @@ function normalizeConfig(override: Partial<CombinedShadowConfig>) {
 
 function isExecutableSignalRule(rule: unknown): rule is CombinedShadowConfig["signalRule"] {
   return rule === "polymarket-only"
+    || rule === "trend-confirmed"
     || rule === "contrarian"
     || rule === "hyperliquid-momentum"
     || rule === "hyperliquid-reversion"
@@ -704,7 +765,7 @@ function isExecutableSignalRule(rule: unknown): rule is CombinedShadowConfig["si
 }
 
 function isObservationHorizon(value: unknown): value is number {
-  return value === 6 || value === 12 || value === 24 || value === 48;
+  return value === 0 || value === 6 || value === 12 || value === 24 || value === 48;
 }
 
 function isHyperliquidSignalRule(rule: CombinedShadowConfig["signalRule"]) {
@@ -748,4 +809,8 @@ function clamp(value: number, minimum: number, maximum: number) {
 
 function formatPct(value: number) {
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatSignalHorizon(horizonHours: number) {
+  return horizonHours === 0 ? "15分" : `${horizonHours}時間`;
 }

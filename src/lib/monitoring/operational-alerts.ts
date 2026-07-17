@@ -1,5 +1,6 @@
 import { prisma } from "@/src/lib/server/prisma";
 import { isForwardStrategyExperimentKey } from "@/src/lib/combined-trading/forward-evaluation";
+import { isShortTermDirectionStrategyKey } from "@/src/lib/combined-trading/short-term-direction";
 import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
 
 export type OperationalAlertCandidate = {
@@ -21,6 +22,7 @@ const pipelineLimitsMs: Record<string, { label: string; maximumAgeMs: number }> 
   polymarket: { label: "Polymarket収集", maximumAgeMs: 15 * 60 * 1_000 },
   hyperliquid: { label: "相場データ収集", maximumAgeMs: 15 * 60 * 1_000 },
   "forward-experiment": { label: "固定フォワード検証", maximumAgeMs: 15 * 60 * 1_000 },
+  "short-term-direction": { label: "15分モデル検証", maximumAgeMs: 5 * 60 * 1_000 },
   backtest: { label: "モデル再検証", maximumAgeMs: 30 * 60 * 60 * 1_000 },
 };
 
@@ -31,6 +33,7 @@ export async function collectOperationalAlertCandidates(now = new Date()) {
   ]);
   const strategyRuns = runs.filter((item) => (
     isForwardStrategyExperimentKey(parseJson<Partial<CombinedShadowConfig>>(item.configJson)?.experimentKey)
+    || isShortTermDirectionStrategyKey(parseJson<Partial<CombinedShadowConfig>>(item.configJson)?.experimentKey)
   ));
   const activeRuns = strategyRuns.length
     ? strategyRuns
@@ -143,7 +146,9 @@ export function evaluatePipelineAlerts(heartbeats: HeartbeatLike[], now: Date) {
       continue;
     }
     const lastSuccessAt = heartbeat.lastSuccessAt?.getTime() ?? 0;
-    if (!lastSuccessAt || now.getTime() - lastSuccessAt > config.maximumAgeMs) {
+    const lastAttemptAt = heartbeat.lastAttemptAt?.getTime() ?? 0;
+    const latestActivityAt = Math.max(lastSuccessAt, lastAttemptAt);
+    if (!latestActivityAt || now.getTime() - latestActivityAt > config.maximumAgeMs) {
       alerts.push({
         key: `pipeline-stale:${id}`,
         severity: "critical",

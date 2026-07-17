@@ -53,6 +53,11 @@ const processes = [
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-forward-experiment.mts")],
   },
   {
+    name: "short-term-direction",
+    command: process.execPath,
+    args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-short-term-direction.mts")],
+  },
+  {
     name: "monitor",
     command: process.execPath,
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-monitoring.mts")],

@@ -5,7 +5,7 @@ import {
   forwardStrategyExperimentKey,
   type ForwardObservationHorizon,
 } from "../src/lib/combined-trading/forward-evaluation";
-import { ensureCombinedShadowRun, tickCombinedShadowRun, type CombinedShadowConfig } from "../src/lib/combined-trading/service";
+import { ensureCombinedShadowRun, loadCombinedMarkPrices, tickCombinedShadowRun, type CombinedShadowConfig } from "../src/lib/combined-trading/service";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
 
 const intervalMs = Math.max(60_000, Number(process.env.FORWARD_EXPERIMENT_INTERVAL_MS ?? 300_000));
@@ -57,11 +57,14 @@ async function tick() {
     experiments = await ensureExperiments();
     await markPipelineAttempt("forward-experiment", "6・12・24・48時間モデルを開始後データだけで独立評価中");
     const observedAt = new Date();
-    const scan = await scanCombinedLiveSignal(observedAt);
+    const [scan, markPrices] = await Promise.all([
+      scanCombinedLiveSignal(observedAt),
+      loadCombinedMarkPrices(observedAt),
+    ]);
     const results = [];
     for (const experiment of experiments) {
-      const strategyStatus = await tickCombinedShadowRun(experiment.strategyRun.id, observedAt, scan);
-      const controlStatus = await tickCombinedShadowRun(experiment.controlRun.id, observedAt, scan);
+      const strategyStatus = await tickCombinedShadowRun(experiment.strategyRun.id, observedAt, scan, markPrices);
+      const controlStatus = await tickCombinedShadowRun(experiment.controlRun.id, observedAt, scan, markPrices);
       results.push({
         horizonHours: experiment.horizonHours,
         strategyRunId: experiment.strategyRun.id,

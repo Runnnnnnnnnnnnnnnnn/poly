@@ -12,6 +12,10 @@ import {
 } from "@/src/lib/combined-trading/forward-evaluation";
 import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
 import { getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
+import {
+  shortTermDirectionControlKey,
+  shortTermDirectionStrategyKey,
+} from "@/src/lib/combined-trading/short-term-direction";
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { loadProspectiveSynchronizedData } from "@/src/lib/model-evaluation/prospective-synchronized";
 import { prisma } from "@/src/lib/server/prisma";
@@ -168,6 +172,8 @@ export async function getMonitoringSnapshot() {
     const run = combinedRuns.find((candidate) => combinedRunConfigs.get(candidate.id)?.experimentKey === forwardControlExperimentKey(horizonHours));
     return run ? [{ horizonHours, run }] : [];
   });
+  const shortTermStrategyRun = combinedRuns.find((run) => combinedRunConfigs.get(run.id)?.experimentKey === shortTermDirectionStrategyKey) ?? null;
+  const shortTermControlRun = combinedRuns.find((run) => combinedRunConfigs.get(run.id)?.experimentKey === shortTermDirectionControlKey) ?? null;
   const legacyCombinedRun = combinedRuns.find((run) => combinedRunConfigs.get(run.id)?.forwardOnly === true) ?? combinedRuns[0] ?? null;
   const activeCombinedRuns = forwardStrategyRuns.length ? forwardStrategyRuns.map((item) => item.run) : legacyCombinedRun ? [legacyCombinedRun] : [];
   const activeControlRuns = forwardStrategyRuns.length
@@ -222,6 +228,16 @@ export async function getMonitoringSnapshot() {
           : Promise.resolve([]),
       ])
     : [null, null, [], 0, 0, [], [], []];
+  const [shortTermDecision, shortTermSnapshot, shortTermPositions, shortTermControlPositions] = shortTermStrategyRun
+    ? await Promise.all([
+        prisma.combinedShadowDecision.findFirst({ where: { runId: shortTermStrategyRun.id }, orderBy: { observedAt: "desc" } }),
+        prisma.combinedShadowEquitySnapshot.findFirst({ where: { runId: shortTermStrategyRun.id }, orderBy: { capturedAt: "desc" } }),
+        prisma.combinedShadowPosition.findMany({ where: { runId: shortTermStrategyRun.id }, orderBy: { openedAt: "asc" } }),
+        shortTermControlRun
+          ? prisma.combinedShadowPosition.findMany({ where: { runId: shortTermControlRun.id }, orderBy: { openedAt: "asc" } })
+          : Promise.resolve([]),
+      ])
+    : [null, null, [], []];
   const settlementBasis = summarizeSettlementBasis(combinedPositions);
   const combinedConfig = parseJson<Partial<CombinedShadowConfig>>(combinedRun?.configJson ?? null);
   const horizonEvaluations = forwardStrategyRuns.flatMap(({ horizonHours, run }) => {
@@ -293,6 +309,22 @@ export async function getMonitoringSnapshot() {
       nextWindowAt: latestDecision?.nextWindowAt?.toISOString() ?? null,
     })),
   } : legacyForwardEvaluation;
+  const shortTermConfig = parseJson<Partial<CombinedShadowConfig>>(shortTermStrategyRun?.configJson ?? null);
+  const shortTermEvaluation = shortTermStrategyRun && shortTermControlRun && shortTermConfig
+    ? evaluateForwardExperiment({
+        strategyPositions: shortTermPositions,
+        controlPositions: shortTermControlPositions,
+        strategyStartedAt: shortTermStrategyRun.startedAt,
+        controlStartedAt: shortTermControlRun.startedAt,
+        initialEquity: shortTermStrategyRun.initialEquity,
+        takerFeePerSide: shortTermConfig.takerFeePerSide ?? 0.00045,
+        slippagePerSide: shortTermConfig.slippagePerSide ?? 0.0002,
+        fundingPer24h: shortTermConfig.fundingPer24h ?? 0.0003,
+        maxDrawdownPct: shortTermStrategyRun.maxDrawdownPct,
+        settlementBasisStatus: summarizeSettlementBasis(shortTermPositions).status,
+        strategyTrials: 1,
+      })
+    : null;
   const latestPaperMetrics = parseJson<Record<string, number | null>>(latestCompletedPaper?.metricsJson ?? null);
   const newestDataAt = latestDate(
     polymarketAggregate._max.capturedAt,
@@ -304,7 +336,7 @@ export async function getMonitoringSnapshot() {
   const oldestDataAt = earliestDate(polymarketAggregate._min.capturedAt, hyperAggregate._min.capturedAt, paperEquityAggregate._min.capturedAt);
   const ageMs = newestDataAt ? now.getTime() - newestDataAt.getTime() : Number.POSITIVE_INFINITY;
   const status = ageMs <= freshnessMs ? "live" : ageMs <= 60 * 60 * 1_000 ? "delayed" : "offline";
-  const combinedEdgeConfirmed = forwardEvaluation?.status === "promising";
+  const combinedEdgeConfirmed = forwardEvaluation?.status === "promising" || shortTermEvaluation?.status === "promising";
   const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
@@ -313,7 +345,7 @@ export async function getMonitoringSnapshot() {
   const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
   const tunnelStatus = readTunnelStatus();
   const backupStatus = readBackupStatus();
-  const combinedShadowRunning = activeCombinedRuns.some((run) => run.status === "running");
+  const combinedShadowRunning = activeCombinedRuns.some((run) => run.status === "running") || shortTermStrategyRun?.status === "running";
   const aggregateInitialEquity = sum(activeCombinedRuns.map((run) => run.initialEquity));
   const aggregateEquity = sum(activeCombinedRuns.map((run) => run.equity));
   const aggregateCash = sum(activeCombinedRuns.map((run) => run.cash));
@@ -419,6 +451,34 @@ export async function getMonitoringSnapshot() {
       signalRule: combinedConfig?.signalRule ?? "polymarket-only",
       modelVersion: horizonEvaluations.length ? "Forward Experiment v2 2026-07-18 / no backfill" : combinedConfig?.modelVersion ?? null,
       forwardEvaluation,
+      shortTermDirection: {
+        status: shortTermEvaluation?.status ?? (shortTermStrategyRun?.status === "running" ? "collecting" : "not_started"),
+        running: shortTermStrategyRun?.status === "running" && !shortTermStrategyRun.emergencyStopped,
+        startedAt: shortTermStrategyRun?.startedAt.toISOString() ?? null,
+        updatedAt: shortTermSnapshot?.capturedAt.toISOString() ?? null,
+        trades: shortTermEvaluation?.trades ?? 0,
+        controlTrades: shortTermEvaluation?.controlTrades ?? 0,
+        minimumTrades: shortTermEvaluation?.minimumTrades ?? 50,
+        progressPct: shortTermEvaluation?.progressPct ?? 0,
+        netReturnPct: shortTermEvaluation?.netReturnPct ?? null,
+        excessReturnPct: shortTermEvaluation?.excessReturnPct ?? null,
+        confidenceLowerPct: shortTermEvaluation?.excessConfidenceInterval95?.[0] ?? null,
+        maxDrawdownPct: shortTermEvaluation?.maxDrawdownPct ?? shortTermStrategyRun?.maxDrawdownPct ?? null,
+        passedGates: shortTermEvaluation?.passedGates ?? 0,
+        totalGates: shortTermEvaluation?.totalGates ?? 8,
+        openPositions: shortTermPositions.filter((position) => position.status === "OPEN").length,
+        scannedMarkets: shortTermDecision?.scannedMarkets ?? 0,
+        fifteenMinuteMarkets: shortTermDecision?.structuredMarkets ?? 0,
+        decisionWindowMarkets: shortTermDecision?.horizonEligibleMarkets ?? 0,
+        priceReadyMarkets: shortTermDecision?.priceReadyEvents ?? 0,
+        thresholdSignals: shortTermPositions.length,
+        opened: shortTermPositions.length,
+        latestAction: shortTermDecision?.action ?? null,
+        latestReason: shortTermDecision?.reason ?? "最初の15分市場を確認中",
+        nextDecisionAt: shortTermDecision?.nextWindowAt?.toISOString() ?? null,
+        observedAt: shortTermDecision?.observedAt.toISOString() ?? null,
+        realTradingEnabled: false,
+      },
       settlementBasis: {
         status: settlementBasis.status,
         samples: settlementBasis.samples,
@@ -678,6 +738,7 @@ function pipelineStatuses(input: {
     pipeline("hyperliquid", "相場データ収集", "1分ごと", input.hyperliquidAt, heartbeatMap.get("hyperliquid"), input.now),
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("forward-experiment", "固定フォワード検証", "5分ごと", input.combinedAt, heartbeatMap.get("forward-experiment"), input.now),
+    pipeline("short-term-direction", "15分モデル検証", "1分ごと", null, heartbeatMap.get("short-term-direction"), input.now, 5 * 60 * 1_000),
   ];
 }
 

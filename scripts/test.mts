@@ -7,6 +7,13 @@ import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-r
 import { selectCombinedSignalScan, type CombinedSignalScan } from "../src/lib/combined-trading/live-signal";
 import { applyCombinedSignalRule, calculateCombinedClose, selectCombinedSignalCandidate } from "../src/lib/combined-trading/service";
 import {
+  isShortTermDecisionWindow,
+  isShortTermDirectionControlKey,
+  isShortTermDirectionStrategyKey,
+  shortTermDirectionControlKey,
+  shortTermDirectionStrategyKey,
+} from "../src/lib/combined-trading/short-term-direction";
+import {
   evaluateForwardExperiment,
   forwardControlExperimentKey,
   forwardObservationHorizons,
@@ -464,6 +471,30 @@ const twelveHourScan = selectCombinedSignalScan(multiHorizonScan, 12);
 assert.equal(twelveHourScan.signal?.horizonHours, 12);
 assert.equal(twelveHourScan.horizonEligibleMarkets, 4);
 assert.equal(twelveHourScan.groupedEvents, 1);
+const absentShortTermScan = selectCombinedSignalScan(multiHorizonScan, 0);
+assert.equal(absentShortTermScan.signal, null);
+assert.equal(absentShortTermScan.signals.length, 0);
+assert.equal(absentShortTermScan.horizonEligibleMarkets, 0);
+
+const trendConfirmed = selectCombinedSignalCandidate(
+  [{ ...syntheticLiveSignal, horizonHours: 0, trendZ6h: 0.8 }],
+  { minimumSignalZ: 1, minimumTrendZ: 0.15, minimumFunding24h: 0, signalRule: "trend-confirmed" },
+);
+assert.equal(trendConfirmed?.actionable, true);
+const trendRejected = selectCombinedSignalCandidate(
+  [{ ...syntheticLiveSignal, horizonHours: 0, trendZ6h: -0.8 }],
+  { minimumSignalZ: 1, minimumTrendZ: 0.15, minimumFunding24h: 0, signalRule: "trend-confirmed" },
+);
+assert.equal(trendRejected?.actionable, false);
+assert.match(trendRejected?.reason ?? "", /一致していません/);
+
+const shortMarketWindow = { eventStartTime: "2026-01-01T00:00:00Z", durationMinutes: 15 };
+assert.equal(isShortTermDecisionWindow(shortMarketWindow, new Date("2026-01-01T00:01:59Z")), false);
+assert.equal(isShortTermDecisionWindow(shortMarketWindow, new Date("2026-01-01T00:02:00Z")), true);
+assert.equal(isShortTermDecisionWindow(shortMarketWindow, new Date("2026-01-01T00:03:59Z")), true);
+assert.equal(isShortTermDecisionWindow(shortMarketWindow, new Date("2026-01-01T00:04:00Z")), false);
+assert.equal(isShortTermDirectionStrategyKey(shortTermDirectionStrategyKey), true);
+assert.equal(isShortTermDirectionControlKey(shortTermDirectionControlKey), true);
 
 console.log("combined shadow signal-rule tests passed");
 
@@ -634,7 +665,7 @@ assert.deepEqual(compareTestnetPositions(
 ), [{ asset: "ETH", expectedSize: -0.1, actualSize: -0.2, kind: "quantity" }]);
 
 const alertNow = new Date("2026-01-01T01:00:00Z");
-const healthyHeartbeats = ["polymarket", "hyperliquid", "forward-experiment", "backtest"].map((id) => ({
+const healthyHeartbeats = ["polymarket", "hyperliquid", "forward-experiment", "short-term-direction", "backtest"].map((id) => ({
   id,
   status: "healthy",
   message: null,
@@ -642,8 +673,11 @@ const healthyHeartbeats = ["polymarket", "hyperliquid", "forward-experiment", "b
   lastAttemptAt: new Date("2026-01-01T00:55:00Z"),
 }));
 assert.equal(evaluatePipelineAlerts(healthyHeartbeats, alertNow).length, 0);
+assert.equal(evaluatePipelineAlerts(healthyHeartbeats.map((item) => item.id === "short-term-direction"
+  ? { ...item, lastSuccessAt: new Date("2026-01-01T00:30:00Z"), lastAttemptAt: new Date("2026-01-01T00:59:00Z") }
+  : item), alertNow).length, 0);
 const staleAlerts = evaluatePipelineAlerts(healthyHeartbeats.map((item) => item.id === "polymarket"
-  ? { ...item, lastSuccessAt: new Date("2026-01-01T00:30:00Z") }
+  ? { ...item, lastSuccessAt: new Date("2026-01-01T00:30:00Z"), lastAttemptAt: new Date("2026-01-01T00:30:00Z") }
   : item), alertNow);
 assert.equal(staleAlerts.some((alert) => alert.key === "pipeline-stale:polymarket"), true);
 const firstAlertPlan = planAlertDeliveries(staleAlerts, {}, alertNow, 60 * 60 * 1_000);

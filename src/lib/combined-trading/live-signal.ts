@@ -227,7 +227,16 @@ export async function scanCombinedLiveSignal(now = new Date()): Promise<Combined
 
 export function selectCombinedSignalScan(scan: CombinedSignalScan, horizonHours: number): CombinedSignalScan {
   const horizon = scan.horizons.find((item) => item.horizonHours === horizonHours);
-  if (!horizon) return scan;
+  if (!horizon) return {
+    ...scan,
+    signal: null,
+    signals: [],
+    horizonEligibleMarkets: 0,
+    groupedEvents: 0,
+    priceReadyEvents: 0,
+    eligibleEvents: 0,
+    reason: `${horizonHours === 0 ? "15分" : `${horizonHours}時間`}モデルのスキャン結果がありません`,
+  };
   return {
     ...scan,
     signal: horizon.signal,

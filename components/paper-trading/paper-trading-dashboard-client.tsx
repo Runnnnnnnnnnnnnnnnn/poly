@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleDot,
+  Clock3,
   Database,
   Gauge,
   Layers3,
@@ -274,6 +275,34 @@ type MonitoringSnapshot = {
         nextWindowAt: string | null;
       }>;
     } | null;
+    shortTermDirection?: {
+      status: "collecting" | "promising" | "underperforming" | "not_started";
+      running: boolean;
+      startedAt: string | null;
+      updatedAt: string | null;
+      trades: number;
+      controlTrades: number;
+      minimumTrades: number;
+      progressPct: number;
+      netReturnPct: number | null;
+      excessReturnPct: number | null;
+      confidenceLowerPct: number | null;
+      maxDrawdownPct: number | null;
+      passedGates: number;
+      totalGates: number;
+      openPositions: number;
+      scannedMarkets: number;
+      fifteenMinuteMarkets: number;
+      decisionWindowMarkets: number;
+      priceReadyMarkets: number;
+      thresholdSignals: number;
+      opened: number;
+      latestAction: string | null;
+      latestReason: string;
+      nextDecisionAt: string | null;
+      observedAt: string | null;
+      realTradingEnabled: false;
+    };
     settlementBasis: {
       status: "collecting" | "healthy" | "attention";
       samples: number;
@@ -774,6 +803,8 @@ export function PaperTradingDashboardClient() {
 
       <CombinedShadowPanel snapshot={monitoring} />
 
+      <ShortTermDirectionPanel snapshot={monitoring} />
+
       <TradingPurposePanel snapshot={monitoring} />
 
       <DevelopmentMonitor snapshot={monitoring} readOnly={snapshot} />
@@ -1014,6 +1045,73 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
   );
 }
 
+function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
+  const model = snapshot?.combinedShadow.shortTermDirection;
+  const hasTrades = (model?.trades ?? 0) > 0;
+  const tone: Tone = model?.status === "promising" ? "good" : model?.status === "underperforming" ? "bad" : "neutral";
+  const remaining = Math.max(0, (model?.minimumTrades ?? 50) - (model?.trades ?? 0));
+  const steps = [
+    { label: "15分市場", value: model?.fifteenMinuteMarkets ?? 0, note: "対象" },
+    { label: "開始2分後", value: model?.decisionWindowMarkets ?? 0, note: "直近" },
+    { label: "板を取得", value: model?.priceReadyMarkets ?? 0, note: "直近" },
+    { label: "仮想発注", value: model?.opened ?? 0, note: "累計" },
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="15分方向モデルの前向き検証">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
+        <div className="flex items-center gap-2">
+          <Clock3 className="h-4 w-4 text-sky-700" />
+          <h2 className="text-sm font-bold text-slate-950">15分モデルでサンプルを蓄積</h2>
+          <span className={`rounded-sm px-2 py-0.5 text-[10px] font-bold ${tonePillClass(tone)}`}>{model?.status === "promising" ? "基準達成" : model?.status === "underperforming" ? "改善が必要" : "前向き収集"}</span>
+        </div>
+        <span className={`rounded-sm px-2 py-1 text-[11px] font-bold ${model?.running ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{model?.running ? "1分ごとに確認" : "起動待ち"}</span>
+      </div>
+      <div className="grid lg:grid-cols-[minmax(240px,0.8fr)_minmax(0,1.5fr)]">
+        <div className={`border-b p-5 lg:border-b-0 lg:border-r sm:p-6 ${toneSoftClass(tone)}`}>
+          <p className="text-xs font-bold text-muted-foreground">決済サンプル</p>
+          <p className="mt-2 text-4xl font-bold leading-none tabular-nums text-slate-950 sm:text-5xl">{model?.trades ?? 0}<span className="ml-2 text-base font-bold text-slate-500">/ {model?.minimumTrades ?? 50}</span></p>
+          <VisualMeter tone={tone} value={(model?.progressPct ?? 0) * 100} className="mt-4" />
+          <p className="mt-2 text-xs font-semibold text-slate-600">{model?.status === "collecting" || !model ? `あと${remaining}件で成績を判定` : `${model.passedGates}/${model.totalGates}条件を通過`}</p>
+        </div>
+        <div className="grid min-w-0">
+          <div className="grid grid-cols-3 divide-x divide-border">
+            <CompactMetric label="コスト控除後" value={hasTrades ? formatSignedPct(model?.netReturnPct) : "未判定"} />
+            <CompactMetric label="単純戦略との差" value={hasTrades ? formatSignedPct(model?.excessReturnPct) : "未判定"} />
+            <CompactMetric label="最大下落" value={hasTrades ? formatPct(model?.maxDrawdownPct) : "未判定"} />
+          </div>
+          <div className="grid grid-cols-4 border-t bg-slate-50">
+            {steps.map((step, index) => (
+              <div key={step.label} className={`min-w-0 px-2 py-3 text-center sm:px-4 ${index < steps.length - 1 ? "border-r" : ""}`}>
+                <p className="truncate text-[9px] font-bold text-slate-500 sm:text-[10px]">{step.label}</p>
+                <p className="mt-1 text-xl font-bold tabular-nums text-slate-950 sm:text-2xl">{step.value}</p>
+                <p className="text-[9px] font-semibold text-slate-400">{step.note}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-2 border-t px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-slate-950">直近: {formatShadowAction(model?.latestAction)}</span>
+            <span className="text-[10px] font-semibold text-slate-500">対照 {model?.controlTrades ?? 0}決済 / 保有 {model?.openPositions ?? 0}</span>
+          </div>
+          <p className="mt-1 break-words text-[11px] font-semibold leading-5 text-slate-600">{model?.latestReason ?? "15分市場を確認しています"}</p>
+        </div>
+        <div className="text-left sm:text-right">
+          <p className="text-[10px] font-bold text-slate-500">Up 58%以上 / Down 58%以上 / トレンド一致</p>
+          <p className="mt-1 text-[10px] font-semibold text-sky-700">{model?.nextDecisionAt ? `次回 ${formatJapanDateTime(model.nextDecisionAt)}` : model?.observedAt ? relativeTime(model.observedAt) : "開始待ち"}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
+        <span>開始後のデータのみ・同一市場1回・手数料とスリッページ込み</span>
+        <span className="font-bold text-rose-700">実取引 OFF</span>
+      </div>
+    </section>
+  );
+}
+
 function ForwardHorizonProgress({ horizons }: {
   horizons: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["forwardEvaluation"]>["horizons"]>;
 }) {
@@ -1165,7 +1263,7 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
           note={synchronizedQuality ? "48時間で品質判定" : relativeTime(snapshot?.collection.latestAt)}
         />
       </div>
-      <div className="grid grid-cols-2 border-t sm:grid-cols-4 sm:divide-x sm:divide-border">
+      <div className="grid grid-cols-2 border-t sm:grid-cols-5 sm:divide-x sm:divide-border">
         {(snapshot?.pipelines ?? fallbackPipelines).map((pipeline) => (
           <div key={pipeline.id} className="flex items-center justify-between gap-2 border-b px-3 py-2.5 odd:border-r sm:border-b-0 sm:border-r-0 sm:px-4 sm:py-3">
             <div className="flex min-w-0 items-center gap-2">
@@ -1322,6 +1420,7 @@ const fallbackPipelines = [
   { id: "hyperliquid", label: "相場データ収集", cadence: "1分ごと", status: "waiting" as const },
   { id: "backtest", label: "モデル再検証", cadence: "6時間ごと", status: "waiting" as const },
   { id: "forward-experiment", label: "固定フォワード検証", cadence: "5分ごと", status: "waiting" as const },
+  { id: "short-term-direction", label: "15分モデル検証", cadence: "1分ごと", status: "waiting" as const },
 ];
 
 const fallbackReadinessGates: MonitoringSnapshot["tradeReadiness"]["gates"] = [

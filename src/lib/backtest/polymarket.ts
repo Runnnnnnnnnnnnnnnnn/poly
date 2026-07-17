@@ -14,6 +14,7 @@ const marketSchema = z
     outcomes: z.unknown().optional(),
     outcomePrices: z.unknown().optional(),
     clobTokenIds: z.unknown().optional(),
+    eventStartTime: z.string().nullable().optional(),
     endDate: z.string().nullable().optional(),
     closed: z.boolean().optional(),
     resolved: z.boolean().optional(),
@@ -71,6 +72,11 @@ export type HistoricalCryptoEvent = {
   markets: CryptoMarket[];
 };
 
+export type ActiveCryptoDirectionMarket = CryptoMarket & {
+  eventStartTime: string;
+  durationMinutes: number;
+};
+
 export async function discoverCryptoMarkets(options: { includeResolved?: boolean; limit?: number; asset?: CryptoAsset } = {}) {
   const includeResolved = options.includeResolved ?? true;
   const limit = options.limit ?? 80;
@@ -109,6 +115,37 @@ export async function discoverActiveCryptoPriceMarkets(limit = 300) {
     .filter((market) => isFixedTerminalPriceQuestion(market.question ?? ""))
     .map((market) => toCryptoMarket(market, String(event.id)))
     .filter((market): market is CryptoMarket => Boolean(market && market.asset !== "OTHER" && !market.resolved)));
+  return Array.from(new Map(markets.map((market) => [market.id, market])).values()).slice(0, limit);
+}
+
+export async function discoverActiveCryptoDirectionMarkets(limit = 200) {
+  const now = new Date();
+  const url = new URL(`${GAMMA_API}/events`);
+  url.searchParams.set("active", "true");
+  url.searchParams.set("closed", "false");
+  url.searchParams.set("limit", "200");
+  url.searchParams.set("order", "volume24hr");
+  url.searchParams.set("ascending", "false");
+  url.searchParams.set("tag_id", CRYPTO_PRICES_TAG_ID);
+  url.searchParams.set("related_tags", "true");
+  url.searchParams.set("end_date_min", now.toISOString());
+  const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 20_000);
+  if (!response.ok) throw new Error(`active crypto direction events ${response.status}`);
+  const events = z.array(historicalEventSchema).parse(await response.json());
+  const markets = events.flatMap((event) => event.markets.flatMap((market) => {
+    if (!isUpDownDirectionMarket(market)) return [];
+    const startAt = parseDate(market.eventStartTime ?? event.startDate);
+    const endAt = parseDate(market.endDate ?? event.endDate);
+    const normalized = toCryptoMarket(market, String(event.id));
+    if (!startAt || !endAt || !normalized || normalized.asset === "OTHER" || normalized.resolved) return [];
+    const durationMinutes = (endAt.getTime() - startAt.getTime()) / 60_000;
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return [];
+    return [{
+      ...normalized,
+      eventStartTime: startAt.toISOString(),
+      durationMinutes,
+    } satisfies ActiveCryptoDirectionMarket];
+  }));
   return Array.from(new Map(markets.map((market) => [market.id, market])).values()).slice(0, limit);
 }
 
@@ -234,17 +271,21 @@ function toCryptoMarket(market: z.infer<typeof marketSchema>, explicitEventId?: 
   const tokenIds = safeJsonArray(market.clobTokenIds).map(String);
   const yesIndex = outcomes.findIndex((outcome) => outcome.toLowerCase() === "yes");
   const noIndex = outcomes.findIndex((outcome) => outcome.toLowerCase() === "no");
-  const yesPrice = prices[yesIndex >= 0 ? yesIndex : 0];
-  const noPrice = prices[noIndex >= 0 ? noIndex : 1];
+  const upIndex = outcomes.findIndex((outcome) => outcome.toLowerCase() === "up");
+  const downIndex = outcomes.findIndex((outcome) => outcome.toLowerCase() === "down");
+  const positiveIndex = yesIndex >= 0 ? yesIndex : upIndex >= 0 ? upIndex : 0;
+  const negativeIndex = noIndex >= 0 ? noIndex : downIndex >= 0 ? downIndex : 1;
+  const yesPrice = prices[positiveIndex];
+  const noPrice = prices[negativeIndex];
   const result = resolveResult(market, yesPrice, noPrice);
 
-  if (!asset || !market.id || !tokenIds[yesIndex >= 0 ? yesIndex : 0]) return null;
+  if (!asset || !market.id || !tokenIds[positiveIndex]) return null;
   return {
     id: String(market.id),
     eventId: explicitEventId ?? (market.events?.[0] ? String(market.events[0].id) : null),
     asset,
-    tokenId: tokenIds[yesIndex >= 0 ? yesIndex : 0],
-    noTokenId: tokenIds[noIndex >= 0 ? noIndex : 1] ?? null,
+    tokenId: tokenIds[positiveIndex],
+    noTokenId: tokenIds[negativeIndex] ?? null,
     title: market.question ?? String(market.id),
     slug: market.slug ?? null,
     endDate: market.endDate ?? null,
@@ -267,6 +308,13 @@ function isFixedTerminalPriceQuestion(question: string) {
   const terminalPrice = /\$\s*[0-9]/.test(text) && /\b(above|below|between|higher than|lower than|greater than|less than|over|under)\b/.test(text);
   const pathDependent = /\b(dip|hit|reach|touch|before|during|all[- ]time high)\b|\bby\s/.test(text);
   return terminalPrice && !pathDependent;
+}
+
+function isUpDownDirectionMarket(market: z.infer<typeof marketSchema>) {
+  const outcomes = safeJsonArray(market.outcomes).map((outcome) => String(outcome).toLowerCase());
+  return /\bup or down\b/i.test(market.question ?? "")
+    && outcomes.includes("up")
+    && outcomes.includes("down");
 }
 
 function toHistoricalEvent(event: z.infer<typeof historicalEventSchema>, horizonHours: number, endDateMax: Date): HistoricalCryptoEvent | null {
