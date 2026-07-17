@@ -19,7 +19,8 @@ function moveExisting(from, to) {
 }
 
 function restore(moved) {
-  for (const [from, to] of moved.reverse()) {
+  const pending = [...moved].reverse();
+  for (const [from, to] of pending) {
     if (existsSync(to)) {
       mkdirSync(dirname(from), { recursive: true });
       rmSync(from, { recursive: true, force: true });

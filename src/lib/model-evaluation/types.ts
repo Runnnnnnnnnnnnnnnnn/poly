@@ -64,6 +64,20 @@ export type CombinedCandidateDiagnostic = {
   }>;
 };
 
+export type CombinedHoldoutAudit = {
+  strategy: CombinedStrategyCandidate;
+  trades: number;
+  wins: number;
+  winRate: number | null;
+  netReturnPct: number;
+  benchmarkReturnPct: number;
+  excessReturnPct: number;
+  returnConfidenceInterval95: [number, number] | null;
+  statisticallyPositive: boolean;
+  deflatedSharpeProbability: number | null;
+  maxDrawdownPct: number;
+};
+
 export type ModelEvaluationMetrics = {
   methodology: "chronological-holdout" | "walk-forward-holdout";
   horizonHours: number;
@@ -140,6 +154,7 @@ export type ModelEvaluationMetrics = {
     testStartedAt: string | null;
     testEndedAt: string | null;
     closestValidationCandidate: CombinedStrategyCandidate | null;
+    closestHoldoutAudit: CombinedHoldoutAudit | null;
     candidateDiagnostics: CombinedCandidateDiagnostic[];
     eligibleSignals: number;
     initialCapital: number;

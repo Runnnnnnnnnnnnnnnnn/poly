@@ -209,6 +209,26 @@ type MonitoringSnapshot = {
       minimumFunding24h: number;
       positionPct: number;
     } | null;
+    closestHoldoutAudit: {
+      strategy: {
+        id: string;
+        minimumSignalZ: number;
+        signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
+        minimumTrendZ: number;
+        minimumFunding24h: number;
+        positionPct: number;
+      };
+      trades: number;
+      wins: number;
+      winRate: number | null;
+      netReturnPct: number;
+      benchmarkReturnPct: number;
+      excessReturnPct: number;
+      returnConfidenceInterval95: [number, number] | null;
+      statisticallyPositive: boolean;
+      deflatedSharpeProbability: number | null;
+      maxDrawdownPct: number;
+    } | null;
     candidateDiagnostics: Array<{
       strategy: {
         id: string;
@@ -919,6 +939,10 @@ function MonitorMetric({ label, value, note }: { label: string; value: string; n
 
 function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
   const model = snapshot?.model;
+  const holdoutAudit = model?.closestHoldoutAudit;
+  const auditedReturn = holdoutAudit?.netReturnPct ?? model?.latestReturnPct;
+  const auditedBenchmark = holdoutAudit?.benchmarkReturnPct ?? model?.benchmarkReturnPct;
+  const auditedDrawdown = holdoutAudit?.maxDrawdownPct ?? model?.maxDrawdownPct;
   const passedChecks = snapshot?.backtestQuality.checks.filter((check) => check.passed).length ?? 0;
   const qualitySignal = getEvaluationSignal(snapshot?.backtestQuality.status);
   return (
@@ -939,13 +963,13 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           </span>
         </div>
         <div className="mt-5 grid grid-cols-3 divide-x divide-border">
-          <CompactMetric label="戦略損益" value={formatPct(model?.latestReturnPct)} />
-          <CompactMetric label="常時ロング" value={formatPct(model?.benchmarkReturnPct)} />
-          <CompactMetric label="最大下落" value={formatPct(model?.maxDrawdownPct)} />
+          <CompactMetric label={holdoutAudit ? "候補の最終損益" : "戦略損益"} value={formatSignedPct(auditedReturn)} />
+          <CompactMetric label="最良の単純戦略" value={formatSignedPct(auditedBenchmark)} />
+          <CompactMetric label="最大下落" value={formatPct(auditedDrawdown)} />
         </div>
         <div className="mt-5 flex flex-wrap gap-2 border-t pt-4">
           {(snapshot?.backtestQuality.checks ?? []).map((check) => (
-            <span key={check.label} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold ${check.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+            <span key={check.label} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold ${check.passed ? "bg-emerald-50 text-emerald-700" : snapshot?.backtestQuality.status === "underperforming" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-800"}`}>
               {check.passed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleDot className="h-3.5 w-3.5" />}
               {check.label}
             </span>
@@ -1011,12 +1035,22 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
   const decision = getEvaluationSignal(model?.evaluationStatus, model?.combinedStrategy);
   const DecisionIcon = decision.icon;
   const hasTrades = (model?.trades ?? 0) > 0;
-  const sampleReady = (model?.trades ?? 0) >= 50;
   const leadingCandidate = selectLeadingCandidate(model?.candidateDiagnostics);
+  const holdoutAudit = model?.closestHoldoutAudit;
+  const isAuditingRejectedCandidate = model?.combinedStrategy === "no-trade guard" && Boolean(holdoutAudit);
+  const displayedTrades = isAuditingRejectedCandidate ? holdoutAudit?.trades ?? 0 : model?.trades ?? 0;
+  const displayedReturn = isAuditingRejectedCandidate ? holdoutAudit?.netReturnPct : model?.latestReturnPct;
+  const displayedDrawdown = isAuditingRejectedCandidate ? holdoutAudit?.maxDrawdownPct : model?.maxDrawdownPct;
+  const sampleReady = displayedTrades >= 50;
   const leadingPassedGates = leadingCandidate?.gates.filter((gate) => gate.passed).length ?? 0;
-  const edgeConfidence = model?.deflatedSharpeProbability ?? leadingCandidate?.deflatedSharpeProbability;
-  const edgeReady = (edgeConfidence ?? 0) >= 0.95
-    && (model?.statisticallyPositive === true || leadingCandidate?.gates.some((gate) => gate.id === "significance" && gate.passed) === true);
+  const edgeConfidence = model?.deflatedSharpeProbability
+    ?? holdoutAudit?.deflatedSharpeProbability
+    ?? leadingCandidate?.deflatedSharpeProbability;
+  const edgeReady = holdoutAudit
+    ? (holdoutAudit.deflatedSharpeProbability ?? 0) >= 0.95 && holdoutAudit.statisticallyPositive
+    : (edgeConfidence ?? 0) >= 0.95
+      && (model?.statisticallyPositive === true
+        || leadingCandidate?.gates.some((gate) => gate.id === "significance" && gate.passed) === true);
 
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="組み合わせ戦略の検証結果">
@@ -1037,15 +1071,16 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
         </div>
       </div>
       {leadingCandidate && model?.combinedStrategy === "no-trade guard" ? (
-        <div className="flex flex-col gap-3 border-b bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${(holdoutAudit?.netReturnPct ?? 0) > 0 ? "bg-slate-50" : "bg-rose-50"}`}>
           <div className="min-w-0">
-            <p className="text-[11px] font-bold text-slate-500">現在の最有力候補</p>
+            <p className="text-[11px] font-bold text-slate-500">最有力候補 / 選定に使わない最終期間で監査</p>
             <p className="mt-1 text-sm font-bold text-slate-950">{formatCombinedStrategy(leadingCandidate.strategy.id)}</p>
           </div>
           <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
-            <span className="rounded-sm bg-white px-2 py-1 text-slate-700">{leadingPassedGates}/{leadingCandidate.gates.length} 条件</span>
-            <span className="rounded-sm bg-white px-2 py-1 text-emerald-700">損益 {formatSignedPct(leadingCandidate.netReturnPct)}</span>
-            <span className="rounded-sm bg-white px-2 py-1 text-amber-800">確信度 {formatPct(leadingCandidate.deflatedSharpeProbability)}</span>
+            <span className="rounded-sm bg-white px-2 py-1 text-slate-700">選定時 {leadingPassedGates}/{leadingCandidate.gates.length} 条件</span>
+            <span className="rounded-sm bg-white px-2 py-1 text-slate-700">最終 {holdoutAudit?.trades ?? 0}取引</span>
+            <span className={`rounded-sm bg-white px-2 py-1 ${(holdoutAudit?.netReturnPct ?? 0) > 0 ? "text-emerald-700" : "text-rose-700"}`}>最終損益 {formatSignedPct(holdoutAudit?.netReturnPct)}</span>
+            <span className="rounded-sm bg-white px-2 py-1 text-amber-800">確信度 {formatPct(edgeConfidence)}</span>
           </div>
         </div>
       ) : null}
@@ -1059,18 +1094,18 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
         />
         <ResultMetric
           icon={Target}
-          label="決済取引"
-          value={`${model?.trades ?? 0} / 50`}
-          note={sampleReady ? "必要数に到達" : `あと${Math.max(0, 50 - (model?.trades ?? 0))}件`}
+          label={isAuditingRejectedCandidate ? "候補の最終取引" : "決済取引"}
+          value={`${displayedTrades} / 50`}
+          note={sampleReady ? "必要数に到達" : `あと${Math.max(0, 50 - displayedTrades)}件`}
           tone={sampleReady ? "good" : "watch"}
-          meter={clamp(((model?.trades ?? 0) / 50) * 100, 0, 100)}
+          meter={clamp((displayedTrades / 50) * 100, 0, 100)}
         />
         <ResultMetric
           icon={TrendingUp}
-          label="純損益"
-          value={hasTrades ? formatSignedPct(model?.latestReturnPct) : "未判定"}
-          note={hasTrades ? "全コスト控除後" : "取引0件"}
-          tone={hasTrades ? getProfitSignal(model?.latestReturnPct).tone : "neutral"}
+          label={isAuditingRejectedCandidate ? "候補の最終損益" : "純損益"}
+          value={displayedTrades > 0 ? formatSignedPct(displayedReturn) : "未判定"}
+          note={displayedTrades > 0 ? "全コスト控除後" : "取引0件"}
+          tone={displayedTrades > 0 ? getProfitSignal(displayedReturn).tone : "neutral"}
         />
         <ResultMetric
           icon={ShieldCheck}
@@ -1082,10 +1117,10 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
         />
         <ResultMetric
           icon={TrendingDown}
-          label="最大下落"
-          value={hasTrades ? formatPct(model?.maxDrawdownPct) : "未判定"}
+          label={isAuditingRejectedCandidate ? "候補の最大下落" : "最大下落"}
+          value={displayedTrades > 0 ? formatPct(displayedDrawdown) : "未判定"}
           note="上限5.00%"
-          tone={hasTrades && (model?.maxDrawdownPct ?? 0) <= 0.05 ? "good" : "neutral"}
+          tone={displayedTrades > 0 && (displayedDrawdown ?? 0) <= 0.05 ? "good" : "neutral"}
         />
       </div>
       <details className="border-t">

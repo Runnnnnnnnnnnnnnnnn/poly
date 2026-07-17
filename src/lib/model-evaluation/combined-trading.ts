@@ -55,6 +55,7 @@ type Simulation = Omit<CombinedMetrics,
   | "testStartedAt"
   | "testEndedAt"
   | "closestValidationCandidate"
+  | "closestHoldoutAudit"
   | "candidateDiagnostics"
   | "eligibleSignals"
   | "benchmarkReturnPct"
@@ -87,6 +88,9 @@ export function evaluateCombinedTrading(
     ? selectNonOverlappingSignals(testSignals, 0)
     : selectedSignals;
   const benchmarks = evaluateBenchmarks(benchmarkSignals, selectedStrategy);
+  const closestHoldoutAudit = selection.closestCandidate
+    ? auditClosestCandidate(testSignals, selection.closestCandidate.strategy)
+    : null;
   const { tradeReturns, ...publicStrategy } = strategy;
   void tradeReturns;
 
@@ -102,16 +106,36 @@ export function evaluateCombinedTrading(
     testStartedAt: signalTime(testSignals[0], "entryAt"),
     testEndedAt: signalTime(testSignals.at(-1), "exitAt"),
     closestValidationCandidate: selection.closestCandidate?.strategy ?? null,
+    closestHoldoutAudit,
     candidateDiagnostics: selection.diagnostics,
     eligibleSignals: testSignals.length,
     ...publicStrategy,
     benchmarkReturnPct: benchmarks.bestReturnPct,
-    excessReturnPct: strategy.netReturnPct - benchmarks.bestReturnPct,
+    excessReturnPct: strategy.trades > 0 ? strategy.netReturnPct - benchmarks.bestReturnPct : 0,
     benchmarks,
     strategyTrials: cumulativeStrategyTrials,
     walkForwardFolds,
     profitableValidationFolds: selection.profitableFolds,
     minimumRequiredTrades: minimumValidationTrades,
+  };
+}
+
+function auditClosestCandidate(testSignals: TradeSignal[], candidate: CombinedStrategyCandidate): CombinedMetrics["closestHoldoutAudit"] {
+  const signals = selectSignalsForCandidate(testSignals, candidate);
+  const result = simulate(signals, candidate, "signal");
+  const benchmark = evaluateBenchmarks(signals, candidate);
+  return {
+    strategy: candidate,
+    trades: result.trades,
+    wins: result.wins,
+    winRate: result.winRate,
+    netReturnPct: result.netReturnPct,
+    benchmarkReturnPct: benchmark.bestReturnPct,
+    excessReturnPct: result.netReturnPct - benchmark.bestReturnPct,
+    returnConfidenceInterval95: result.returnConfidenceInterval95,
+    statisticallyPositive: result.statisticallyPositive,
+    deflatedSharpeProbability: result.deflatedSharpeProbability,
+    maxDrawdownPct: result.maxDrawdownPct,
   };
 }
 

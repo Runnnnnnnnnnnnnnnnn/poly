@@ -156,6 +156,9 @@ assert.equal(evaluation.dataset.testEvents, 16);
 assert.equal(evaluation.dataset.testMarkets, 35);
 assert.ok(evaluation.trading.trades <= evaluation.dataset.testEvents);
 assert.equal(evaluation.quality.gates.find((gate) => gate.id === "same-holdout")?.passed, true);
+assert.equal(evaluation.combinedTrading.selectedStrategy.id, "no-trade guard");
+assert.equal(evaluation.combinedTrading.excessReturnPct, 0);
+assert.equal(evaluation.quality.gates.find((gate) => gate.id === "benchmark")?.passed, false);
 assert.equal(evaluation.dataset.hash, evaluateChronologicalModel([...evaluationSamples].reverse()).dataset.hash);
 
 console.log("chronological model evaluation tests passed");
@@ -200,6 +203,8 @@ assert.ok((combined.deflatedSharpeProbability ?? 0) > 0.95);
 assert.equal(combined.strategyTrials, 19);
 assert.equal(combined.walkForwardFolds, 4);
 assert.equal(combined.selectedFromValidation, true);
+assert.equal(combined.closestHoldoutAudit?.strategy.id, combined.closestValidationCandidate?.id);
+assert.equal(combined.closestHoldoutAudit?.trades, 24);
 assert.equal(combined.candidateDiagnostics.length, 10);
 assert.equal(combined.candidateDiagnostics.some((candidate) => candidate.passed), true);
 assert.equal(
@@ -247,6 +252,7 @@ const fundingCombined = evaluateCombinedTrading(combinedSamples.map((sample, ind
   };
 }));
 assert.equal(fundingCombined.selectedStrategy.signalRule, "hyperliquid-funding-carry");
+assert.equal(fundingCombined.closestHoldoutAudit?.strategy.signalRule, "hyperliquid-funding-carry");
 assert.equal(fundingCombined.trades, 24);
 assert.ok(fundingCombined.netReturnPct > 0);
 assert.ok(fundingCombined.excessReturnPct > 0);
@@ -258,6 +264,7 @@ const guarded = evaluateCombinedTrading(combinedSamples.map((sample, index) => i
 assert.equal(guarded.selectedStrategy.id, "no-trade guard");
 assert.equal(guarded.selectedFromValidation, false);
 assert.ok(guarded.closestValidationCandidate);
+assert.ok(guarded.closestHoldoutAudit);
 assert.equal(guarded.candidateDiagnostics.every((candidate) => !candidate.passed), true);
 
 console.log("combined Polymarket and Hyperliquid strategy tests passed");

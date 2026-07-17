@@ -6,7 +6,7 @@ import { addPriceStructureFeatures } from "@/src/lib/model-evaluation/price-stru
 import type { EvaluationSample, ModelEvaluationMetrics, ModelEvaluationResult } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
 
-const maximumEvents = 260;
+const maximumEvents = 300;
 const priceHistoryFidelityMinutes = 1;
 const maximumObservationAgeMinutes = 90;
 export const PREDECLARED_HORIZONS = [6, 12, 24, 48] as const;
@@ -24,7 +24,7 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
         primaryHorizonHours: HORIZON_HOURS,
         priceHistoryFidelityMinutes,
         maximumObservationAgeMinutes,
-        eventSampling: "80% latest asset-balanced terminal-price events and 20% long-history events",
+        eventSampling: "up to 300 events: 80% latest asset-balanced terminal-price events and 20% long-history audit events",
         split: "probability 60/20/20; execution-eligible signals 60/40 chronological with a holding-period embargo and four validation folds",
         eventWeighting: "equal",
         signal: "Polymarket-implied terminal median with predeclared price-momentum, mean-reversion, funding-carry, and funding-momentum rules, evaluated independently by horizon",

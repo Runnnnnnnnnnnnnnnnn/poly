@@ -4,7 +4,7 @@ import { evaluateCombinedTrading } from "@/src/lib/model-evaluation/combined-tra
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
 import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
-export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v14";
+export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v15";
 export const HORIZON_HOURS = 24;
 export const MIN_TRAIN_EVENTS = 20;
 export const MIN_HOLDOUT_EVENTS = 15;
@@ -105,15 +105,37 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
     { id: "funding", label: "最終テストの資金調達率を90%以上取得", passed: testFundingFeatureCoverage >= 0.9 && testFundingCostCoverage >= 0.9 },
     { id: "sample", label: `売買可能な最終テスト${MIN_HOLDOUT_EVENTS}イベント以上`, passed: combinedTrading.eligibleSignals >= MIN_HOLDOUT_EVENTS },
     { id: "trades", label: `最終テスト${minimumCombinedTrades}取引以上`, passed: combinedTrading.trades >= minimumCombinedTrades },
-    { id: "benchmark", label: "3つの単純戦略で最良の成績を上回る", passed: combinedTrading.excessReturnPct > 0 },
+    {
+      id: "benchmark",
+      label: "採用戦略が最終テストで単純戦略を上回る",
+      passed: combinedTrading.trades >= minimumCombinedTrades && combinedTrading.excessReturnPct > 0,
+    },
+    {
+      id: "closest-holdout",
+      label: "最有力候補が未使用期間でプラスかつ単純戦略を上回る",
+      passed: Boolean(
+        combinedTrading.closestHoldoutAudit
+        && combinedTrading.closestHoldoutAudit.trades >= minimumCombinedTrades
+        && combinedTrading.closestHoldoutAudit.netReturnPct > 0
+        && combinedTrading.closestHoldoutAudit.excessReturnPct > 0
+      ),
+    },
     { id: "significance", label: "ブロック再標本化95%区間がプラス", passed: combinedTrading.statisticallyPositive },
     { id: "selection-bias", label: "試行回数補正後も95%以上", passed: (combinedTrading.deflatedSharpeProbability ?? 0) >= 0.95 },
   ];
   const validationUnderperformed = combinedTrading.validationEligibleSignals >= 50
     && combinedTrading.candidateDiagnostics.length > 0
     && combinedTrading.candidateDiagnostics.every((candidate) => candidate.excessReturnPct <= 0);
+  const closestHoldoutUnderperformed = Boolean(
+    combinedTrading.closestHoldoutAudit
+    && combinedTrading.closestHoldoutAudit.trades >= minimumCombinedTrades
+    && (
+      combinedTrading.closestHoldoutAudit.netReturnPct <= 0
+      || combinedTrading.closestHoldoutAudit.excessReturnPct <= 0
+    )
+  );
   const qualityStatus = combinedTrading.selectedStrategy.id === "no-trade guard"
-    ? validationUnderperformed ? "underperforming" : "inconclusive"
+    ? validationUnderperformed || closestHoldoutUnderperformed ? "underperforming" : "inconclusive"
     : combinedTrading.netReturnPct < 0 || combinedTrading.excessReturnPct <= 0
       ? "underperforming"
       : testEvents.length >= MIN_HOLDOUT_EVENTS

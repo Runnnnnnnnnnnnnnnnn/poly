@@ -275,7 +275,7 @@ export async function getMonitoringSnapshot() {
       backtestPoints: backtestPointCount,
     },
     model: {
-      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v14",
+      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v15",
       selectedCandidate: evaluation?.selectedCandidate.id ?? null,
       selectedCandidateKind: evaluation?.selectedCandidate.kind ?? null,
       combinedStrategy: evaluation?.combinedTrading?.selectedStrategy.id ?? null,
@@ -290,6 +290,7 @@ export async function getMonitoringSnapshot() {
       testStartedAt: evaluation?.combinedTrading?.testStartedAt ?? null,
       testEndedAt: evaluation?.combinedTrading?.testEndedAt ?? null,
       closestValidationCandidate: evaluation?.combinedTrading?.closestValidationCandidate ?? null,
+      closestHoldoutAudit: evaluation?.combinedTrading?.closestHoldoutAudit ?? null,
       candidateDiagnostics: evaluation?.combinedTrading?.candidateDiagnostics ?? [],
       structuralFeatureCoverage: evaluation?.dataset.testExecutionFeatureCoverage ?? evaluation?.dataset.executionFeatureCoverage ?? evaluation?.dataset.structuralFeatureCoverage ?? null,
       fundingFeatureCoverage: evaluation?.dataset.testFundingFeatureCoverage ?? evaluation?.dataset.fundingFeatureCoverage ?? null,
