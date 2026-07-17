@@ -3,10 +3,17 @@ import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../
 
 const intervalMs = Math.max(60_000, Number(process.env.COMBINED_SHADOW_INTERVAL_MS ?? 300_000));
 const qualifiedModelConfig = process.env.COMBINED_USE_QUALIFIED_MODEL === "0" ? null : await getQualifiedModelShadowConfig();
+const configuredSignalRule = process.env.COMBINED_SIGNAL_RULE;
+const signalRule = configuredSignalRule === "contrarian"
+  || configuredSignalRule === "hyperliquid-momentum"
+  || configuredSignalRule === "hyperliquid-reversion"
+  ? configuredSignalRule
+  : "polymarket-only";
 const config = {
   initialEquity: Number(process.env.COMBINED_INITIAL_EQUITY ?? 10_000),
   minimumSignalZ: Number(qualifiedModelConfig?.minimumSignalZ ?? process.env.COMBINED_MINIMUM_SIGNAL_Z ?? 0.5),
-  signalRule: qualifiedModelConfig?.signalRule ?? (process.env.COMBINED_SIGNAL_RULE === "contrarian" ? "contrarian" : "polymarket-only"),
+  minimumTrendZ: Number(qualifiedModelConfig?.minimumTrendZ ?? process.env.COMBINED_MINIMUM_TREND_Z ?? 0.1),
+  signalRule: qualifiedModelConfig?.signalRule ?? signalRule,
   modelVersion: qualifiedModelConfig?.modelVersion ?? null,
   positionPct: Number(qualifiedModelConfig?.positionPct ?? process.env.COMBINED_POSITION_PCT ?? 0.1),
   maxPositionNotional: Number(process.env.COMBINED_MAX_NOTIONAL ?? 1_000),

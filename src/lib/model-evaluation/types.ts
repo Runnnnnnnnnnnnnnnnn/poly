@@ -38,7 +38,7 @@ export type ModelCandidate = {
 export type CombinedStrategyCandidate = {
   id: string;
   minimumSignalZ: number;
-  signalRule: "polymarket-only" | "trend-confirmed" | "contrarian";
+  signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
   minimumTrendZ: number;
   positionPct: number;
 };
@@ -153,6 +153,7 @@ export type ModelEvaluationMetrics = {
     returnConfidenceInterval95: [number, number] | null;
     statisticallyPositive: boolean;
     deflatedSharpeProbability: number | null;
+    strategyTrials: number;
     walkForwardFolds: number;
     profitableValidationFolds: number;
     minimumRequiredTrades: number;

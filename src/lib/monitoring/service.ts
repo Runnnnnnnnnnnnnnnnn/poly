@@ -238,7 +238,7 @@ export async function getMonitoringSnapshot() {
       backtestPoints: backtestPointCount,
     },
     model: {
-      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v11",
+      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v12",
       selectedCandidate: evaluation?.selectedCandidate.id ?? null,
       selectedCandidateKind: evaluation?.selectedCandidate.kind ?? null,
       combinedStrategy: evaluation?.combinedTrading?.selectedStrategy.id ?? null,
@@ -273,6 +273,7 @@ export async function getMonitoringSnapshot() {
       confidenceInterval95: evaluation?.combinedTrading?.returnConfidenceInterval95 ?? evaluation?.probability.confidenceInterval95 ?? null,
       statisticallyPositive: evaluation?.combinedTrading?.statisticallyPositive ?? evaluation?.probability.statisticallyPositive ?? false,
       deflatedSharpeProbability: evaluation?.combinedTrading?.deflatedSharpeProbability ?? null,
+      strategyTrials: evaluation?.combinedTrading?.strategyTrials ?? 0,
       walkForwardFolds: evaluation?.combinedTrading?.walkForwardFolds ?? 0,
       profitableValidationFolds: evaluation?.combinedTrading?.profitableValidationFolds ?? 0,
       completedAt: latestEvaluation?.completedAt?.toISOString() ?? null,

@@ -38,6 +38,8 @@ export type CombinedLiveSignal = {
   priceBasisPct: number | null;
   impliedTarget: number;
   realizedVolatility24h: number;
+  hyperliquidMomentum6h: number;
+  trendZ6h: number;
   signalZ: number;
   side: "LONG" | "SHORT";
   sourceMarkets: number;
@@ -147,6 +149,7 @@ export async function scanCombinedLiveSignal(now = new Date()): Promise<Combined
     if (totalWeight <= 0) return null;
     const impliedTarget = Math.exp(estimates.reduce((sum, estimate) => sum + Math.log(estimate.target) * estimate.weight, 0) / totalWeight);
     const signalZ = Math.log(impliedTarget / priceState.spotPrice) / Math.max(horizonVolatility, 0.001);
+    const trendZ6h = priceState.momentum6h / Math.max(priceState.volatility24h * Math.sqrt(6 / 24), 0.001);
     if (!Number.isFinite(signalZ)) return null;
     const representative = [...estimates].sort((left, right) => right.market.volume - left.market.volume)[0];
     const reference = selectReferencePrice(referencePrices, group.asset, representative.market.referenceSource);
@@ -171,6 +174,8 @@ export async function scanCombinedLiveSignal(now = new Date()): Promise<Combined
       priceBasisPct,
       impliedTarget,
       realizedVolatility24h: priceState.volatility24h,
+      hyperliquidMomentum6h: priceState.momentum6h,
+      trendZ6h,
       signalZ,
       side: signalZ >= 0 ? "LONG" as const : "SHORT" as const,
       sourceMarkets: estimates.length,
@@ -304,7 +309,7 @@ async function loadPriceStates(now: Date) {
     await fetchRecentHourlyPrices(asset, now).catch(() => []),
   ] as const)));
 
-  const states = new Map<CombinedLiveSignal["asset"], { spotPrice: number; volatility24h: number }>();
+  const states = new Map<CombinedLiveSignal["asset"], { spotPrice: number; volatility24h: number; momentum6h: number }>();
   for (const asset of supportedAssets) {
     const assetRows = grouped.get(asset) ?? [];
     const hourly = new Map<number, (typeof assetRows)[number]>();
@@ -314,7 +319,9 @@ async function loadPriceStates(now: Date) {
     if (prices.length < 12) continue;
     const returns = prices.slice(1).map((price, index) => Math.log(price / prices[index])).filter(Number.isFinite).slice(-24);
     const volatility24h = clamp(Math.sqrt(returns.reduce((sum, value) => sum + value ** 2, 0)), 0.005, 0.25);
-    states.set(asset, { spotPrice: prices.at(-1) as number, volatility24h });
+    const momentum6h = Math.log((prices.at(-1) as number) / prices[prices.length - 7]);
+    if (!Number.isFinite(momentum6h)) continue;
+    states.set(asset, { spotPrice: prices.at(-1) as number, volatility24h, momentum6h });
   }
   return states;
 }

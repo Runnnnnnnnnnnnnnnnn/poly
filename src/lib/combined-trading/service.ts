@@ -8,7 +8,8 @@ import { prisma } from "@/src/lib/server/prisma";
 export type CombinedShadowConfig = {
   initialEquity: number;
   minimumSignalZ: number;
-  signalRule: "polymarket-only" | "contrarian";
+  minimumTrendZ: number;
+  signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
   modelVersion: string | null;
   positionPct: number;
   maxPositionNotional: number;
@@ -23,6 +24,7 @@ export type CombinedShadowConfig = {
 const defaultConfig: CombinedShadowConfig = {
   initialEquity: 10_000,
   minimumSignalZ: 0.5,
+  minimumTrendZ: 0.1,
   signalRule: "polymarket-only",
   modelVersion: null,
   positionPct: 0.1,
@@ -44,10 +46,11 @@ export async function getQualifiedModelShadowConfig(): Promise<Partial<CombinedS
     || !strategy
     || strategy.id === "no-trade guard"
     || metrics.combinedTrading.statisticallyPositive !== true
-    || (strategy.signalRule !== "polymarket-only" && strategy.signalRule !== "contrarian")
+    || !isExecutableSignalRule(strategy.signalRule)
   ) return null;
   return {
     minimumSignalZ: strategy.minimumSignalZ,
+    minimumTrendZ: strategy.minimumTrendZ,
     signalRule: strategy.signalRule,
     positionPct: strategy.positionPct,
     modelVersion: metrics.modelVersion,
@@ -134,6 +137,9 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
     reason = `${positions.length}件の仮想ポジションを保有中`;
   } else if (!scan.signal) {
     action = "NO_SIGNAL";
+  } else if (isHyperliquidSignalRule(config.signalRule) && Math.abs(scan.signal.trendZ6h) < config.minimumTrendZ) {
+    action = "WAIT";
+    reason = `6時間値動き${Math.abs(scan.signal.trendZ6h).toFixed(2)}が基準${config.minimumTrendZ.toFixed(2)}未満`;
   } else if (Math.abs(scan.signal.signalZ) < config.minimumSignalZ) {
     action = "WAIT";
     reason = `シグナル強度${Math.abs(scan.signal.signalZ).toFixed(2)}が基準${config.minimumSignalZ.toFixed(2)}未満`;
@@ -309,8 +315,15 @@ async function openShadowPosition(run: CombinedShadowRun, signal: CombinedLiveSi
 }
 
 export function applyCombinedSignalRule(signal: CombinedLiveSignal, rule: CombinedShadowConfig["signalRule"]): CombinedLiveSignal {
-  if (rule !== "contrarian") return signal;
-  return { ...signal, side: signal.side === "LONG" ? "SHORT" : "LONG" };
+  if (rule === "contrarian") return { ...signal, side: signal.side === "LONG" ? "SHORT" : "LONG" };
+  if (isHyperliquidSignalRule(rule)) {
+    const momentumSide = signal.trendZ6h >= 0 ? "LONG" : "SHORT";
+    return {
+      ...signal,
+      side: rule === "hyperliquid-reversion" ? (momentumSide === "LONG" ? "SHORT" : "LONG") : momentumSide,
+    };
+  }
+  return signal;
 }
 
 async function closeShadowPosition(
@@ -368,9 +381,16 @@ async function maybeMirrorTestnetOrder(run: CombinedShadowRun, position: Combine
     if (run.emergencyStopped || run.riskStatus !== "NORMAL") return;
     const latestEvaluation = await prisma.modelEvaluationRun.findFirst({ where: { status: "completed" }, orderBy: { completedAt: "desc" } });
     const metrics = parseJson<ModelEvaluationMetrics>(latestEvaluation?.metricsJson ?? null);
+    const strategy = metrics?.combinedTrading?.selectedStrategy;
+    const runConfig = normalizeConfig(parseJson<Partial<CombinedShadowConfig>>(run.configJson) ?? {});
     const qualified = metrics?.quality.status === "promising"
-      && metrics.combinedTrading?.selectedStrategy.id !== "no-trade guard"
-      && metrics.combinedTrading?.statisticallyPositive === true;
+      && strategy?.id !== "no-trade guard"
+      && metrics.combinedTrading?.statisticallyPositive === true
+      && isExecutableSignalRule(strategy?.signalRule)
+      && runConfig.modelVersion === metrics.modelVersion
+      && runConfig.signalRule === strategy.signalRule
+      && runConfig.minimumSignalZ === strategy.minimumSignalZ
+      && runConfig.minimumTrendZ === strategy.minimumTrendZ;
     if (!qualified) return;
   }
   const existing = await prisma.combinedExecutionOrder.findFirst({ where: { positionId: position.id, environment: "TESTNET", action } });
@@ -475,7 +495,8 @@ function normalizeConfig(override: Partial<CombinedShadowConfig>) {
   return {
     initialEquity: positive(override.initialEquity, defaultConfig.initialEquity),
     minimumSignalZ: clamp(override.minimumSignalZ ?? defaultConfig.minimumSignalZ, 0.1, 3),
-    signalRule: override.signalRule === "contrarian" ? "contrarian" : "polymarket-only",
+    minimumTrendZ: clamp(override.minimumTrendZ ?? defaultConfig.minimumTrendZ, 0, 3),
+    signalRule: isExecutableSignalRule(override.signalRule) ? override.signalRule : "polymarket-only",
     modelVersion: typeof override.modelVersion === "string" && override.modelVersion.trim() ? override.modelVersion.trim() : null,
     positionPct: clamp(override.positionPct ?? defaultConfig.positionPct, 0.01, 0.2),
     maxPositionNotional: positive(override.maxPositionNotional, defaultConfig.maxPositionNotional),
@@ -486,6 +507,17 @@ function normalizeConfig(override: Partial<CombinedShadowConfig>) {
     slippagePerSide: clamp(override.slippagePerSide ?? defaultConfig.slippagePerSide, 0, 0.02),
     fundingPer24h: clamp(override.fundingPer24h ?? defaultConfig.fundingPer24h, 0, 0.02),
   } satisfies CombinedShadowConfig;
+}
+
+function isExecutableSignalRule(rule: unknown): rule is CombinedShadowConfig["signalRule"] {
+  return rule === "polymarket-only"
+    || rule === "contrarian"
+    || rule === "hyperliquid-momentum"
+    || rule === "hyperliquid-reversion";
+}
+
+function isHyperliquidSignalRule(rule: CombinedShadowConfig["signalRule"]) {
+  return rule === "hyperliquid-momentum" || rule === "hyperliquid-reversion";
 }
 
 function shadowClientOrderId(runId: string, positionId: string, action: string) {

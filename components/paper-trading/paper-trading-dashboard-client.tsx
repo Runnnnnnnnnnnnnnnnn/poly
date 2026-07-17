@@ -130,7 +130,7 @@ type MonitoringSnapshot = {
     riskStatus: string;
     emergencyStopped: boolean;
     minimumSignalZ: number | null;
-    signalRule: "polymarket-only" | "contrarian";
+    signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
     modelVersion: string | null;
     funnel: {
       scans: number;
@@ -196,7 +196,7 @@ type MonitoringSnapshot = {
     closestValidationCandidate: {
       id: string;
       minimumSignalZ: number;
-      signalRule: "polymarket-only" | "trend-confirmed" | "contrarian";
+      signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
       minimumTrendZ: number;
       positionPct: number;
     } | null;
@@ -204,7 +204,7 @@ type MonitoringSnapshot = {
       strategy: {
         id: string;
         minimumSignalZ: number;
-        signalRule: "polymarket-only" | "trend-confirmed" | "contrarian";
+        signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
         minimumTrendZ: number;
         positionPct: number;
       };
@@ -258,6 +258,7 @@ type MonitoringSnapshot = {
     confidenceInterval95: [number, number] | null;
     statisticallyPositive: boolean;
     deflatedSharpeProbability: number | null;
+    strategyTrials: number;
     walkForwardFolds: number;
     profitableValidationFolds: number;
     completedAt: string | null;
@@ -569,7 +570,7 @@ export function PaperTradingDashboardClient() {
         <div>
           <div className="flex items-center gap-2 text-xs font-bold text-primary"><Activity className="h-4 w-4" />POLYMARKET × HYPERLIQUID</div>
           <h1 className="mt-1 max-w-3xl text-2xl font-bold leading-tight text-slate-950 md:text-3xl">予測で売買するモデルを検証中</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Polymarketの予測確率を読み、Hyperliquidでロング・ショートする仕組みを開発しています。</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Polymarketの予測とHyperliquidの値動きを組み合わせ、ロング・ショート・見送りを判断する仕組みを開発しています。</p>
         </div>
         <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${!snapshot && monitoring?.status === "live" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
           <span className={`h-2.5 w-2.5 rounded-full ${!snapshot && monitoring?.status === "live" ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
@@ -658,7 +659,7 @@ function TradingPurposePanel({ snapshot }: { snapshot: MonitoringSnapshot | null
           <div>
             <p className={`text-xs font-bold ${shadowRunning ? "text-sky-700" : "text-amber-800"}`}>現在地: {shadowRunning ? "3. シャドー検証" : "2. バックテスト"}</p>
             <p className="mt-1 text-base font-bold text-slate-950">{shadowRunning ? "実資金なしで市場確認と判断を継続記録中" : "優位性が確認できるまで、実取引は行いません"}</p>
-            <p className="mt-1 text-xs leading-5 text-slate-600">{shadowRunning ? "Polymarketの予測からHyperliquidの売買を仮想実行。採用条件を満たすまでは実注文を止めます。" : "未使用期間のテストで採用条件に届かず、Hyperliquidへの注文は停止しています。"}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">{shadowRunning ? "2市場の情報を組み合わせた売買を仮想実行。採用条件を満たすまでは実注文を止めます。" : "未使用期間のテストで採用条件に届かず、Hyperliquidへの注文は停止しています。"}</p>
           </div>
         </div>
         <span className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 text-xs font-bold text-white"><LockKeyhole className="h-4 w-4" />実取引 OFF</span>
@@ -958,7 +959,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           ))}
           {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
         </div>
-        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Polymarketの予測を売買方向に変換し、Hyperliquidの価格で損益を計測。売買価格取得率 {formatPct(modelFeatureCoverage(snapshot))}</p>
+        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Polymarketの乖離とHyperliquidの短期値動きを比較し、Hyperliquidの価格で損益を計測。売買価格取得率 {formatPct(modelFeatureCoverage(snapshot))}</p>
       </div>
       </div>
     </details>
@@ -1066,6 +1067,7 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
           <ReturnComparison strategyReturn={hasTrades ? model?.latestReturnPct : null} benchmarks={model?.benchmarkReturns} />
           <div className="flex flex-wrap gap-2 border-t px-5 py-3 text-[11px] font-bold text-slate-600">
             <span className="rounded-sm bg-slate-100 px-2 py-1">順次検証 {model?.profitableValidationFolds ?? 0}/{model?.walkForwardFolds ?? 0}期間でプラス</span>
+            <span className="rounded-sm bg-slate-100 px-2 py-1">累計候補 {model?.strategyTrials ?? 0}通りを補正</span>
             <span className="rounded-sm bg-slate-100 px-2 py-1">時刻誤差 最大 {formatMinutes(model?.maximumExecutionTimingErrorMinutes)}</span>
             <span className="rounded-sm bg-slate-100 px-2 py-1">確率帯の矛盾 {model?.probabilityLadderViolationEvents ?? 0}/{model?.probabilityLadderEvents ?? 0}テーマ</span>
           </div>
@@ -1113,9 +1115,16 @@ function CandidateDiagnosis({ diagnostics }: { diagnostics: MonitoringSnapshot["
   )[0] : null;
   if (!best) return null;
   const passed = best.gates.filter((gate) => gate.passed).length;
-  const contrarian = [...(diagnostics ?? [])]
-    .filter((candidate) => candidate.strategy.signalRule === "contrarian")
-    .sort((left, right) => right.netReturnPct - left.netReturnPct)[0];
+  const families = [
+    { rule: "polymarket-only" as const, label: "Poly方向" },
+    { rule: "hyperliquid-momentum" as const, label: "HL順張り" },
+    { rule: "hyperliquid-reversion" as const, label: "HL反転" },
+  ].flatMap(({ rule, label }) => {
+    const candidate = [...(diagnostics ?? [])]
+      .filter((item) => item.strategy.signalRule === rule)
+      .sort((left, right) => right.netReturnPct - left.netReturnPct)[0];
+    return candidate ? [{ label, candidate }] : [];
+  });
 
   return (
     <div className="border-t px-5 py-4" aria-label="候補ルールの採用診断">
@@ -1141,7 +1150,14 @@ function CandidateDiagnosis({ diagnostics }: { diagnostics: MonitoringSnapshot["
       <p className="mt-3 text-xs font-semibold text-slate-600">
         検証 {best.trades}取引 / 損益 {formatSignedPct(best.netReturnPct)} / 単純戦略との差 {formatSignedPct(best.excessReturnPct)} / 確信度 {formatPct(best.deflatedSharpeProbability)}
       </p>
-      {contrarian ? <p className="mt-2 text-[11px] font-semibold text-slate-500">追加検証: 予測乖離への逆張り {formatSignedPct(contrarian.netReturnPct)} / {contrarian.gates.filter((gate) => gate.passed).length}/{contrarian.gates.length}条件で不採用</p> : null}
+      <div className="mt-3 grid grid-cols-3 divide-x rounded-md bg-slate-50 py-2 text-center">
+        {families.map(({ label, candidate }) => (
+          <div className="min-w-0 px-2" key={label}>
+            <p className="text-[10px] font-bold text-slate-500">{label}</p>
+            <p className={`mt-1 text-xs font-bold ${candidate.netReturnPct > 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(candidate.netReturnPct)}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1609,6 +1625,8 @@ function formatCombinedStrategy(strategy: string | null | undefined) {
   const threshold = strategy.match(/[0-9.]+$/)?.[0];
   if (!threshold) return strategy;
   if (strategy.startsWith("contrarian")) return `予測乖離へ逆張り / 強度 ${threshold}以上`;
+  if (strategy.startsWith("hl momentum")) return `6時間値動きへ順張り / Poly強度 ${threshold}以上`;
+  if (strategy.startsWith("hl reversion")) return `6時間値動きへ反転 / Poly強度 ${threshold}以上`;
   return strategy.startsWith("trend")
     ? `予測方向 + 6時間トレンド / 強度 ${threshold}以上`
     : `予測方向 / 強度 ${threshold}以上`;
@@ -1628,7 +1646,10 @@ function formatShadowAction(action: string | null | undefined) {
 }
 
 function formatShadowRule(rule: MonitoringSnapshot["combinedShadow"]["signalRule"] | null | undefined) {
-  return rule === "contrarian" ? "予測乖離へ逆張り" : "予測方向に追随";
+  if (rule === "contrarian") return "予測乖離へ逆張り";
+  if (rule === "hyperliquid-momentum") return "6時間値動きへ順張り";
+  if (rule === "hyperliquid-reversion") return "6時間値動きへ反転";
+  return "予測方向に追随";
 }
 
 function modelFeatureCoverage(snapshot: MonitoringSnapshot | null) {

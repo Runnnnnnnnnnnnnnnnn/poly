@@ -9,15 +9,17 @@ const minimumValidationTrades = 12;
 const walkForwardFolds = 4;
 const minimumProfitableFolds = 3;
 const minimumDeflatedSharpeProbability = 0.95;
+// Includes unique rule and threshold combinations explored in earlier model versions.
+const cumulativeStrategyTrials = 15;
 
 const strategyCandidates: CombinedStrategyCandidate[] = [
   { id: "no-trade guard", minimumSignalZ: 0, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
-  { id: "signal z 0.10", minimumSignalZ: 0.1, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
   { id: "signal z 0.25", minimumSignalZ: 0.25, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
   { id: "signal z 0.50", minimumSignalZ: 0.5, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
-  { id: "contrarian z 0.10", minimumSignalZ: 0.1, signalRule: "contrarian", minimumTrendZ: 0, positionPct: 0.05 },
-  { id: "contrarian z 0.25", minimumSignalZ: 0.25, signalRule: "contrarian", minimumTrendZ: 0, positionPct: 0.05 },
-  { id: "contrarian z 0.50", minimumSignalZ: 0.5, signalRule: "contrarian", minimumTrendZ: 0, positionPct: 0.05 },
+  { id: "hl momentum z 0.25", minimumSignalZ: 0.25, signalRule: "hyperliquid-momentum", minimumTrendZ: 0.1, positionPct: 0.05 },
+  { id: "hl momentum z 0.50", minimumSignalZ: 0.5, signalRule: "hyperliquid-momentum", minimumTrendZ: 0.1, positionPct: 0.05 },
+  { id: "hl reversion z 0.25", minimumSignalZ: 0.25, signalRule: "hyperliquid-reversion", minimumTrendZ: 0.1, positionPct: 0.05 },
+  { id: "hl reversion z 0.50", minimumSignalZ: 0.5, signalRule: "hyperliquid-reversion", minimumTrendZ: 0.1, positionPct: 0.05 },
 ];
 
 type TradeSignal = {
@@ -51,6 +53,7 @@ type Simulation = Omit<CombinedMetrics,
   | "benchmarkReturnPct"
   | "excessReturnPct"
   | "benchmarks"
+  | "strategyTrials"
   | "walkForwardFolds"
   | "profitableValidationFolds"
   | "minimumRequiredTrades"
@@ -98,6 +101,7 @@ export function evaluateCombinedTrading(
     benchmarkReturnPct: benchmarks.bestReturnPct,
     excessReturnPct: strategy.netReturnPct - benchmarks.bestReturnPct,
     benchmarks,
+    strategyTrials: cumulativeStrategyTrials,
     walkForwardFolds,
     profitableValidationFolds: selection.profitableFolds,
     minimumRequiredTrades: minimumValidationTrades,
@@ -228,6 +232,8 @@ function buildSignals(samples: EvaluationSample[]) {
 function selectSignalsForCandidate(signals: TradeSignal[], candidate: CombinedStrategyCandidate) {
   const ruleEligible = candidate.signalRule === "trend-confirmed"
     ? signals.filter((signal) => signal.trendZ6h !== null && signal.side * signal.trendZ6h >= candidate.minimumTrendZ)
+    : candidate.signalRule === "hyperliquid-momentum" || candidate.signalRule === "hyperliquid-reversion"
+      ? signals.filter((signal) => signal.trendZ6h !== null && Math.abs(signal.trendZ6h) >= candidate.minimumTrendZ)
     : signals;
   return selectNonOverlappingSignals(ruleEligible, candidate.minimumSignalZ);
 }
@@ -304,7 +310,7 @@ function simulate(
 
   [...signals].sort((left, right) => left.entryAt - right.entryAt || left.exitAt - right.exitAt).forEach((signal, index) => {
     settleThrough(signal.entryAt);
-    const strategySide = candidate.signalRule === "contrarian" ? -signal.side as 1 | -1 : signal.side;
+    const strategySide = resolveStrategySide(signal, candidate.signalRule);
     const side = direction === "long" ? 1 : direction === "short" ? -1 : direction === "alternating" ? (index % 2 === 0 ? 1 : -1) : strategySide;
     const holdingDays = Math.max(0, signal.exitAt - signal.entryAt) / (24 * 60 * 60 * 1_000);
     const grossReturn = side * (signal.exitPrice / signal.entryPrice - 1);
@@ -324,7 +330,7 @@ function simulate(
   settleThrough(Number.POSITIVE_INFINITY);
 
   const returnConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(netTradeReturns);
-  const deflatedSharpe = deflatedSharpeProbability(netTradeReturns, strategyCandidates.length - 1);
+  const deflatedSharpe = deflatedSharpeProbability(netTradeReturns, cumulativeStrategyTrials);
   return {
     initialCapital,
     endingCapital: capital,
@@ -348,6 +354,15 @@ function simulate(
     assumedFundingPer24h: fundingPer24h,
     tradeReturns: netTradeReturns,
   };
+}
+
+function resolveStrategySide(signal: TradeSignal, rule: CombinedStrategyCandidate["signalRule"]): 1 | -1 {
+  if (rule === "contrarian") return -signal.side as 1 | -1;
+  if (rule === "hyperliquid-momentum" || rule === "hyperliquid-reversion") {
+    const trendSide = (signal.trendZ6h ?? 0) >= 0 ? 1 as const : -1 as const;
+    return rule === "hyperliquid-reversion" ? -trendSide as 1 | -1 : trendSide;
+  }
+  return signal.side;
 }
 
 function impliedTerminalMedian(sample: EvaluationSample, volatility: number, probability = sample.marketProbability) {

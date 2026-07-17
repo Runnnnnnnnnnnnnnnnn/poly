@@ -98,6 +98,8 @@ const syntheticLiveSignal = {
   priceBasisPct: 0,
   impliedTarget: 102,
   realizedVolatility24h: 0.02,
+  hyperliquidMomentum6h: 0.01,
+  trendZ6h: 1,
   signalZ: 1,
   side: "LONG" as const,
   sourceMarkets: 3,
@@ -106,6 +108,8 @@ const syntheticLiveSignal = {
 };
 assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "polymarket-only").side, "LONG");
 assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "contrarian").side, "SHORT");
+assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, side: "SHORT", trendZ6h: 1 }, "hyperliquid-momentum").side, "LONG");
+assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, side: "LONG", trendZ6h: -1 }, "hyperliquid-reversion").side, "LONG");
 
 console.log("combined shadow signal-rule tests passed");
 
@@ -177,6 +181,7 @@ assert.ok(combined.netReturnPct > 0);
 assert.ok(combined.excessReturnPct > 0);
 assert.equal(combined.statisticallyPositive, true);
 assert.ok((combined.deflatedSharpeProbability ?? 0) > 0.95);
+assert.equal(combined.strategyTrials, 15);
 assert.equal(combined.walkForwardFolds, 4);
 assert.equal(combined.selectedFromValidation, true);
 assert.equal(combined.candidateDiagnostics.length, 6);
@@ -195,14 +200,14 @@ assert.equal(concurrentCombined.totalEligibleSignals, 120);
 assert.equal(concurrentCombined.validationEligibleSignals, 72);
 assert.equal(concurrentCombined.trades, 48);
 
-const contrarianCombined = evaluateCombinedTrading(combinedSamples.map((sample) => ({
+const reversionCombined = evaluateCombinedTrading(combinedSamples.map((sample) => ({
   ...sample,
   hyperliquidExitPrice: sample.hyperliquidExitPrice === 102 ? 98 : 102,
 })));
-assert.equal(contrarianCombined.selectedStrategy.signalRule, "contrarian");
-assert.equal(contrarianCombined.trades, 24);
-assert.ok(contrarianCombined.netReturnPct > 0);
-assert.ok(contrarianCombined.excessReturnPct > 0);
+assert.equal(reversionCombined.selectedStrategy.signalRule, "hyperliquid-reversion");
+assert.equal(reversionCombined.trades, 24);
+assert.ok(reversionCombined.netReturnPct > 0);
+assert.ok(reversionCombined.excessReturnPct > 0);
 
 const guarded = evaluateCombinedTrading(combinedSamples.map((sample, index) => index < 36 ? ({
   ...sample,
