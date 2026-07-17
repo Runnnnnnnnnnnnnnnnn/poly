@@ -19,6 +19,8 @@ export type EvaluationSample = {
   hyperliquidExitPrice?: number | null;
   hyperliquidEntryLagMinutes?: number | null;
   hyperliquidExitLeadMinutes?: number | null;
+  hyperliquidMomentum6h?: number | null;
+  hyperliquidMomentum24h?: number | null;
   thresholdKind?: "above" | "below" | "between" | null;
   thresholdLower?: number | null;
   thresholdUpper?: number | null;
@@ -36,7 +38,27 @@ export type ModelCandidate = {
 export type CombinedStrategyCandidate = {
   id: string;
   minimumSignalZ: number;
+  signalRule: "polymarket-only" | "trend-confirmed";
+  minimumTrendZ: number;
   positionPct: number;
+};
+
+export type CombinedCandidateDiagnostic = {
+  strategy: CombinedStrategyCandidate;
+  validationSignals: number;
+  trades: number;
+  netReturnPct: number;
+  benchmarkReturnPct: number;
+  excessReturnPct: number;
+  profitableFolds: number;
+  deflatedSharpeProbability: number | null;
+  confidenceInterval95: [number, number] | null;
+  passed: boolean;
+  gates: Array<{
+    id: "trades" | "significance" | "benchmark" | "folds" | "selection-bias";
+    label: string;
+    passed: boolean;
+  }>;
 };
 
 export type ModelEvaluationMetrics = {
@@ -97,6 +119,11 @@ export type ModelEvaluationMetrics = {
   };
   combinedTrading: {
     selectedStrategy: CombinedStrategyCandidate;
+    selectedFromValidation: boolean;
+    totalEligibleSignals: number;
+    validationEligibleSignals: number;
+    closestValidationCandidate: CombinedStrategyCandidate | null;
+    candidateDiagnostics: CombinedCandidateDiagnostic[];
     eligibleSignals: number;
     initialCapital: number;
     endingCapital: number;

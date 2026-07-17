@@ -102,11 +102,25 @@ export async function addPriceStructureFeatures(samples: EvaluationSample[]): Pr
       hyperliquidExitPrice: exit?.close ?? null,
       hyperliquidEntryLagMinutes: entry ? Math.max(0, entry.openedAt - observedAt) / (60 * 1_000) : null,
       hyperliquidExitLeadMinutes: exit ? Math.max(0, endAt - exit.closedAt) / (60 * 1_000) : null,
+      hyperliquidMomentum6h: trailingLogReturn(candles, currentIndex, 6),
+      hyperliquidMomentum24h: trailingLogReturn(candles, currentIndex, 24),
       thresholdKind: condition.kind,
       thresholdLower: condition.lower,
       thresholdUpper: condition.upper,
     };
   });
+}
+
+function trailingLogReturn(candles: Candle[], currentIndex: number, hours: number) {
+  const current = candles[currentIndex];
+  const targetAt = current.closedAt - hours * 60 * 60 * 1_000;
+  const priorIndex = findLatestClosedCandle(candles, targetAt);
+  if (priorIndex < 0) return null;
+  const prior = candles[priorIndex];
+  const timingErrorHours = Math.abs(targetAt - prior.closedAt) / (60 * 60 * 1_000);
+  if (timingErrorHours > 1.1 || prior.close <= 0) return null;
+  const value = Math.log(current.close / prior.close);
+  return Number.isFinite(value) ? value : null;
 }
 
 export function probabilityForCondition(spot: number, horizonVolatility: number, condition: TerminalPriceCondition) {

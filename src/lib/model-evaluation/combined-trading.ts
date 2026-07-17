@@ -1,5 +1,5 @@
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
-import type { CombinedStrategyCandidate, EvaluationSample, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
+import type { CombinedCandidateDiagnostic, CombinedStrategyCandidate, EvaluationSample, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
 const initialCapital = 10_000;
 const takerFeePerSide = 0.00045;
@@ -11,12 +11,13 @@ const minimumProfitableFolds = 3;
 const minimumDeflatedSharpeProbability = 0.95;
 
 const strategyCandidates: CombinedStrategyCandidate[] = [
-  { id: "no-trade guard", minimumSignalZ: 0, positionPct: 0.2 },
-  { id: "signal z 0.10", minimumSignalZ: 0.1, positionPct: 0.2 },
-  { id: "signal z 0.25", minimumSignalZ: 0.25, positionPct: 0.2 },
-  { id: "signal z 0.50", minimumSignalZ: 0.5, positionPct: 0.2 },
-  { id: "signal z 0.75", minimumSignalZ: 0.75, positionPct: 0.2 },
-  { id: "signal z 1.00", minimumSignalZ: 1, positionPct: 0.2 },
+  { id: "no-trade guard", minimumSignalZ: 0, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
+  { id: "signal z 0.10", minimumSignalZ: 0.1, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
+  { id: "signal z 0.25", minimumSignalZ: 0.25, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
+  { id: "signal z 0.50", minimumSignalZ: 0.5, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
+  { id: "trend z 0.10", minimumSignalZ: 0.1, signalRule: "trend-confirmed", minimumTrendZ: 0.1, positionPct: 0.05 },
+  { id: "trend z 0.25", minimumSignalZ: 0.25, signalRule: "trend-confirmed", minimumTrendZ: 0.1, positionPct: 0.05 },
+  { id: "trend z 0.50", minimumSignalZ: 0.5, signalRule: "trend-confirmed", minimumTrendZ: 0.1, positionPct: 0.05 },
 ];
 
 type TradeSignal = {
@@ -28,12 +29,18 @@ type TradeSignal = {
   exitPrice: number;
   impliedTarget: number;
   signalZ: number;
+  trendZ6h: number | null;
   side: 1 | -1;
 };
 
 type CombinedMetrics = ModelEvaluationMetrics["combinedTrading"];
 type Simulation = Omit<CombinedMetrics,
   | "selectedStrategy"
+  | "selectedFromValidation"
+  | "totalEligibleSignals"
+  | "validationEligibleSignals"
+  | "closestValidationCandidate"
+  | "candidateDiagnostics"
   | "eligibleSignals"
   | "benchmarkReturnPct"
   | "excessReturnPct"
@@ -44,23 +51,36 @@ type Simulation = Omit<CombinedMetrics,
 > & { tradeReturns: number[] };
 
 export function evaluateCombinedTrading(
-  validationSamples: EvaluationSample[],
-  testSamples: EvaluationSample[],
+  samples: EvaluationSample[],
 ): ModelEvaluationMetrics["combinedTrading"] {
-  const validationSignals = buildSignals(validationSamples);
+  const allSignals = buildSignals(samples)
+    .sort((left, right) => left.entryAt - right.entryAt || left.eventId.localeCompare(right.eventId));
+  const splitIndex = allSignals.length > 1
+    ? Math.min(allSignals.length - 1, Math.max(1, Math.floor(allSignals.length * 0.6)))
+    : allSignals.length;
+  const validationSignals = allSignals.slice(0, splitIndex);
+  const validationBoundary = validationSignals.reduce((latest, signal) => Math.max(latest, signal.exitAt), Number.NEGATIVE_INFINITY);
+  const testSignals = allSignals.slice(splitIndex).filter((signal) => signal.entryAt >= validationBoundary);
   const selection = selectStrategy(validationSignals);
   const selectedStrategy = selection.candidate;
-  const testSignals = buildSignals(testSamples);
   const selectedSignals = selectedStrategy.id === "no-trade guard"
     ? []
-    : selectNonOverlappingSignals(testSignals, selectedStrategy.minimumSignalZ);
+    : selectSignalsForCandidate(testSignals, selectedStrategy);
   const strategy = simulate(selectedSignals, selectedStrategy, "signal");
-  const benchmarks = evaluateBenchmarks(testSignals, selectedStrategy);
+  const benchmarkSignals = selectedStrategy.id === "no-trade guard"
+    ? selectNonOverlappingSignals(testSignals, 0)
+    : selectedSignals;
+  const benchmarks = evaluateBenchmarks(benchmarkSignals, selectedStrategy);
   const { tradeReturns, ...publicStrategy } = strategy;
   void tradeReturns;
 
   return {
     selectedStrategy,
+    selectedFromValidation: selectedStrategy.id !== "no-trade guard",
+    totalEligibleSignals: allSignals.length,
+    validationEligibleSignals: selection.validationEligibleSignals,
+    closestValidationCandidate: selection.closestCandidate?.strategy ?? null,
+    candidateDiagnostics: selection.diagnostics,
     eligibleSignals: testSignals.length,
     ...publicStrategy,
     benchmarkReturnPct: benchmarks.bestReturnPct,
@@ -74,28 +94,56 @@ export function evaluateCombinedTrading(
 
 function selectStrategy(validationSignals: TradeSignal[]) {
   const allEligible = selectNonOverlappingSignals(validationSignals, 0);
-  const viable = strategyCandidates.slice(1).flatMap((candidate) => {
-    const signals = selectNonOverlappingSignals(validationSignals, candidate.minimumSignalZ);
+  const evaluations = strategyCandidates.slice(1).map((candidate) => {
+    const signals = selectSignalsForCandidate(validationSignals, candidate);
     const result = simulate(signals, candidate, "signal");
-    const benchmark = evaluateBenchmarks(allEligible, candidate);
+    const benchmark = evaluateBenchmarks(signals, candidate);
     const excessReturnPct = result.netReturnPct - benchmark.bestReturnPct;
     const folds = splitChronologically(signals, walkForwardFolds).map((fold) => simulate(fold, candidate, "signal"));
     const profitableFolds = folds.filter((fold) => fold.netReturnPct > 0).length;
-    if (
-      result.trades < minimumValidationTrades
-      || !result.statisticallyPositive
-      || excessReturnPct <= 0
-      || profitableFolds < minimumProfitableFolds
-      || (result.deflatedSharpeProbability ?? 0) < minimumDeflatedSharpeProbability
-    ) return [];
-    return [{ candidate, result, excessReturnPct, profitableFolds }];
+    const gates: CombinedCandidateDiagnostic["gates"] = [
+      { id: "trades", label: `${minimumValidationTrades}取引以上`, passed: result.trades >= minimumValidationTrades },
+      { id: "significance", label: "95%区間がプラス", passed: result.statisticallyPositive },
+      { id: "benchmark", label: "単純戦略を上回る", passed: excessReturnPct > 0 },
+      { id: "folds", label: `${walkForwardFolds}期間中${minimumProfitableFolds}期間でプラス`, passed: profitableFolds >= minimumProfitableFolds },
+      { id: "selection-bias", label: "試行補正後95%以上", passed: (result.deflatedSharpeProbability ?? 0) >= minimumDeflatedSharpeProbability },
+    ];
+    const diagnostic: CombinedCandidateDiagnostic = {
+      strategy: candidate,
+      validationSignals: signals.length,
+      trades: result.trades,
+      netReturnPct: result.netReturnPct,
+      benchmarkReturnPct: benchmark.bestReturnPct,
+      excessReturnPct,
+      profitableFolds,
+      deflatedSharpeProbability: result.deflatedSharpeProbability,
+      confidenceInterval95: result.returnConfidenceInterval95,
+      passed: gates.every((gate) => gate.passed),
+      gates,
+    };
+    return { candidate, result, excessReturnPct, profitableFolds, diagnostic };
   });
 
-  return viable.sort((left, right) =>
+  const viable = evaluations.filter(({ diagnostic }) => diagnostic.passed);
+  const selected = viable.sort((left, right) =>
     right.result.netReturnPct - left.result.netReturnPct
     || right.excessReturnPct - left.excessReturnPct
     || right.candidate.minimumSignalZ - left.candidate.minimumSignalZ,
-  )[0] ?? { candidate: strategyCandidates[0], profitableFolds: 0 };
+  )[0];
+  const closest = [...evaluations].sort((left, right) =>
+    right.diagnostic.gates.filter((gate) => gate.passed).length - left.diagnostic.gates.filter((gate) => gate.passed).length
+    || right.result.netReturnPct - left.result.netReturnPct
+    || right.excessReturnPct - left.excessReturnPct
+    || right.result.trades - left.result.trades,
+  )[0];
+
+  return {
+    candidate: selected?.candidate ?? strategyCandidates[0],
+    profitableFolds: selected?.profitableFolds ?? closest?.profitableFolds ?? 0,
+    validationEligibleSignals: allEligible.length,
+    closestCandidate: selected?.diagnostic ?? closest?.diagnostic ?? null,
+    diagnostics: evaluations.map(({ diagnostic }) => diagnostic),
+  };
 }
 
 function buildSignals(samples: EvaluationSample[]) {
@@ -134,6 +182,10 @@ function buildSignals(samples: EvaluationSample[]) {
     const totalWeight = estimates.reduce((sum, estimate) => sum + estimate.weight, 0);
     const impliedTarget = Math.exp(estimates.reduce((sum, estimate) => sum + estimate.logTarget * estimate.weight, 0) / totalWeight);
     const signalZ = Math.log(impliedTarget / (base.hyperliquidEntryPrice as number)) / volatility;
+    const trendVolatility6h = volatility * Math.sqrt(6 / 24);
+    const trendZ6h = typeof base.hyperliquidMomentum6h === "number" && Number.isFinite(base.hyperliquidMomentum6h)
+      ? base.hyperliquidMomentum6h / Math.max(0.001, trendVolatility6h)
+      : null;
     const entryAt = new Date(base.hyperliquidEntryAt as string).getTime();
     const exitAt = new Date(base.hyperliquidExitAt as string).getTime();
     if (!Number.isFinite(signalZ) || !Number.isFinite(entryAt) || !Number.isFinite(exitAt) || exitAt <= entryAt) return [];
@@ -147,6 +199,7 @@ function buildSignals(samples: EvaluationSample[]) {
       exitPrice: base.hyperliquidExitPrice as number,
       impliedTarget,
       signalZ,
+      trendZ6h,
       side: signalZ >= 0 ? 1 as const : -1 as const,
     }];
   });
@@ -156,17 +209,24 @@ function buildSignals(samples: EvaluationSample[]) {
   return Array.from(byEvent.values(), (signals) => [...signals].sort((a, b) => Math.abs(b.signalZ) - Math.abs(a.signalZ))[0]);
 }
 
+function selectSignalsForCandidate(signals: TradeSignal[], candidate: CombinedStrategyCandidate) {
+  const ruleEligible = candidate.signalRule === "trend-confirmed"
+    ? signals.filter((signal) => signal.trendZ6h !== null && signal.side * signal.trendZ6h >= candidate.minimumTrendZ)
+    : signals;
+  return selectNonOverlappingSignals(ruleEligible, candidate.minimumSignalZ);
+}
+
 function selectNonOverlappingSignals(signals: TradeSignal[], minimumSignalZ: number) {
   if (!Number.isFinite(minimumSignalZ)) return [];
   const ordered = signals
     .filter((signal) => Math.abs(signal.signalZ) >= minimumSignalZ)
     .sort((left, right) => left.entryAt - right.entryAt || Math.abs(right.signalZ) - Math.abs(left.signalZ));
   const selected: TradeSignal[] = [];
-  let availableAt = Number.NEGATIVE_INFINITY;
+  const availableAtByAsset = new Map<string, number>();
   for (const signal of ordered) {
-    if (signal.entryAt < availableAt) continue;
+    if (signal.entryAt < (availableAtByAsset.get(signal.asset) ?? Number.NEGATIVE_INFINITY)) continue;
     selected.push(signal);
-    availableAt = signal.exitAt;
+    availableAtByAsset.set(signal.asset, signal.exitAt);
   }
   return selected;
 }
@@ -204,8 +264,30 @@ function simulate(
   let totalSlippage = 0;
   let totalFunding = 0;
   const netTradeReturns: number[] = [];
+  const openTrades: Array<{ exitAt: number; notional: number; grossReturn: number; netTradeReturn: number }> = [];
+  const settleThrough = (timestamp: number) => {
+    const closing = openTrades.filter((trade) => trade.exitAt <= timestamp).sort((left, right) => left.exitAt - right.exitAt);
+    if (!closing.length) return;
+    const closingSet = new Set(closing);
+    for (let index = openTrades.length - 1; index >= 0; index -= 1) {
+      if (closingSet.has(openTrades[index])) openTrades.splice(index, 1);
+    }
+    const byExit = new Map<number, typeof closing>();
+    for (const trade of closing) byExit.set(trade.exitAt, [...(byExit.get(trade.exitAt) ?? []), trade]);
+    for (const batch of Array.from(byExit.entries()).sort(([left], [right]) => left - right).map(([, trades]) => trades)) {
+      capital += batch.reduce((sum, trade) => sum + trade.notional * trade.netTradeReturn, 0);
+      for (const trade of batch) {
+        netTradeReturns.push(trade.netTradeReturn);
+        if (trade.netTradeReturn > 0) wins += 1;
+        if (trade.grossReturn > 0) directionallyCorrect += 1;
+      }
+      peak = Math.max(peak, capital);
+      maxDrawdownPct = Math.max(maxDrawdownPct, peak > 0 ? (peak - capital) / peak : 0);
+    }
+  };
 
-  signals.forEach((signal, index) => {
+  [...signals].sort((left, right) => left.entryAt - right.entryAt || left.exitAt - right.exitAt).forEach((signal, index) => {
+    settleThrough(signal.entryAt);
     const side = direction === "long" ? 1 : direction === "short" ? -1 : direction === "alternating" ? (index % 2 === 0 ? 1 : -1) : signal.side;
     const holdingDays = Math.max(0, signal.exitAt - signal.entryAt) / (24 * 60 * 60 * 1_000);
     const grossReturn = side * (signal.exitPrice / signal.entryPrice - 1);
@@ -215,18 +297,14 @@ function simulate(
     const netTradeReturn = grossReturn - feeRate - slippageRate - fundingRate;
     const notional = capital * candidate.positionPct;
 
-    capital += notional * netTradeReturn;
     totalFees += notional * feeRate;
     totalSlippage += notional * slippageRate;
     totalFunding += notional * fundingRate;
-    netTradeReturns.push(netTradeReturn);
-    if (netTradeReturn > 0) wins += 1;
-    if (grossReturn > 0) directionallyCorrect += 1;
     if (side === 1) longTrades += 1;
     else shortTrades += 1;
-    peak = Math.max(peak, capital);
-    maxDrawdownPct = Math.max(maxDrawdownPct, peak > 0 ? (peak - capital) / peak : 0);
+    openTrades.push({ exitAt: signal.exitAt, notional, grossReturn, netTradeReturn });
   });
+  settleThrough(Number.POSITIVE_INFINITY);
 
   const returnConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(netTradeReturns);
   const deflatedSharpe = deflatedSharpeProbability(netTradeReturns, strategyCandidates.length - 1);

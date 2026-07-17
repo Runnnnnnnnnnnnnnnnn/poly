@@ -182,6 +182,35 @@ type MonitoringSnapshot = {
     selectedCandidateKind: "market" | "logit-pool" | "ridge-logit-pool" | null;
     combinedStrategy: string | null;
     combinedMinimumSignalZ: number | null;
+    selectedFromValidation: boolean;
+    totalEligibleSignals: number;
+    validationEligibleSignals: number;
+    closestValidationCandidate: {
+      id: string;
+      minimumSignalZ: number;
+      signalRule: "polymarket-only" | "trend-confirmed";
+      minimumTrendZ: number;
+      positionPct: number;
+    } | null;
+    candidateDiagnostics: Array<{
+      strategy: {
+        id: string;
+        minimumSignalZ: number;
+        signalRule: "polymarket-only" | "trend-confirmed";
+        minimumTrendZ: number;
+        positionPct: number;
+      };
+      validationSignals: number;
+      trades: number;
+      netReturnPct: number;
+      benchmarkReturnPct: number;
+      excessReturnPct: number;
+      profitableFolds: number;
+      deflatedSharpeProbability: number | null;
+      confidenceInterval95: [number, number] | null;
+      passed: boolean;
+      gates: Array<{ id: string; label: string; passed: boolean }>;
+    }>;
     structuralFeatureCoverage: number | null;
     evaluationStatus: "promising" | "inconclusive" | "underperforming" | "building";
     latestAsset: string | null;
@@ -1023,6 +1052,7 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
         <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">詳しい検証数値を見る</summary>
         <div className="border-t">
           {!hasTrades ? <p className="px-5 py-4 text-sm leading-6 text-slate-600">採用基準を通ったルールがないため、最終テストでは資金を動かしていません。単純戦略の成績は、見送り結果とは別に比較しています。</p> : null}
+          <CandidateDiagnosis diagnostics={model?.candidateDiagnostics} />
           <HorizonComparison studies={model?.horizonStudies} />
           <ReturnComparison strategyReturn={hasTrades ? model?.latestReturnPct : null} benchmarks={model?.benchmarkReturns} />
           <div className="flex flex-wrap gap-2 border-t px-5 py-3 text-[11px] font-bold text-slate-600">
@@ -1037,6 +1067,44 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
         </div>
       </details>
     </section>
+  );
+}
+
+function CandidateDiagnosis({ diagnostics }: { diagnostics: MonitoringSnapshot["model"]["candidateDiagnostics"] | undefined }) {
+  const best = diagnostics?.length ? [...diagnostics].sort((left, right) =>
+    Number(right.passed) - Number(left.passed)
+    || right.gates.filter((gate) => gate.passed).length - left.gates.filter((gate) => gate.passed).length
+    || right.netReturnPct - left.netReturnPct
+    || right.excessReturnPct - left.excessReturnPct,
+  )[0] : null;
+  if (!best) return null;
+  const passed = best.gates.filter((gate) => gate.passed).length;
+
+  return (
+    <div className="border-t px-5 py-4" aria-label="候補ルールの採用診断">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-bold text-muted-foreground">採用に最も近いルール</p>
+          <p className="mt-1 text-base font-bold text-slate-950">{formatCombinedStrategy(best.strategy.id)}</p>
+        </div>
+        <span className={`rounded-sm px-2 py-1 text-xs font-bold ${best.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+          {passed}/{best.gates.length} 条件
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-5 gap-1" aria-label={`${passed}/${best.gates.length}条件を達成`}>
+        {best.gates.map((gate) => <span key={gate.id} className={`h-2 rounded-sm ${gate.passed ? "bg-emerald-500" : "bg-slate-200"}`} title={gate.label} />)}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {best.gates.map((gate) => (
+          <span key={gate.id} className={`inline-flex items-center gap-1 text-[10px] font-bold ${gate.passed ? "text-emerald-700" : "text-slate-500"}`}>
+            {gate.passed ? <CheckCircle2 className="h-3 w-3" /> : <MinusCircle className="h-3 w-3" />}{gate.label}
+          </span>
+        ))}
+      </div>
+      <p className="mt-3 text-xs font-semibold text-slate-600">
+        検証 {best.trades}取引 / 損益 {formatSignedPct(best.netReturnPct)} / 単純戦略との差 {formatSignedPct(best.excessReturnPct)} / 確信度 {formatPct(best.deflatedSharpeProbability)}
+      </p>
+    </div>
   );
 }
 
@@ -1501,7 +1569,10 @@ function formatCombinedStrategy(strategy: string | null | undefined) {
   if (!strategy) return "選定中";
   if (strategy === "no-trade guard") return "取引見送り";
   const threshold = strategy.match(/[0-9.]+$/)?.[0];
-  return threshold ? `シグナル強度 ${threshold}以上` : strategy;
+  if (!threshold) return strategy;
+  return strategy.startsWith("trend")
+    ? `予測方向 + 6時間トレンド / 強度 ${threshold}以上`
+    : `予測方向 / 強度 ${threshold}以上`;
 }
 
 function formatShadowAction(action: string | null | undefined) {

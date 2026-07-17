@@ -4,7 +4,7 @@ import { evaluateCombinedTrading } from "@/src/lib/model-evaluation/combined-tra
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
 import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
-export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v8";
+export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v9";
 export const HORIZON_HOURS = 24;
 export const MIN_TRAIN_EVENTS = 20;
 export const MIN_HOLDOUT_EVENTS = 15;
@@ -67,7 +67,7 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
   const relativeImprovement = marketBrierScore > 0 ? brierSkill / marketBrierScore : 0;
   const confidenceInterval95 = meanConfidenceInterval(improvements);
   const trading = simulateTrading(eventScores.map((event) => event.predictions));
-  const combinedTrading = evaluateCombinedTrading(validation, test);
+  const combinedTrading = evaluateCombinedTrading(samples);
   const assets = samples.reduce<Record<string, number>>((counts, sample) => ({ ...counts, [sample.asset]: (counts[sample.asset] ?? 0) + 1 }), {});
   const structuralFeatureMarkets = samples.filter(hasStructuralProbability).length;
   const structuralFeatureCoverage = samples.length ? structuralFeatureMarkets / samples.length : 0;
@@ -94,7 +94,7 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
     { id: "timing", label: "売買時刻の誤差を65分以内に制限", passed: maximumExecutionTimingErrorMinutes !== null && maximumExecutionTimingErrorMinutes <= 65 },
     { id: "ladder", label: "価格帯の確率矛盾を単調補正", passed: ladder.events > 0 },
     { id: "costs", label: "手数料・滑り・資金調達を控除", passed: true },
-    { id: "sample", label: `最終テスト${MIN_HOLDOUT_EVENTS}イベント以上`, passed: testEvents.length >= MIN_HOLDOUT_EVENTS },
+    { id: "sample", label: `売買可能な最終テスト${MIN_HOLDOUT_EVENTS}イベント以上`, passed: combinedTrading.eligibleSignals >= MIN_HOLDOUT_EVENTS },
     { id: "trades", label: `最終テスト${minimumCombinedTrades}取引以上`, passed: combinedTrading.trades >= minimumCombinedTrades },
     { id: "benchmark", label: "3つの単純戦略で最良の成績を上回る", passed: combinedTrading.excessReturnPct > 0 },
     { id: "significance", label: "ブロック再標本化95%区間がプラス", passed: combinedTrading.statisticallyPositive },
@@ -302,7 +302,7 @@ function feePerShare(price: number) {
 
 function createDatasetHash(samples: EvaluationSample[]) {
   return createHash("sha256")
-    .update(samples.map((sample) => `${sample.marketId}:${sample.observedAt}:${sample.marketProbability}:${sample.structuralProbability ?? "none"}:${sample.hyperliquidEntryPrice ?? "none"}:${sample.hyperliquidExitPrice ?? "none"}:${sample.outcome}`).join("|"))
+    .update(samples.map((sample) => `${sample.marketId}:${sample.observedAt}:${sample.marketProbability}:${sample.structuralProbability ?? "none"}:${sample.hyperliquidEntryPrice ?? "none"}:${sample.hyperliquidExitPrice ?? "none"}:${sample.hyperliquidMomentum6h ?? "none"}:${sample.hyperliquidMomentum24h ?? "none"}:${sample.outcome}`).join("|"))
     .digest("hex")
     .slice(0, 16);
 }

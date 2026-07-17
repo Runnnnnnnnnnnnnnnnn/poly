@@ -129,6 +129,8 @@ for (let eventIndex = 0; eventIndex < 60; eventIndex += 1) {
     hyperliquidEntryPrice: 100,
     hyperliquidExitAt: exitAt.toISOString(),
     hyperliquidExitPrice: long ? 102 : 98,
+    hyperliquidMomentum6h: long ? 0.01 : -0.01,
+    hyperliquidMomentum24h: long ? 0.02 : -0.02,
     thresholdKind: "above",
     thresholdLower: 100,
     thresholdUpper: null,
@@ -136,16 +138,41 @@ for (let eventIndex = 0; eventIndex < 60; eventIndex += 1) {
   });
 }
 
-const combined = evaluateCombinedTrading(combinedSamples.slice(0, 40), combinedSamples.slice(40));
+const combined = evaluateCombinedTrading(combinedSamples);
 assert.notEqual(combined.selectedStrategy.id, "no-trade guard");
-assert.equal(combined.trades, 20);
-assert.equal(combined.longTrades + combined.shortTrades, 20);
+assert.equal(combined.trades, 24);
+assert.equal(combined.longTrades + combined.shortTrades, 24);
 assert.ok(combined.longTrades > 0 && combined.shortTrades > 0);
 assert.ok(combined.netReturnPct > 0);
 assert.ok(combined.excessReturnPct > 0);
 assert.equal(combined.statisticallyPositive, true);
 assert.ok((combined.deflatedSharpeProbability ?? 0) > 0.95);
 assert.equal(combined.walkForwardFolds, 4);
+assert.equal(combined.selectedFromValidation, true);
+assert.equal(combined.candidateDiagnostics.length, 6);
+assert.equal(combined.candidateDiagnostics.some((candidate) => candidate.passed), true);
+
+const concurrentCombined = evaluateCombinedTrading([
+  ...combinedSamples,
+  ...combinedSamples.map((sample) => ({
+    ...sample,
+    eventId: `${sample.eventId}-eth`,
+    marketId: `${sample.marketId}-eth`,
+    asset: "ETH" as const,
+  })),
+]);
+assert.equal(concurrentCombined.totalEligibleSignals, 120);
+assert.equal(concurrentCombined.validationEligibleSignals, 72);
+assert.equal(concurrentCombined.trades, 48);
+
+const guarded = evaluateCombinedTrading(combinedSamples.map((sample, index) => index < 36 ? ({
+  ...sample,
+  hyperliquidExitPrice: sample.hyperliquidExitPrice === 102 ? 98 : 102,
+}) : sample));
+assert.equal(guarded.selectedStrategy.id, "no-trade guard");
+assert.equal(guarded.selectedFromValidation, false);
+assert.ok(guarded.closestValidationCandidate);
+assert.equal(guarded.candidateDiagnostics.every((candidate) => !candidate.passed), true);
 
 console.log("combined Polymarket and Hyperliquid strategy tests passed");
 
