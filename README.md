@@ -167,6 +167,10 @@ python3 -m venv ~/.polymarket-watch/hyperliquid-venv
 
 テストネット連動には、`.env`の`HYPERLIQUID_ACCOUNT_ADDRESS`と専用APIウォレットの`HYPERLIQUID_API_WALLET_PRIVATE_KEY`を設定します。さらに`HYPERLIQUID_TESTNET_ENABLED=1`と`HYPERLIQUID_TESTNET_AUTO_MIRROR=1`が必要です。バックテストの品質判定が合格していない場合は、これらを設定しても新規注文は出ません。メインネット接続はコード上で無効です。
 
+テストネットの模擬USDCを取得するには、[公式faucetの条件](https://hyperliquid.gitbook.io/hyperliquid-docs/onboarding/testnet-faucet)により、同じマスターアドレスでメインネット入金済みである必要があります。秘密鍵にはメインウォレットではなく、Hyperliquidで承認した[専用APIウォレット](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/nonces-and-api-wallets)だけを使用してください。現在のテストネット対象は`HYPERLIQUID_TESTNET_ASSETS=BTC,ETH,SOL`で、XRPはテストネットの取引ユニバースにないため送信しません。接続確認中は`HYPERLIQUID_TESTNET_AUTO_MIRROR=0`を維持します。
+
+照合処理はCLOIDから注文状態を取得し、取引所注文ID、部分約定数量、平均約定価格、手数料、取消状態をDBへ保存します。緊急停止時はモデルを停止したうえで、テストネットの未約定注文をCLOIDで取り消します。
+
 固定公開URLを使う場合は、CloudflareでNamed Tunnelを作成し、`http://127.0.0.1:3001`へ向けた公開ホスト名を登録してから、`.env`へ`CLOUDFLARED_TUNNEL_TOKEN`と`CLOUDFLARED_PUBLIC_URL`を設定します。外部ヘルスチェックが失敗した場合はQuick Tunnelへ自動退避します。
 
 常駐監視は、データ停止、パイプラインエラー、最大下落、緊急停止、HyperliquidとDBのポジション不一致を検知します。Mac通知は既定で有効です。`POLYMARKET_ALERT_WEBHOOK_URL`へHTTPS Webhookを設定すると、同じ通知をリモートにも送信します。通知は新規・6時間ごとの再通知・復旧に分かれ、連投を抑制します。

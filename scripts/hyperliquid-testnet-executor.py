@@ -2,7 +2,6 @@ import json
 import hashlib
 import os
 import sys
-import time
 
 import eth_account
 from hyperliquid.exchange import Exchange
@@ -44,7 +43,7 @@ def main():
                 "liquidationPrice": float(position.get("liquidationPx") or 0),
             })
         order_statuses = []
-        for client_order_id in request.get("clientOrderIds", [])[:100]:
+        for client_order_id in request.get("clientOrderIds", [])[:25]:
             client_order_id = str(client_order_id)
             cloid = Cloid.from_str("0x" + hashlib.sha256(client_order_id.encode("utf-8")).hexdigest()[:32])
             try:
@@ -58,7 +57,7 @@ def main():
             "accountValue": account_value,
             "positions": positions,
             "openOrders": info.open_orders(account_address)[:100],
-            "recentFills": info.user_fills(account_address)[:100],
+            "recentFills": info.user_fills(account_address)[:2000],
             "orderStatuses": order_statuses,
         })
         return
@@ -66,20 +65,28 @@ def main():
     secret_key = os.environ.get("HYPERLIQUID_API_WALLET_PRIVATE_KEY", "").strip()
     if not secret_key:
         raise ValueError("HYPERLIQUID_API_WALLET_PRIVATE_KEY is not configured")
-    if account_value <= 0:
-        raise ValueError("Hyperliquid testnet account has no equity")
 
     wallet = eth_account.Account.from_key(secret_key)
     exchange = Exchange(wallet, constants.TESTNET_API_URL, account_address=account_address)
     asset = str(request["asset"])
-    size = float(request.get("size", 0))
-    if size <= 0:
-        raise ValueError("size must be positive")
+    available_assets = {item.get("name") for item in info.meta().get("universe", [])}
+    if asset not in available_assets:
+        raise ValueError(f"{asset} is not available on Hyperliquid testnet")
     client_order_id = str(request["clientOrderId"])
     cloid = Cloid.from_str("0x" + hashlib.sha256(client_order_id.encode("utf-8")).hexdigest()[:32])
 
+    if action == "cancel":
+        result = exchange.cancel_by_cloid(asset, cloid)
+        output({"ok": result.get("status") == "ok", "environment": "testnet", "result": result})
+        return
+
+    if account_value <= 0:
+        raise ValueError("Hyperliquid testnet account has no equity")
+    size = float(request.get("size", 0))
+    if size <= 0:
+        raise ValueError("size must be positive")
+
     exchange.update_leverage(1, asset, is_cross=False)
-    exchange.schedule_cancel(int(time.time() * 1000) + 30_000)
     if action == "open":
         result = exchange.market_open(
             asset,

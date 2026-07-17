@@ -118,7 +118,7 @@ type MonitoringSnapshot = {
       assets: string[];
       arbitrageViolations: number;
       targetCadenceSeconds: number;
-      synchronizationVersion: "websocket-v1";
+      synchronizationVersion: "websocket-v2-rest-seeded";
     };
     synchronizedPrices?: {
       records: number;
@@ -128,6 +128,7 @@ type MonitoringSnapshot = {
       targetCadenceMinutes: number;
       quality?: {
         status: "collecting" | "healthy" | "attention";
+        collectionStartedAt: string | null;
         records: number;
         completeRecords: number;
         totalRecords: number;
@@ -328,9 +329,12 @@ type MonitoringSnapshot = {
         returnDifferencePct: number | null;
         medianTimingErrorMs: number | null;
         maximumTimingErrorMs: number | null;
+        medianPolymarketQuoteAgeMs: number | null;
+        maximumPolymarketQuoteAgeMs: number | null;
         medianCloseDelayMs: number | null;
         maximumCloseDelayMs: number | null;
         allowedTimingErrorMs: number;
+        allowedPolymarketQuoteAgeMs: number;
         missingEntry: number;
         missingExit: number;
         missingResolution: number;

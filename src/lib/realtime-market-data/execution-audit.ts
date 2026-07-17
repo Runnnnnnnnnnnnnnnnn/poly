@@ -1,5 +1,6 @@
 const defaultMinimumAuditedPositions = 50;
 const defaultMaximumTimingErrorMs = 15_000;
+const defaultMaximumPolymarketQuoteAgeMs = 2 * 60_000;
 const cryptoTakerFeeRate = 0.07;
 
 export type ExactExecutionAuditPosition = {
@@ -23,9 +24,12 @@ export type ExactExecutionAuditTick = {
   marketStartAt: Date;
   marketEndAt: Date;
   polymarketBestAsk: number;
+  polymarketUpdatedAt: Date;
   negativeBestAsk: number;
+  negativeUpdatedAt: Date;
   hyperliquidBestBid: number;
   hyperliquidBestAsk: number;
+  hyperliquidUpdatedAt: Date;
   referencePrice: number;
   referenceUpdatedAt: Date;
   capturedAt: Date;
@@ -40,12 +44,14 @@ export type ExactExecutionAuditInput = {
   fundingPer24h: number;
   minimumAuditedPositions?: number;
   maximumTimingErrorMs?: number;
+  maximumPolymarketQuoteAgeMs?: number;
 };
 
 export type ExactExecutionAudit = ReturnType<typeof evaluateExactExecutionAudit>;
 
 export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   const maximumTimingErrorMs = input.maximumTimingErrorMs ?? defaultMaximumTimingErrorMs;
+  const maximumPolymarketQuoteAgeMs = input.maximumPolymarketQuoteAgeMs ?? defaultMaximumPolymarketQuoteAgeMs;
   const minimumAuditedPositions = input.minimumAuditedPositions ?? defaultMinimumAuditedPositions;
   const eligiblePositions = input.positions.filter((position) => (
     position.status === "CLOSED"
@@ -57,6 +63,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   ));
   const ticksByMarket = groupTicksByMarket(input.ticks);
   const timingErrors: number[] = [];
+  const polymarketQuoteAges: number[] = [];
   const closeDelays: number[] = [];
   const exactResults: Array<{ exactPnl: number; storedPnl: number; notional: number }> = [];
   const predictionResults: Array<{ correct: boolean; polymarketReturn: number | null }> = [];
@@ -66,8 +73,8 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
 
   for (const position of eligiblePositions) {
     const ticks = ticksByMarket.get(position.marketId) ?? [];
-    const entry = nearestTick(ticks, position.openedAt, (tick) => tick.capturedAt, maximumTimingErrorMs);
-    const exit = nearestTick(ticks, position.exitAt, (tick) => tick.capturedAt, maximumTimingErrorMs);
+    const entry = nearestTick(ticks, position.openedAt, (tick) => tick.hyperliquidUpdatedAt, maximumTimingErrorMs);
+    const exit = nearestTick(ticks, position.exitAt, (tick) => tick.hyperliquidUpdatedAt, maximumTimingErrorMs);
     if (!entry) missingEntry += 1;
     if (!exit) missingExit += 1;
 
@@ -111,6 +118,10 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     const tokenAsk = entry?.tick
       ? predictedSide === "LONG" ? entry.tick.polymarketBestAsk : entry.tick.negativeBestAsk
       : null;
+    if (entry?.tick) {
+      const quoteUpdatedAt = predictedSide === "LONG" ? entry.tick.polymarketUpdatedAt : entry.tick.negativeUpdatedAt;
+      polymarketQuoteAges.push(Math.max(0, entry.tick.capturedAt.getTime() - quoteUpdatedAt.getTime()));
+    }
     predictionResults.push({
       correct,
       polymarketReturn: tokenAsk ? calculatePolymarketTokenReturn(tokenAsk, correct) : null,
@@ -129,13 +140,17 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   ));
   const coverage = eligiblePositions.length ? exactResults.length / eligiblePositions.length : 0;
   const maximumObservedTimingErrorMs = timingErrors.length ? Math.max(...timingErrors) : null;
+  const maximumObservedPolymarketQuoteAgeMs = polymarketQuoteAges.length ? Math.max(...polymarketQuoteAges) : null;
   const enoughData = exactResults.length >= minimumAuditedPositions;
   const qualityPassed = coverage >= 0.95
     && maximumObservedTimingErrorMs !== null
-    && maximumObservedTimingErrorMs <= maximumTimingErrorMs;
+    && maximumObservedTimingErrorMs <= maximumTimingErrorMs
+    && maximumObservedPolymarketQuoteAgeMs !== null
+    && maximumObservedPolymarketQuoteAgeMs <= maximumPolymarketQuoteAgeMs;
 
   return {
     status: enoughData ? qualityPassed ? "healthy" as const : "attention" as const : "collecting" as const,
+    collectionStartedAt: input.collectionStartedAt?.toISOString() ?? null,
     minimumAuditedPositions,
     eligiblePositions: eligiblePositions.length,
     auditedPositions: exactResults.length,
@@ -153,9 +168,12 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
       : null,
     medianTimingErrorMs: median(timingErrors),
     maximumTimingErrorMs: maximumObservedTimingErrorMs,
+    medianPolymarketQuoteAgeMs: median(polymarketQuoteAges),
+    maximumPolymarketQuoteAgeMs: maximumObservedPolymarketQuoteAgeMs,
     medianCloseDelayMs: median(closeDelays),
     maximumCloseDelayMs: closeDelays.length ? Math.max(...closeDelays) : null,
     allowedTimingErrorMs: maximumTimingErrorMs,
+    allowedPolymarketQuoteAgeMs: maximumPolymarketQuoteAgeMs,
     missingEntry,
     missingExit,
     missingResolution,

@@ -50,6 +50,7 @@ export async function getMonitoringSnapshot() {
     hyperAggregate,
     hyperLast24Hours,
     realtimeAggregate,
+    executionAuditRealtimeAggregate,
     realtimeLast24Hours,
     realtimeRecent,
     realtimeArbitrageViolations,
@@ -146,6 +147,10 @@ export async function getMonitoringSnapshot() {
       _count: { _all: true },
       _min: { capturedAt: true },
       _max: { capturedAt: true, captureSkewMs: true },
+    }),
+    prisma.realtimeMarketTick.aggregate({
+      where: { synchronizationVersion: "websocket-v2-rest-seeded" },
+      _min: { capturedAt: true },
     }),
     prisma.realtimeMarketTick.count({ where: { capturedAt: { gte: last24Hours } } }),
     prisma.realtimeMarketTick.findMany({
@@ -260,22 +265,28 @@ export async function getMonitoringSnapshot() {
     .filter((position) => (
       position.status === "CLOSED"
       && position.closedAt
-      && realtimeAggregate._min.capturedAt
-      && position.openedAt >= realtimeAggregate._min.capturedAt
+      && executionAuditRealtimeAggregate._min.capturedAt
+      && position.openedAt >= executionAuditRealtimeAggregate._min.capturedAt
     ))
     .map((position) => position.marketId)));
   const shortTermRealtimeTicks = exactAuditMarketIds.length
     ? await prisma.realtimeMarketTick.findMany({
-        where: { marketId: { in: exactAuditMarketIds } },
+        where: {
+          marketId: { in: exactAuditMarketIds },
+          synchronizationVersion: "websocket-v2-rest-seeded",
+        },
         select: {
           marketId: true,
           asset: true,
           marketStartAt: true,
           marketEndAt: true,
           polymarketBestAsk: true,
+          polymarketUpdatedAt: true,
           negativeBestAsk: true,
+          negativeUpdatedAt: true,
           hyperliquidBestBid: true,
           hyperliquidBestAsk: true,
+          hyperliquidUpdatedAt: true,
           referencePrice: true,
           referenceUpdatedAt: true,
           capturedAt: true,
@@ -374,7 +385,7 @@ export async function getMonitoringSnapshot() {
     ? evaluateExactExecutionAudit({
         positions: shortTermPositions,
         ticks: shortTermRealtimeTicks,
-        collectionStartedAt: realtimeAggregate._min.capturedAt,
+        collectionStartedAt: executionAuditRealtimeAggregate._min.capturedAt,
         takerFeePerSide: shortTermConfig.takerFeePerSide ?? 0.00045,
         slippagePerSide: shortTermConfig.slippagePerSide ?? 0.0002,
         fundingPer24h: shortTermConfig.fundingPer24h ?? 0.0003,
@@ -450,7 +461,7 @@ export async function getMonitoringSnapshot() {
         assets: realtimeAssets,
         arbitrageViolations: realtimeArbitrageViolations,
         targetCadenceSeconds: 5,
-        synchronizationVersion: "websocket-v1",
+        synchronizationVersion: "websocket-v2-rest-seeded",
       },
       synchronizedPrices: {
         records: synchronizedAggregate._count._all,

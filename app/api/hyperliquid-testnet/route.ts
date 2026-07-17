@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
-import { checkHyperliquidTestnetConnection, getHyperliquidExecutionReadiness, reconcileHyperliquidTestnetOrders } from "@/src/lib/combined-trading/hyperliquid-execution";
+import {
+  cancelOutstandingHyperliquidTestnetOrders,
+  cancelHyperliquidTestnetOrder,
+  checkHyperliquidTestnetConnection,
+  getHyperliquidExecutionReadiness,
+  reconcileHyperliquidTestnetOrders,
+} from "@/src/lib/combined-trading/hyperliquid-execution";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +16,22 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({})) as { action?: unknown };
-  return NextResponse.json(body.action === "reconcile"
-    ? await reconcileHyperliquidTestnetOrders()
-    : await checkHyperliquidTestnetConnection());
+  const parsed = z.object({
+    action: z.enum(["check", "reconcile", "cancel", "cancel-all"]).optional(),
+    asset: z.enum(["BTC", "ETH", "SOL", "XRP"]).optional(),
+    clientOrderId: z.string().min(1).max(100).optional(),
+  }).safeParse(await request.json().catch(() => ({})));
+  if (!parsed.success) return NextResponse.json({ error: "invalid testnet request" }, { status: 400 });
+  if (parsed.data.action === "reconcile") return NextResponse.json(await reconcileHyperliquidTestnetOrders());
+  if (parsed.data.action === "cancel-all") return NextResponse.json(await cancelOutstandingHyperliquidTestnetOrders());
+  if (parsed.data.action === "cancel") {
+    if (!parsed.data.asset || !parsed.data.clientOrderId) {
+      return NextResponse.json({ error: "asset and clientOrderId are required" }, { status: 400 });
+    }
+    return NextResponse.json(await cancelHyperliquidTestnetOrder({
+      asset: parsed.data.asset,
+      clientOrderId: parsed.data.clientOrderId,
+    }));
+  }
+  return NextResponse.json(await checkHyperliquidTestnetConnection());
 }

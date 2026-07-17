@@ -1,6 +1,10 @@
 import type { CombinedShadowPosition, CombinedShadowRun } from "@prisma/client";
 
-import { executeHyperliquidTestnetOrder, getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
+import {
+  cancelOutstandingHyperliquidTestnetOrders,
+  executeHyperliquidTestnetOrder,
+  getHyperliquidExecutionReadiness,
+} from "@/src/lib/combined-trading/hyperliquid-execution";
 import {
   scanCombinedLiveSignal,
   selectCombinedSignalScan,
@@ -311,6 +315,10 @@ export async function setCombinedShadowEmergencyStop(stopped: boolean) {
     where: { id: { in: runs.map((run) => run.id) } },
     data: { emergencyStopped: stopped },
   });
+  if (stopped) {
+    const cancellation = await cancelOutstandingHyperliquidTestnetOrders();
+    if (cancellation.failed > 0) throw new Error(`テストネット注文${cancellation.failed}件の取消を確認できませんでした`);
+  }
   return tickActiveForwardRuns();
 }
 
@@ -589,6 +597,7 @@ async function fetchPositionReference(position: CombinedShadowPosition) {
 async function maybeMirrorTestnetOrder(run: CombinedShadowRun, position: CombinedShadowPosition, action: "OPEN" | "CLOSE", referencePrice: number) {
   const readiness = getHyperliquidExecutionReadiness();
   if (!readiness.ready || !readiness.autoMirrorEnabled) return;
+  if (!readiness.supportedAssets.includes(position.asset)) return;
   if (action === "OPEN") {
     if (run.emergencyStopped || run.riskStatus !== "NORMAL") return;
     const latestEvaluation = await prisma.modelEvaluationRun.findFirst({ where: { status: "completed" }, orderBy: { completedAt: "desc" } });
@@ -611,9 +620,16 @@ async function maybeMirrorTestnetOrder(run: CombinedShadowRun, position: Combine
   if (existing) return;
   let mirroredOpenQuantity: number | null = null;
   if (action === "CLOSE") {
-    const opened = await prisma.combinedExecutionOrder.findFirst({ where: { positionId: position.id, environment: "TESTNET", action: "OPEN", status: "ACCEPTED" } });
+    const opened = await prisma.combinedExecutionOrder.findFirst({
+      where: {
+        positionId: position.id,
+        environment: "TESTNET",
+        action: "OPEN",
+        status: { in: ["FILLED", "PARTIALLY_FILLED"] },
+      },
+    });
     if (!opened) return;
-    mirroredOpenQuantity = opened.quantity;
+    mirroredOpenQuantity = opened.filledQuantity > 0 ? opened.filledQuantity : opened.quantity;
   }
 
   const clientOrderId = crypto.randomUUID();
@@ -644,7 +660,20 @@ async function maybeMirrorTestnetOrder(run: CombinedShadowRun, position: Combine
       referencePrice,
       clientOrderId,
     });
-    await prisma.combinedExecutionOrder.update({ where: { id: order.id }, data: { status: "ACCEPTED", responseJson: JSON.stringify(response.result ?? null) } });
+    await prisma.combinedExecutionOrder.update({
+      where: { id: order.id },
+      data: {
+        status: response.evidence.status,
+        exchangeOrderId: response.evidence.exchangeOrderId,
+        exchangeStatus: response.evidence.exchangeStatus,
+        filledQuantity: response.evidence.filledQuantity,
+        averageFillPrice: response.evidence.averageFillPrice,
+        feePaid: response.evidence.feePaid,
+        reason: response.evidence.reason,
+        responseJson: JSON.stringify(response.result ?? null),
+        lastReconciledAt: new Date(),
+      },
+    });
   } catch (error) {
     await prisma.combinedExecutionOrder.update({ where: { id: order.id }, data: { status: "REJECTED", reason: error instanceof Error ? error.message : "testnet order failed" } });
   }

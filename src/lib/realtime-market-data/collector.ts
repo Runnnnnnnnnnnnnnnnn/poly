@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { calculatePriceBasisPct } from "@/src/lib/combined-trading/polymarket-reference";
-import { discoverActiveCryptoDirectionMarkets, type ActiveCryptoDirectionMarket } from "@/src/lib/backtest/polymarket";
+import { discoverActiveCryptoDirectionMarkets, fetchCurrentBooks, type ActiveCryptoDirectionMarket } from "@/src/lib/backtest/polymarket";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "@/src/lib/monitoring/heartbeat";
 import {
   normalizeHyperliquidWebSocketMessage,
@@ -22,7 +22,8 @@ const supportedAssets = new Set(["BTC", "ETH", "SOL", "XRP"]);
 const targetDurationMinutes = 15;
 const marketLeadMs = 20 * 60_000;
 const marketGraceMs = 60_000;
-const maximumBookAgeMs = 15_000;
+const maximumPolymarketBookAgeMs = 2 * 60_000;
+const maximumHyperliquidBookAgeMs = 15_000;
 const maximumReferenceAgeMs = 15_000;
 const maximumContextAgeMs = 60_000;
 const connectionStaleMs = 30_000;
@@ -118,6 +119,19 @@ export class RealtimeMarketDataCollector {
     });
     this.markets = new Map(selected.map((market) => [market.id, market]));
     this.desiredTokens = new Set(selected.flatMap((market) => [market.tokenId, market.noTokenId as string]));
+    const currentBooks = await fetchCurrentBooks(Array.from(this.desiredTokens)).catch(() => new Map());
+    for (const [tokenId, book] of currentBooks) {
+      const bid = book.bids[0];
+      const ask = book.asks[0];
+      if (!bid || !ask || ask.price < bid.price) continue;
+      this.polymarketBooks.set(tokenId, {
+        bestBid: bid.price,
+        bestAsk: ask.price,
+        bidSize: bid.size,
+        askSize: ask.size,
+        updatedAt: book.capturedAt,
+      });
+    }
     for (const market of selected) {
       await prisma.predictionMarket.upsert({
         where: { id: market.id },
@@ -290,9 +304,9 @@ export function buildRealtimeMarketTick(input: {
   const { market, positiveBook, negativeBook, hyperliquidBook, hyperliquidContext, references, now } = input;
   if (!market.noTokenId || !market.endDate || !isRealtimeCaptureWindow(market, now)) return null;
   if (!positiveBook || !negativeBook || !hyperliquidBook) return null;
-  if (!isFresh(positiveBook.updatedAt, now, maximumBookAgeMs)
-    || !isFresh(negativeBook.updatedAt, now, maximumBookAgeMs)
-    || !isFresh(hyperliquidBook.updatedAt, now, maximumBookAgeMs)) return null;
+  if (!isFresh(positiveBook.updatedAt, now, maximumPolymarketBookAgeMs)
+    || !isFresh(negativeBook.updatedAt, now, maximumPolymarketBookAgeMs)
+    || !isFresh(hyperliquidBook.updatedAt, now, maximumHyperliquidBookAgeMs)) return null;
   const chainlink = references.CHAINLINK && isFresh(references.CHAINLINK.updatedAt, now, maximumReferenceAgeMs)
     ? references.CHAINLINK
     : null;
@@ -364,7 +378,7 @@ export function buildRealtimeMarketTick(input: {
     complementAskSum,
     arbitrageViolation: complementAskSum < 0.999 || complementBidSum > 1.001,
     captureSkewMs,
-    synchronizationVersion: "websocket-v1",
+    synchronizationVersion: "websocket-v2-rest-seeded",
     capturedAt: now,
   };
 }

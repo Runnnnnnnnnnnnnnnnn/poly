@@ -463,14 +463,20 @@ model CombinedExecutionOrder {
   positionId     String?
   environment    String
   clientOrderId  String                  @unique
+  exchangeOrderId String?
+  exchangeStatus String?
   asset          String
   side           String
   action         String
   quantity       Float
+  filledQuantity Float                   @default(0)
+  averageFillPrice Float?
+  feePaid        Float                   @default(0)
   referencePrice Float?
   status         String
   reason         String?
   responseJson   String?
+  lastReconciledAt DateTime?
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
   run            CombinedShadowRun       @relation(fields: [runId], references: [id], onDelete: Cascade)

@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
 import { calculateCaptureSkewMs } from "../src/lib/backtest/service";
-import { compareTestnetPositions, normalizeExchangeOrderStatus } from "../src/lib/combined-trading/hyperliquid-execution";
+import {
+  aggregateHyperliquidFills,
+  compareTestnetPositions,
+  normalizeExchangeOrderStatus,
+  parseHyperliquidOrderEvidence,
+} from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
 import { selectCombinedSignalScan, type CombinedSignalScan } from "../src/lib/combined-trading/live-signal";
 import { applyCombinedSignalRule, calculateCombinedClose, selectCombinedSignalCandidate } from "../src/lib/combined-trading/service";
@@ -234,7 +239,27 @@ assert.ok(Math.abs(realtimeTick.complementBidSum - 0.98) < 1e-12);
 assert.ok(Math.abs(realtimeTick.complementAskSum - 1.02) < 1e-12);
 assert.equal(realtimeTick.arbitrageViolation, false);
 assert.equal(realtimeTick.captureSkewMs, 2_000);
+assert.equal(realtimeTick.synchronizationVersion, "websocket-v2-rest-seeded");
 assert.ok(Math.abs(realtimeTick.priceBasisPct - (100.05 / 99 - 1)) < 1e-12);
+const unchangedPolymarketTick = buildRealtimeMarketTick({
+  market: realtimeMarket,
+  positiveBook: { ...polymarketUpdates[0]!, updatedAt: new Date(realtimeNow.getTime() - 90_000) },
+  negativeBook: { bestBid: 0.53, bestAsk: 0.55, bidSize: null, askSize: null, updatedAt: new Date(realtimeNow.getTime() - 90_000) },
+  hyperliquidBook: realtimeHyperliquidBook && "bestBid" in realtimeHyperliquidBook ? realtimeHyperliquidBook : null,
+  hyperliquidContext: null,
+  references: { BINANCE: realtimeBinance, CHAINLINK: null },
+  now: realtimeNow,
+});
+assert.ok(unchangedPolymarketTick);
+assert.equal(buildRealtimeMarketTick({
+  market: realtimeMarket,
+  positiveBook: { ...polymarketUpdates[0]!, updatedAt: new Date(realtimeNow.getTime() - 120_001) },
+  negativeBook: { bestBid: 0.53, bestAsk: 0.55, bidSize: null, askSize: null, updatedAt: new Date(realtimeNow.getTime() - 120_001) },
+  hyperliquidBook: realtimeHyperliquidBook && "bestBid" in realtimeHyperliquidBook ? realtimeHyperliquidBook : null,
+  hyperliquidContext: null,
+  references: { BINANCE: realtimeBinance, CHAINLINK: null },
+  now: realtimeNow,
+}), null);
 assert.equal(buildRealtimeMarketTick({
   market: realtimeMarket,
   positiveBook: polymarketUpdates[0] ?? null,
@@ -264,9 +289,12 @@ const auditTick = (
   marketStartAt: auditStart,
   marketEndAt: auditEnd,
   polymarketBestAsk,
+  polymarketUpdatedAt: new Date(capturedAt),
   negativeBestAsk,
+  negativeUpdatedAt: new Date(capturedAt),
   hyperliquidBestBid,
   hyperliquidBestAsk,
+  hyperliquidUpdatedAt: new Date(capturedAt),
   referencePrice,
   referenceUpdatedAt: new Date(referenceUpdatedAt),
   capturedAt: new Date(capturedAt),
@@ -882,6 +910,39 @@ assert.equal(normalizeExchangeOrderStatus({ status: "query_error", error: "tempo
 assert.equal(normalizeExchangeOrderStatus({ status: "unknownOid" }), null);
 assert.equal(normalizeExchangeOrderStatus({ status: "order", order: { status: "filled" } }), "FILLED");
 assert.equal(normalizeExchangeOrderStatus({ status: "order", order: { status: "open" } }), "OPEN");
+assert.deepEqual(parseHyperliquidOrderEvidence({
+  status: "ok",
+  response: { data: { statuses: [{ filled: { totalSz: "0.02", avgPx: "1891.4", oid: 77747314 } }] } },
+}, "order"), {
+  recognized: true,
+  status: "FILLED",
+  exchangeStatus: "filled",
+  exchangeOrderId: "77747314",
+  filledQuantity: 0.02,
+  averageFillPrice: 1891.4,
+  feePaid: 0,
+  reason: null,
+});
+assert.equal(parseHyperliquidOrderEvidence({
+  status: "ok",
+  response: { data: { statuses: [{ error: "Order must have minimum value of $10." }] } },
+}, "order").status, "REJECTED");
+assert.equal(parseHyperliquidOrderEvidence({
+  status: "order",
+  order: { status: "open", order: { oid: 42, origSz: "1", sz: "0.4" } },
+}, "query").status, "PARTIALLY_FILLED");
+assert.equal(parseHyperliquidOrderEvidence({
+  status: "ok",
+  response: { data: { statuses: ["success"] } },
+}, "cancel").status, "CANCELLED");
+assert.equal(normalizeExchangeOrderStatus({ status: "order", order: { status: "marginCanceled" } }), "CANCELLED");
+const aggregatedTestnetFill = aggregateHyperliquidFills([
+  { oid: 42, sz: "0.2", px: "100", fee: "0.01" },
+  { oid: 42, sz: "0.3", px: "102", fee: "0.02" },
+]).get("42");
+assert.equal(aggregatedTestnetFill?.filledQuantity, 0.5);
+assert.ok(Math.abs((aggregatedTestnetFill?.averageFillPrice ?? 0) - 101.2) < 1e-12);
+assert.ok(Math.abs((aggregatedTestnetFill?.feePaid ?? 0) - 0.03) < 1e-12);
 
 console.log("testnet reconciliation status tests passed");
 
@@ -892,6 +953,10 @@ assert.deepEqual(compareTestnetPositions(
     { asset: "ETH", side: "SHORT", action: "OPEN", quantity: 0.1 },
   ],
 ), [{ asset: "ETH", expectedSize: -0.1, actualSize: -0.2, kind: "quantity" }]);
+assert.deepEqual(compareTestnetPositions(
+  [{ coin: "BTC", size: 0.04 }],
+  [{ asset: "BTC", side: "LONG", action: "OPEN", quantity: 0.1, filledQuantity: 0.04, status: "PARTIALLY_FILLED" }],
+), []);
 
 const alertNow = new Date("2026-01-01T01:00:00Z");
 const healthyHeartbeats = ["polymarket", "hyperliquid", "realtime-market-data", "forward-experiment", "short-term-direction", "backtest"].map((id) => ({

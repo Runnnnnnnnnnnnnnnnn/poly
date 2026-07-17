@@ -14,6 +14,19 @@ type TestnetOrderRequest = {
   clientOrderId: string;
 };
 
+type TestnetCancelRequest = Pick<TestnetOrderRequest, "asset" | "clientOrderId">;
+
+export type HyperliquidOrderEvidence = {
+  recognized: boolean;
+  status: "ACCEPTED" | "OPEN" | "PARTIALLY_FILLED" | "FILLED" | "CANCELLED" | "REJECTED";
+  exchangeStatus: string | null;
+  exchangeOrderId: string | null;
+  filledQuantity: number;
+  averageFillPrice: number | null;
+  feePaid: number;
+  reason: string | null;
+};
+
 type ExecutorResponse = {
   ok: boolean;
   environment: "testnet";
@@ -33,6 +46,7 @@ export function getHyperliquidExecutionReadiness() {
   const apiWalletConfigured = Boolean(process.env.HYPERLIQUID_API_WALLET_PRIVATE_KEY?.trim());
   const enabled = process.env.HYPERLIQUID_TESTNET_ENABLED === "1";
   const autoMirrorEnabled = process.env.HYPERLIQUID_TESTNET_AUTO_MIRROR === "1";
+  const supportedAssets = supportedTestnetAssets();
   return {
     environment: "testnet" as const,
     installed,
@@ -40,6 +54,7 @@ export function getHyperliquidExecutionReadiness() {
     apiWalletConfigured,
     enabled,
     autoMirrorEnabled,
+    supportedAssets,
     ready: installed && accountConfigured && apiWalletConfigured && enabled,
     maximumNotionalUsd: maximumTestnetNotional(),
     mainnetSupported: false,
@@ -56,6 +71,9 @@ export async function checkHyperliquidTestnetConnection() {
 export async function executeHyperliquidTestnetOrder(request: TestnetOrderRequest) {
   const readiness = getHyperliquidExecutionReadiness();
   if (!readiness.ready) throw new Error("Hyperliquid testnet execution is not armed");
+  if (!readiness.supportedAssets.includes(request.asset)) {
+    throw new Error(`${request.asset} is not available on the configured Hyperliquid testnet universe`);
+  }
   if (!Number.isFinite(request.size) || request.size <= 0 || !Number.isFinite(request.referencePrice) || request.referencePrice <= 0) {
     throw new Error("invalid Hyperliquid testnet order size or price");
   }
@@ -65,7 +83,65 @@ export async function executeHyperliquidTestnetOrder(request: TestnetOrderReques
   }
   const response = await runExecutor({ ...request, slippage: 0.01 });
   if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet order failed");
-  return response;
+  const evidence = parseHyperliquidOrderEvidence(response.result, "order");
+  if (evidence.status === "REJECTED") throw new Error(evidence.reason ?? "Hyperliquid testnet order was rejected");
+  return { ...response, evidence };
+}
+
+export async function cancelHyperliquidTestnetOrder(request: TestnetCancelRequest) {
+  const readiness = getHyperliquidExecutionReadiness();
+  if (!readiness.ready) throw new Error("Hyperliquid testnet execution is not armed");
+  const response = await runExecutor({ action: "cancel", ...request });
+  if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet cancellation failed");
+  const evidence = parseHyperliquidOrderEvidence(response.result, "cancel");
+  if (evidence.status === "REJECTED") throw new Error(evidence.reason ?? "Hyperliquid testnet cancellation was rejected");
+  return { ...response, evidence };
+}
+
+export async function cancelOutstandingHyperliquidTestnetOrders() {
+  const readiness = getHyperliquidExecutionReadiness();
+  if (!readiness.ready) return { ...readiness, attempted: 0, cancelled: 0, failed: 0 };
+  await reconcileHyperliquidTestnetOrders();
+  const orders = await prisma.combinedExecutionOrder.findMany({
+    where: {
+      environment: "TESTNET",
+      status: { in: ["SUBMITTED", "PENDING", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] },
+    },
+    orderBy: { createdAt: "asc" },
+    take: 100,
+  });
+  let cancelled = 0;
+  let failed = 0;
+  for (const order of orders) {
+    try {
+      const response = await cancelHyperliquidTestnetOrder({
+        asset: order.asset as TestnetCancelRequest["asset"],
+        clientOrderId: order.clientOrderId,
+      });
+      await prisma.combinedExecutionOrder.update({
+        where: { id: order.id },
+        data: {
+          status: response.evidence.status,
+          exchangeStatus: response.evidence.exchangeStatus,
+          reason: response.evidence.reason,
+          responseJson: JSON.stringify(response.result ?? null),
+          lastReconciledAt: new Date(),
+        },
+      });
+      if (response.evidence.status === "CANCELLED") cancelled += 1;
+      else failed += 1;
+    } catch (error) {
+      failed += 1;
+      await prisma.combinedExecutionOrder.update({
+        where: { id: order.id },
+        data: {
+          reason: error instanceof Error ? error.message : "testnet cancellation failed",
+          lastReconciledAt: new Date(),
+        },
+      });
+    }
+  }
+  return { ...readiness, attempted: orders.length, cancelled, failed };
 }
 
 export async function reconcileHyperliquidTestnetOrders() {
@@ -74,28 +150,47 @@ export async function reconcileHyperliquidTestnetOrders() {
     return { ...readiness, connected: false, checkedOrders: 0, updatedOrders: 0, positions: [], openOrders: [], recentFills: [] };
   }
   const orders = await prisma.combinedExecutionOrder.findMany({
-    where: { environment: "TESTNET", status: { in: ["PENDING", "ACCEPTED", "OPEN"] } },
+    where: { environment: "TESTNET", status: { in: ["SUBMITTED", "PENDING", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] } },
     orderBy: { createdAt: "desc" },
     take: 100,
   });
   const response = await runExecutor({ action: "reconcile", clientOrderIds: orders.map((order) => order.clientOrderId) });
   if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet reconciliation failed");
 
+  const fillsByOrder = aggregateHyperliquidFills(response.recentFills ?? []);
   let updatedOrders = 0;
   for (const status of response.orderStatuses ?? []) {
     if (!status.clientOrderId) continue;
-    const normalized = normalizeExchangeOrderStatus(status.result);
-    if (!normalized) continue;
+    const evidence = parseHyperliquidOrderEvidence(status.result, "query");
+    if (!evidence.recognized) continue;
+    const fills = evidence.exchangeOrderId ? fillsByOrder.get(evidence.exchangeOrderId) : null;
+    const filledQuantity = fills?.filledQuantity ?? evidence.filledQuantity;
+    const normalized = evidence.status === "OPEN" && filledQuantity > 0 ? "PARTIALLY_FILLED" : evidence.status;
     const result = await prisma.combinedExecutionOrder.updateMany({
       where: { clientOrderId: status.clientOrderId, environment: "TESTNET" },
-      data: { status: normalized, responseJson: JSON.stringify(status) },
+      data: {
+        status: normalized,
+        exchangeStatus: evidence.exchangeStatus,
+        ...(evidence.exchangeOrderId ? { exchangeOrderId: evidence.exchangeOrderId } : {}),
+        ...(filledQuantity > 0 ? { filledQuantity } : {}),
+        ...((fills?.averageFillPrice ?? evidence.averageFillPrice) !== null
+          ? { averageFillPrice: fills?.averageFillPrice ?? evidence.averageFillPrice }
+          : {}),
+        ...((fills?.feePaid ?? evidence.feePaid) > 0 ? { feePaid: fills?.feePaid ?? evidence.feePaid } : {}),
+        ...(evidence.reason ? { reason: evidence.reason } : {}),
+        responseJson: JSON.stringify(status),
+        lastReconciledAt: new Date(),
+      },
     });
     updatedOrders += result.count;
   }
 
   const filledOrders = await prisma.combinedExecutionOrder.findMany({
-    where: { environment: "TESTNET", status: "FILLED" },
-    select: { asset: true, side: true, action: true, quantity: true },
+    where: {
+      environment: "TESTNET",
+      OR: [{ filledQuantity: { gt: 0 } }, { status: "FILLED" }],
+    },
+    select: { asset: true, side: true, action: true, quantity: true, filledQuantity: true, status: true },
   });
   const positionMismatches = compareTestnetPositions(response.positions ?? [], filledOrders);
 
@@ -114,13 +209,16 @@ export async function reconcileHyperliquidTestnetOrders() {
 
 export function compareTestnetPositions(
   actualPositions: Array<{ coin?: string; size?: number }>,
-  filledOrders: Array<{ asset: string; side: string; action: string; quantity: number }>,
+  filledOrders: Array<{ asset: string; side: string; action: string; quantity: number; filledQuantity?: number | null; status?: string }>,
 ) {
   const expected = new Map<string, number>();
   for (const order of filledOrders) {
     const direction = order.side === "LONG" ? 1 : -1;
     const action = order.action === "OPEN" ? 1 : -1;
-    expected.set(order.asset, (expected.get(order.asset) ?? 0) + order.quantity * direction * action);
+    const quantity = typeof order.filledQuantity === "number" && order.filledQuantity > 0
+      ? order.filledQuantity
+      : order.status === "FILLED" || order.status === undefined ? order.quantity : 0;
+    expected.set(order.asset, (expected.get(order.asset) ?? 0) + quantity * direction * action);
   }
   const actual = new Map(actualPositions.flatMap((position) => (
     position.coin && typeof position.size === "number" ? [[position.coin, position.size] as const] : []
@@ -181,12 +279,158 @@ function maximumTestnetNotional() {
   return Number.isFinite(configured) ? Math.max(1, Math.min(100, configured)) : 25;
 }
 
+function supportedTestnetAssets() {
+  const configured = process.env.HYPERLIQUID_TESTNET_ASSETS ?? "BTC,ETH,SOL";
+  return Array.from(new Set(configured.split(",").map((asset) => asset.trim().toUpperCase()).filter(Boolean)));
+}
+
 export function normalizeExchangeOrderStatus(value: unknown) {
+  const evidence = parseHyperliquidOrderEvidence(value, "query");
+  return evidence.recognized ? evidence.status : null;
+}
+
+export function parseHyperliquidOrderEvidence(
+  value: unknown,
+  action: "order" | "cancel" | "query" = "query",
+): HyperliquidOrderEvidence {
+  const objects = collectObjects(value);
+  const statusValues = objects.flatMap((item) => typeof item.status === "string" ? [item.status] : []);
+  const normalizedStatuses = statusValues.map(normalizeStatusToken);
   const serialized = JSON.stringify(value ?? "").toLowerCase();
-  if (/query_error|unknownoid|unknown oid|not found/.test(serialized)) return null;
-  if (/\bfilled\b/.test(serialized)) return "FILLED";
-  if (/\b(open|resting)\b/.test(serialized)) return "OPEN";
-  if (/\b(cancelled|canceled|margin_canceled)\b/.test(serialized)) return "CANCELLED";
-  if (/\b(rejected|error)\b/.test(serialized)) return "REJECTED";
+  const retryableQueryMiss = action === "query" && (
+    normalizedStatuses.includes("queryerror")
+    || normalizedStatuses.includes("unknownoid")
+    || /unknown oid|not found/.test(serialized)
+  );
+  if (retryableQueryMiss) return emptyEvidence(false);
+
+  const error = objects.flatMap((item) => typeof item.error === "string" ? [item.error] : [])[0] ?? null;
+  const filled = objects.flatMap((item) => isRecord(item.filled) ? [item.filled] : [])[0] ?? null;
+  const resting = objects.flatMap((item) => isRecord(item.resting) ? [item.resting] : [])[0] ?? null;
+  const order = objects.find((item) => numberValue(item.oid) !== null)
+    ?? objects.find((item) => numberValue(item.origSz) !== null || numberValue(item.sz) !== null)
+    ?? null;
+  const exchangeStatus = statusValues.find((item) => {
+    const token = normalizeStatusToken(item);
+    return token !== "ok" && token !== "order" && token !== "default";
+  }) ?? (filled ? "filled" : resting ? "resting" : action === "cancel" && serialized.includes("success") ? "canceled" : null);
+  const normalizedExchangeStatus = normalizeStatusToken(exchangeStatus ?? "");
+  const originalQuantity = firstNumber(objects, ["origSz", "totalSz"]);
+  const remainingQuantity = firstNumber(objects, ["sz"]);
+  const explicitFilledQuantity = filled ? firstNumber([filled], ["totalSz", "sz"]) : null;
+  const derivedFilledQuantity = originalQuantity !== null && remainingQuantity !== null
+    ? Math.max(0, originalQuantity - remainingQuantity)
+    : null;
+  const filledQuantity = explicitFilledQuantity ?? derivedFilledQuantity
+    ?? (normalizedExchangeStatus === "filled" ? originalQuantity : null)
+    ?? 0;
+  const averageFillPrice = filled ? firstNumber([filled], ["avgPx", "px"]) : firstNumber(objects, ["avgPx"]);
+  const exchangeOrderId = stringIdentifier(filled?.oid)
+    ?? stringIdentifier(resting?.oid)
+    ?? stringIdentifier(order?.oid)
+    ?? null;
+  const feePaid = firstNumber(objects, ["fee"]) ?? 0;
+  const rejectedStatus = normalizedExchangeStatus.endsWith("rejected") || normalizedExchangeStatus === "rejected";
+  const cancelledStatus = normalizedExchangeStatus === "canceled"
+    || normalizedExchangeStatus === "cancelled"
+    || normalizedExchangeStatus.endsWith("canceled")
+    || normalizedExchangeStatus === "scheduledcancel";
+  const filledStatus = normalizedExchangeStatus === "filled" || Boolean(filled);
+  const openStatus = normalizedExchangeStatus === "open" || normalizedExchangeStatus === "resting" || Boolean(resting);
+
+  let status: HyperliquidOrderEvidence["status"] = "ACCEPTED";
+  if (error || rejectedStatus) status = "REJECTED";
+  else if (filledStatus) status = "FILLED";
+  else if (cancelledStatus || (action === "cancel" && serialized.includes("success"))) status = "CANCELLED";
+  else if (openStatus && filledQuantity > 0) status = "PARTIALLY_FILLED";
+  else if (openStatus) status = "OPEN";
+
+  return {
+    recognized: Boolean(error || exchangeStatus || exchangeOrderId || action !== "query"),
+    status,
+    exchangeStatus,
+    exchangeOrderId,
+    filledQuantity,
+    averageFillPrice,
+    feePaid,
+    reason: error ?? (rejectedStatus ? exchangeStatus : null),
+  };
+}
+
+export function aggregateHyperliquidFills(fills: unknown[]) {
+  const grouped = new Map<string, { filledQuantity: number; averageFillPrice: number | null; feePaid: number }>();
+  for (const value of fills) {
+    if (!isRecord(value)) continue;
+    const orderId = stringIdentifier(value.oid);
+    const quantity = numberValue(value.sz);
+    const price = numberValue(value.px);
+    const fee = numberValue(value.fee) ?? 0;
+    if (!orderId || quantity === null || quantity <= 0) continue;
+    const previous = grouped.get(orderId) ?? { filledQuantity: 0, averageFillPrice: null, feePaid: 0 };
+    const previousNotional = previous.averageFillPrice === null ? 0 : previous.averageFillPrice * previous.filledQuantity;
+    const nextQuantity = previous.filledQuantity + quantity;
+    grouped.set(orderId, {
+      filledQuantity: nextQuantity,
+      averageFillPrice: price === null ? previous.averageFillPrice : (previousNotional + price * quantity) / nextQuantity,
+      feePaid: previous.feePaid + fee,
+    });
+  }
+  return grouped;
+}
+
+function emptyEvidence(recognized: boolean): HyperliquidOrderEvidence {
+  return {
+    recognized,
+    status: "ACCEPTED",
+    exchangeStatus: null,
+    exchangeOrderId: null,
+    filledQuantity: 0,
+    averageFillPrice: null,
+    feePaid: 0,
+    reason: null,
+  };
+}
+
+function collectObjects(value: unknown) {
+  const objects: Record<string, unknown>[] = [];
+  const visit = (item: unknown) => {
+    if (Array.isArray(item)) {
+      item.forEach(visit);
+      return;
+    }
+    if (!isRecord(item)) return;
+    objects.push(item);
+    Object.values(item).forEach(visit);
+  };
+  visit(value);
+  return objects;
+}
+
+function firstNumber(objects: Record<string, unknown>[], keys: string[]) {
+  for (const object of objects) {
+    for (const key of keys) {
+      const value = numberValue(object[key]);
+      if (value !== null) return value;
+    }
+  }
   return null;
+}
+
+function numberValue(value: unknown) {
+  const numeric = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function stringIdentifier(value: unknown) {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function normalizeStatusToken(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
