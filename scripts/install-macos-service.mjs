@@ -23,6 +23,7 @@ if (process.argv.includes("--uninstall")) {
   process.exit(0);
 }
 
+buildRuntime();
 stageRuntime();
 const databaseUrl = `file:${resolve(deployedRoot, "prisma/dev.db")}`;
 execFileSync(runtimeNode, [resolve(deployedRoot, "node_modules/prisma/build/index.js"), "db", "push", "--schema", resolve(deployedRoot, "prisma/schema.prisma")], {
@@ -79,6 +80,26 @@ function installAgent(label, plist) {
   } catch {}
   execFileSync("launchctl", ["bootstrap", domain, plistPath]);
   console.log(`installed ${label}`);
+}
+
+function buildRuntime() {
+  const buildEnv = {
+    ...process.env,
+    DATABASE_URL: `file:${resolve(deployedRoot, "prisma/dev.db")}`,
+    SKIP_TITLE_AI: "1",
+  };
+  delete buildEnv.NEXT_PUBLIC_STATIC_EXPORT;
+  delete buildEnv.GITHUB_PAGES;
+  delete buildEnv.GITHUB_PAGES_REPO;
+  console.log("building the runtime app with API routes");
+  execFileSync(runtimeNode, [resolve(root, "node_modules/next/dist/bin/next"), "build"], {
+    cwd: root,
+    env: buildEnv,
+    stdio: "inherit",
+  });
+  if (!existsSync(resolve(root, ".next/server/app/api/health/route.js"))) {
+    throw new Error("runtime build is missing API routes; deployment stopped");
+  }
 }
 
 function stageRuntime() {

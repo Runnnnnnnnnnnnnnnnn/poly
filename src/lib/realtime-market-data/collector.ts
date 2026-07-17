@@ -214,24 +214,29 @@ export class RealtimeMarketDataCollector {
   }
 
   private handlePolymarketMessage(data: unknown) {
+    let handled = false;
     for (const update of normalizePolymarketWebSocketMessage(data)) {
       if (!this.desiredTokens.has(update.tokenId)) continue;
       this.polymarketBooks.set(update.tokenId, mergeBookTop(this.polymarketBooks.get(update.tokenId), update));
+      handled = true;
     }
+    return handled;
   }
 
   private handleHyperliquidMessage(data: unknown) {
     const update = normalizeHyperliquidWebSocketMessage(data);
-    if (!update || !supportedAssets.has(update.asset)) return;
+    if (!update || !supportedAssets.has(update.asset)) return false;
     if ("bestBid" in update) this.hyperliquidBooks.set(update.asset, update);
     else this.hyperliquidContexts.set(update.asset, update);
+    return true;
   }
 
   private handleReferenceMessage(data: unknown) {
     const update = normalizeRtdsReferenceMessage(data);
-    if (!update) return;
+    if (!update) return false;
     const current = this.references.get(update.asset) ?? { BINANCE: null, CHAINLINK: null };
     this.references.set(update.asset, { ...current, [update.source]: update });
+    return true;
   }
 
   private initializePolymarketSubscriptions() {
@@ -277,6 +282,7 @@ export class RealtimeMarketDataCollector {
 
   private connectionHealth(now: Date) {
     const sockets = [this.polymarketSocket, this.hyperliquidSocket, this.referenceSocket];
+    for (const socket of sockets) socket.reconnectIfStale(now, connectionStaleMs);
     const rows = sockets.map((socket) => socket.health(now, connectionStaleMs));
     return { connected: rows.filter((row) => row.healthy).length, sockets: rows };
   }
@@ -407,7 +413,7 @@ type ManagedWebSocketOptions = {
   heartbeatMs: number;
   heartbeatMessage: string;
   onOpen: () => void;
-  onMessage: (data: unknown) => void;
+  onMessage: (data: unknown) => boolean;
 };
 
 class ManagedWebSocket {
@@ -416,6 +422,7 @@ class ManagedWebSocket {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private stopped = true;
+  private openedAt: Date | null = null;
   private lastMessageAt: Date | null = null;
 
   constructor(private readonly options: ManagedWebSocketOptions) {}
@@ -451,10 +458,30 @@ class ManagedWebSocket {
     return {
       name: this.options.name,
       open: this.isOpen(),
+      openedAt: this.openedAt?.toISOString() ?? null,
       lastMessageAt: this.lastMessageAt?.toISOString() ?? null,
       ageMs,
       healthy: this.isOpen() && ageMs !== null && ageMs <= staleMs,
     };
+  }
+
+  reconnectIfStale(now: Date, staleMs: number) {
+    if (!shouldReconnectManagedSocket({
+      open: this.isOpen(),
+      openedAt: this.openedAt,
+      lastMessageAt: this.lastMessageAt,
+      now,
+      staleMs,
+    })) return false;
+    const staleSocket = this.socket;
+    this.socket = null;
+    this.openedAt = null;
+    this.lastMessageAt = null;
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+    try { staleSocket?.close(); } catch { /* reconnect below */ }
+    this.scheduleReconnect();
+    return true;
   }
 
   private connect() {
@@ -465,14 +492,14 @@ class ManagedWebSocket {
     socket.addEventListener("open", () => {
       if (this.socket !== socket || this.stopped) return;
       this.reconnectAttempts = 0;
+      this.openedAt = new Date();
       this.options.onOpen();
       if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = setInterval(() => this.send(this.options.heartbeatMessage), this.options.heartbeatMs);
     });
     socket.addEventListener("message", (event) => {
       if (this.socket !== socket || this.stopped) return;
-      this.lastMessageAt = new Date();
-      this.options.onMessage(event.data);
+      if (this.options.onMessage(event.data)) this.lastMessageAt = new Date();
     });
     socket.addEventListener("error", () => {
       try { socket.close(); } catch { /* best effort */ }
@@ -480,6 +507,7 @@ class ManagedWebSocket {
     socket.addEventListener("close", () => {
       if (this.socket !== socket || this.stopped) return;
       this.socket = null;
+      this.openedAt = null;
       if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
       this.scheduleReconnect();
@@ -495,6 +523,18 @@ class ManagedWebSocket {
       this.connect();
     }, delayMs);
   }
+}
+
+export function shouldReconnectManagedSocket(input: {
+  open: boolean;
+  openedAt: Date | null;
+  lastMessageAt: Date | null;
+  now: Date;
+  staleMs: number;
+}) {
+  if (!input.open) return false;
+  const lastActivityAt = input.lastMessageAt ?? input.openedAt;
+  return Boolean(lastActivityAt && input.now.getTime() - lastActivityAt.getTime() > input.staleMs);
 }
 
 function isFresh(value: Date, now: Date, maximumAgeMs: number) {

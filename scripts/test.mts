@@ -41,7 +41,7 @@ import { selectProspectiveExecutionTriplet } from "../src/lib/model-evaluation/p
 import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
-import { buildRealtimeMarketTick, isRealtimeCaptureWindow } from "../src/lib/realtime-market-data/collector";
+import { buildRealtimeMarketTick, isRealtimeCaptureWindow, shouldReconnectManagedSocket } from "../src/lib/realtime-market-data/collector";
 import { calculatePolymarketTakerFee, evaluateExactExecutionAudit } from "../src/lib/realtime-market-data/execution-audit";
 import {
   normalizeHyperliquidWebSocketMessage,
@@ -82,6 +82,27 @@ assert.equal(calculateCaptureSkewMs([
   new Date("2026-01-01T00:00:01.200Z"),
 ]), 1_200);
 assert.equal(calculateCaptureSkewMs([new Date("2026-01-01T00:00:00Z"), null]), null);
+assert.equal(shouldReconnectManagedSocket({
+  open: true,
+  openedAt: new Date("2026-01-01T00:00:00Z"),
+  lastMessageAt: new Date("2026-01-01T00:00:20Z"),
+  now: new Date("2026-01-01T00:00:40Z"),
+  staleMs: 30_000,
+}), false);
+assert.equal(shouldReconnectManagedSocket({
+  open: true,
+  openedAt: new Date("2026-01-01T00:00:00Z"),
+  lastMessageAt: new Date("2026-01-01T00:00:05Z"),
+  now: new Date("2026-01-01T00:00:40Z"),
+  staleMs: 30_000,
+}), true);
+assert.equal(shouldReconnectManagedSocket({
+  open: true,
+  openedAt: new Date("2026-01-01T00:00:00Z"),
+  lastMessageAt: null,
+  now: new Date("2026-01-01T00:00:40Z"),
+  staleMs: 30_000,
+}), true);
 const synchronizedQualityInput = {
   records: 1_200,
   completeRecords: 1_300,

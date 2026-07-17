@@ -822,9 +822,9 @@ export function PaperTradingDashboardClient() {
     <div className="space-y-4 pb-24">
       <section className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-primary"><Activity className="h-4 w-4" />POLYMARKET × HYPERLIQUID</div>
-          <h1 className="mt-1 max-w-3xl text-2xl font-bold leading-tight text-slate-950 md:text-3xl">予測で売買するモデルを検証中</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Polymarketの予測とHyperliquidの値動きを組み合わせ、ロング・ショート・見送りを判断する仕組みを開発しています。</p>
+          <div className="flex items-center gap-2 text-xs font-bold text-primary"><Activity className="h-4 w-4" />POLYMARKET → HYPERLIQUID</div>
+          <h1 className="mt-1 max-w-3xl text-2xl font-bold leading-tight text-slate-950 md:text-3xl">予測を売買につなげるモデルの検証</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Polymarketの15分予測を使い、Hyperliquidで売買した場合の成績を実資金なしで記録しています。</p>
         </div>
         <div className="flex items-center gap-2">
           <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${!snapshot && monitoring?.status === "live" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
@@ -837,17 +837,22 @@ export function PaperTradingDashboardClient() {
         </div>
       </section>
 
-      <ModelSummaryPanel monitoring={monitoring} />
+      <ExecutiveModelOverview snapshot={monitoring} savedSnapshot={snapshot} />
 
-      <CombinedShadowPanel snapshot={monitoring} />
-
-      <ShortTermDirectionPanel snapshot={monitoring} />
-
-      <TradingPurposePanel snapshot={monitoring} />
-
-      <DevelopmentMonitor snapshot={monitoring} readOnly={snapshot} />
-
-      <MonitoringDetails snapshot={monitoring} />
+      <details className="group border-y border-border bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-1 py-4 text-sm font-bold text-slate-800 sm:px-2">
+          <span className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-primary" />検証と収集の詳細</span>
+          <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">必要なときだけ表示<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" /></span>
+        </summary>
+        <div className="grid gap-4 pb-4">
+          <ShortTermDirectionPanel snapshot={monitoring} />
+          <CombinedShadowPanel snapshot={monitoring} />
+          <ModelSummaryPanel monitoring={monitoring} />
+          <TradingPurposePanel snapshot={monitoring} />
+          <DevelopmentMonitor snapshot={monitoring} readOnly={snapshot} />
+          <MonitoringDetails snapshot={monitoring} />
+        </div>
+      </details>
 
       {!readOnly ? <PaperExperimentPanel snapshot={monitoring} /> : null}
 
@@ -905,6 +910,119 @@ export function PaperTradingDashboardClient() {
       </section> : null}
 
       {!readOnly ? <DetailPanel paperRun={selectedPaperRun} backtest={selectedBacktest} loading={detailLoading} /> : null}
+    </div>
+  );
+}
+
+function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: MonitoringSnapshot | null; savedSnapshot: boolean }) {
+  const model = snapshot?.combinedShadow.shortTermDirection;
+  const audit = model?.executionAudit;
+  const trades = model?.trades ?? 0;
+  const minimumTrades = model?.minimumTrades ?? 50;
+  const progress = minimumTrades > 0 ? trades / minimumTrades : 0;
+  const sampleReady = trades >= minimumTrades;
+  const netPositive = sampleReady && (model?.netReturnPct ?? 0) > 0;
+  const edgePositive = sampleReady && (model?.confidenceLowerPct ?? Number.NEGATIVE_INFINITY) > 0;
+  const drawdownReady = sampleReady && (model?.maxDrawdownPct ?? Number.POSITIVE_INFINITY) <= 0.05;
+  const dataReady = snapshot?.collection.realtimePrices?.status === "healthy";
+  const testnetReady = snapshot?.combinedShadow.testnet.ready === true;
+  const liveEnabled = snapshot?.tradeReadiness.realTradingEnabled === true;
+  const promising = model?.status === "promising" && sampleReady && netPositive && edgePositive && drawdownReady;
+  const verdict = liveEnabled
+    ? { label: "実取引中", note: "運用条件を満たし、実取引を監視しています。", tone: "good" as const, icon: CheckCircle2 }
+    : promising && testnetReady
+      ? { label: "実取引の最終確認", note: "成績基準を満たしました。テストネット照合の完了後に判断します。", tone: "watch" as const, icon: ShieldCheck }
+      : model?.status === "underperforming" && sampleReady
+        ? { label: "モデル改善が必要", note: "50件の検証で採用基準に届きませんでした。実取引には進みません。", tone: "bad" as const, icon: TrendingDown }
+        : { label: "検証中・実取引不可", note: trades > 0
+          ? `必要な${minimumTrades}件に未到達です。現時点の損益と比較差もそのまま表示しています。`
+          : "最初の決済結果を待っています。", tone: "watch" as const, icon: Clock3 };
+  const VerdictIcon = verdict.icon;
+  const pnlTone: Tone = trades === 0 ? "neutral" : (model?.netReturnPct ?? 0) > 0 ? "good" : "bad";
+  const edgeTone: Tone = trades === 0 ? "neutral" : (model?.excessReturnPct ?? 0) > 0 ? "good" : "bad";
+  const drawdownTone: Tone = trades === 0 ? "neutral" : (model?.maxDrawdownPct ?? 0) <= 0.05 ? "good" : "bad";
+  const latestAt = snapshot?.collection.realtimePrices?.latestAt ?? snapshot?.generatedAt ?? null;
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="現在のモデル検証結果">
+      <div className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 border-b p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:gap-4 sm:p-6 ${toneSoftClass(verdict.tone)}`}>
+        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-md ${toneIconClass(verdict.tone)}`}><VerdictIcon className="h-6 w-6" /></span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-muted-foreground">現在の運用判定</p>
+          <h2 className="mt-1 text-2xl font-bold leading-tight text-slate-950 sm:text-3xl">{verdict.label}</h2>
+          <p className="mt-1 text-sm font-semibold leading-6 text-slate-700">{verdict.note}</p>
+        </div>
+        <span className={`col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-md px-3 text-xs font-bold sm:col-span-1 ${liveEnabled ? "bg-emerald-700 text-white" : "bg-slate-950 text-white"}`}>
+          {liveEnabled ? <Activity className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />}
+          実取引 {liveEnabled ? "ON" : "OFF"}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
+        <ExecutiveMetric icon={Target} label="検証済み" value={`${trades} / ${minimumTrades}`} note={`あと${Math.max(0, minimumTrades - trades)}件`} tone={sampleReady ? "good" : "watch"} meter={progress * 100} />
+        <ExecutiveMetric icon={TrendingUp} label="純損益" value={trades ? formatSignedPct(model?.netReturnPct) : "未判定"} note="全コスト控除後" tone={pnlTone} />
+        <ExecutiveMetric icon={BarChart3} label="単純戦略との差" value={trades ? formatSignedPct(model?.excessReturnPct) : "未判定"} note="同期間の対照比" tone={edgeTone} />
+        <ExecutiveMetric icon={TrendingDown} label="最大下落" value={trades ? formatPct(model?.maxDrawdownPct) : "未判定"} note="上限 5.00%" tone={drawdownTone} />
+        <ExecutiveMetric icon={LockKeyhole} label="運用可否" value={liveEnabled ? "運用中" : "不可"} note={testnetReady ? "テストネット接続済み" : "テストネット未接続"} tone={liveEnabled ? "good" : "bad"} />
+      </div>
+
+      <div className="grid grid-cols-2 border-t sm:grid-cols-5">
+        <ExecutiveGate label="5秒板" value={dataReady ? "正常" : "確認中"} tone={dataReady ? "good" : "watch"} />
+        <ExecutiveGate label="必要件数" value={sampleReady ? "合格" : `${trades}/${minimumTrades}`} tone={sampleReady ? "good" : "watch"} />
+        <ExecutiveGate label="純損益" value={netPositive ? "合格" : trades ? "未合格" : "未判定"} tone={netPositive ? "good" : trades ? "bad" : "neutral"} />
+        <ExecutiveGate label="95%下限" value={edgePositive ? "合格" : model?.confidenceLowerPct === null || model?.confidenceLowerPct === undefined ? "未判定" : "未合格"} tone={edgePositive ? "good" : model?.confidenceLowerPct === null || model?.confidenceLowerPct === undefined ? "neutral" : "bad"} />
+        <ExecutiveGate label="テストネット" value={testnetReady ? "接続済み" : "未接続"} tone={testnetReady ? "good" : "neutral"} />
+      </div>
+
+      <div className="grid grid-cols-3 items-stretch border-t md:grid-cols-[minmax(0,1fr)_28px_minmax(0,1fr)_28px_minmax(0,1fr)]">
+        <ExecutiveFlowStep icon={Database} title="Polymarket" value="15分市場の5秒板" state={dataReady ? "収集中" : "確認中"} tone={dataReady ? "good" : "watch"} />
+        <ArrowRight className="hidden h-4 w-4 self-center justify-self-center text-slate-300 md:block" />
+        <ExecutiveFlowStep icon={BrainCircuit} title="固定モデル" value="買い・売り・見送り" state="検証中" tone="watch" />
+        <ArrowRight className="hidden h-4 w-4 self-center justify-self-center text-slate-300 md:block" />
+        <ExecutiveFlowStep icon={TrendingUp} title="Hyperliquid" value="板価格で仮想約定" state="実資金なし" tone="neutral" />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
+        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${dataReady ? "text-emerald-600" : "text-amber-600"}`} />5秒板 {formatCompact(snapshot?.collection.realtimePrices?.records)}件・監査 {audit?.auditedPositions ?? 0}/{audit?.eligiblePositions ?? 0}件</span>
+        <span>{savedSnapshot ? "公開保存値" : "自動更新"}・{latestAt ? `${relativeTime(latestAt)}に更新` : "更新待ち"}</span>
+      </div>
+    </section>
+  );
+}
+
+function ExecutiveFlowStep({ icon: Icon, title, value, state, tone }: { icon: LucideIcon; title: string; value: string; state: string; tone: Tone }) {
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-2 border-r px-3 py-3 last:border-r-0 md:flex-row md:items-center md:gap-3 md:px-5 md:py-4">
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${toneIconClass(tone)}`}><Icon className="h-4 w-4" /></span>
+      <div className="min-w-0 flex-1">
+        <div className="grid gap-1 md:flex md:items-center md:justify-between md:gap-2">
+          <p className="break-words text-[11px] font-bold text-slate-950 md:text-xs">{title}</p>
+          <span className={`rounded-sm px-1.5 py-0.5 text-[9px] font-bold ${tonePillClass(tone)}`}>{state}</span>
+        </div>
+        <p className="mt-1 line-clamp-2 min-h-8 break-words text-[10px] font-semibold leading-4 text-muted-foreground md:min-h-0 md:truncate md:text-[11px]">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function ExecutiveMetric({ icon: Icon, label, value, note, tone, meter }: { icon: LucideIcon; label: string; value: string; note: string; tone: Tone; meter?: number }) {
+  const valueClass = tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-700" : tone === "watch" ? "text-amber-800" : "text-slate-950";
+  return (
+    <div className="min-w-0 p-4 last:col-span-2 lg:last:col-span-1 sm:p-5">
+      <div className="flex items-center gap-2 text-[11px] font-bold text-muted-foreground"><Icon className="h-3.5 w-3.5" />{label}</div>
+      <p className={`mt-3 break-words text-2xl font-bold leading-none tabular-nums sm:text-3xl ${valueClass}`}>{value}</p>
+      {meter === undefined ? null : <VisualMeter tone={tone} value={meter} className="mt-3" />}
+      <p className="mt-2 text-[10px] font-semibold text-muted-foreground sm:text-[11px]">{note}</p>
+    </div>
+  );
+}
+
+function ExecutiveGate({ label, value, tone }: { label: string; value: string; tone: Tone }) {
+  const dotClass = tone === "good" ? "bg-emerald-500" : tone === "bad" ? "bg-rose-500" : tone === "watch" ? "bg-amber-400" : "bg-slate-300";
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-2 border-b border-r px-3 py-2.5 last:col-span-2 last:border-r-0 sm:border-b-0 sm:last:col-span-1 sm:px-4">
+      <span className="flex min-w-0 items-center gap-2 text-[10px] font-bold text-slate-600 sm:text-[11px]"><span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} />{label}</span>
+      <span className="shrink-0 text-[10px] font-bold text-slate-950 sm:text-[11px]">{value}</span>
     </div>
   );
 }

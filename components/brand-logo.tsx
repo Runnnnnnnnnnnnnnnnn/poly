@@ -10,7 +10,7 @@ export function BrandLogo() {
       </div>
       <span>
         <span className="block text-base font-bold leading-tight text-slate-950">Polymarket Watch</span>
-        <span className="block text-xs font-medium text-muted-foreground">予測テーマを見やすく整理</span>
+        <span className="block text-xs font-medium text-muted-foreground">予測市場とモデル検証</span>
       </span>
     </div>
   );
