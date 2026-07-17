@@ -1,11 +1,13 @@
 import {
   scanShortTermDirectionSignal,
+  isShortTermDirectionFamilyKey,
   shortTermDirectionControlKey,
   shortTermDirectionHorizonKey,
   shortTermDirectionStrategyKey,
 } from "../src/lib/combined-trading/short-term-direction";
 import { ensureCombinedShadowRun, loadCombinedMarkPrices, tickCombinedShadowRun, type CombinedShadowConfig } from "../src/lib/combined-trading/service";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
+import { prisma } from "../src/lib/server/prisma";
 
 const intervalMs = Math.max(60_000, Number(process.env.SHORT_TERM_DIRECTION_INTERVAL_MS ?? 60_000));
 
@@ -32,7 +34,7 @@ const strategyConfig: Partial<CombinedShadowConfig> = {
   experimentKey: shortTermDirectionStrategyKey,
   experimentLabel: "15分Up/Down × Hyperliquid開始後トレンド一致",
   signalRule: "trend-confirmed",
-  modelVersion: "Short Direction v2 2026-07-18 / shared exit quote / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
+  modelVersion: "Short Direction v3 2026-07-18 / exact 5s audit / official resolution / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
 };
 
 const controlConfig: Partial<CombinedShadowConfig> = {
@@ -41,16 +43,45 @@ const controlConfig: Partial<CombinedShadowConfig> = {
   experimentLabel: "15分Up/Downの方向のみ（同時対照）",
   minimumTrendZ: 0,
   signalRule: "polymarket-only",
-  modelVersion: "Short Direction Control v2 2026-07-18 / shared exit quote / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
+  modelVersion: "Short Direction Control v3 2026-07-18 / exact 5s audit / official resolution / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
 };
 
 let runs = await ensureRuns();
 
 async function ensureRuns() {
-  return {
+  const active = {
     strategy: await ensureCombinedShadowRun(strategyConfig),
     control: await ensureCombinedShadowRun(controlConfig),
   };
+  await supersedeClosedLegacyRuns([active.strategy.id, active.control.id]);
+  return active;
+}
+
+async function supersedeClosedLegacyRuns(activeIds: string[]) {
+  const running = await prisma.combinedShadowRun.findMany({
+    where: { status: "running", id: { notIn: activeIds } },
+    select: { id: true, configJson: true, _count: { select: { positions: { where: { status: "OPEN" } } } } },
+  });
+  const legacyIds = running.flatMap((run) => {
+    const key = parseExperimentKey(run.configJson);
+    return run._count.positions === 0 && isShortTermDirectionFamilyKey(key)
+      ? [run.id]
+      : [];
+  });
+  if (!legacyIds.length) return;
+  await prisma.combinedShadowRun.updateMany({
+    where: { id: { in: legacyIds }, status: "running" },
+    data: { status: "superseded", stoppedAt: new Date() },
+  });
+}
+
+function parseExperimentKey(configJson: string) {
+  try {
+    const value = JSON.parse(configJson) as { experimentKey?: unknown };
+    return typeof value.experimentKey === "string" ? value.experimentKey : "";
+  } catch {
+    return "";
+  }
 }
 
 async function tick() {

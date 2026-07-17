@@ -15,6 +15,7 @@ import { applyCombinedSignalRule, calculateCombinedClose, selectCombinedSignalCa
 import {
   isShortTermDecisionWindow,
   isShortTermDirectionControlKey,
+  isShortTermDirectionFamilyKey,
   isShortTermDirectionStrategyKey,
   shortTermDirectionControlKey,
   shortTermDirectionStrategyKey,
@@ -781,6 +782,9 @@ assert.equal(isShortTermDecisionWindow(shortMarketWindow, new Date("2026-01-01T0
 assert.equal(isShortTermDecisionWindow(shortMarketWindow, new Date("2026-01-01T00:04:00Z")), false);
 assert.equal(isShortTermDirectionStrategyKey(shortTermDirectionStrategyKey), true);
 assert.equal(isShortTermDirectionControlKey(shortTermDirectionControlKey), true);
+assert.equal(isShortTermDirectionFamilyKey("poly-updown-hl-trend-forward-v2-m15"), true);
+assert.equal(isShortTermDirectionFamilyKey("poly-updown-forward-control-v1-m15"), true);
+assert.equal(isShortTermDirectionFamilyKey("polymarket-only-forward-control-v2-h24"), false);
 
 console.log("combined shadow signal-rule tests passed");
 

@@ -18,8 +18,8 @@ import { fetchHyperliquidMarketStates } from "@/src/lib/monitoring/hyperliquid";
 import { prisma } from "@/src/lib/server/prisma";
 
 export const shortTermDirectionHorizonKey = 0;
-export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v2-m15";
-export const shortTermDirectionControlKey = "poly-updown-forward-control-v2-m15";
+export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v3-m15";
+export const shortTermDirectionControlKey = "poly-updown-forward-control-v3-m15";
 
 const supportedAssets = ["BTC", "ETH", "SOL", "XRP"] as const;
 const targetDurationMinutes = 15;
@@ -37,6 +37,11 @@ export function isShortTermDirectionStrategyKey(value: string | null | undefined
 
 export function isShortTermDirectionControlKey(value: string | null | undefined) {
   return value === shortTermDirectionControlKey;
+}
+
+export function isShortTermDirectionFamilyKey(value: string | null | undefined) {
+  return typeof value === "string"
+    && /^poly-updown-(?:hl-trend-forward|forward-control)-v\d+-m15$/.test(value);
 }
 
 export function isShortTermDecisionWindow(market: Pick<ActiveCryptoDirectionMarket, "eventStartTime" | "durationMinutes">, now: Date) {
