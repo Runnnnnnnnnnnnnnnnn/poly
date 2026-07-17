@@ -48,6 +48,10 @@ export async function getMonitoringSnapshot() {
     fillCount,
     hyperAggregate,
     hyperLast24Hours,
+    realtimeAggregate,
+    realtimeLast24Hours,
+    realtimeRecent,
+    realtimeArbitrageViolations,
     heartbeats,
     latestHyperliquid,
     latestEvaluation,
@@ -137,6 +141,19 @@ export async function getMonitoringSnapshot() {
     prisma.paperFill.count(),
     prisma.hyperliquidSnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
     prisma.hyperliquidSnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
+    prisma.realtimeMarketTick.aggregate({
+      _count: { _all: true },
+      _min: { capturedAt: true },
+      _max: { capturedAt: true, captureSkewMs: true },
+    }),
+    prisma.realtimeMarketTick.count({ where: { capturedAt: { gte: last24Hours } } }),
+    prisma.realtimeMarketTick.findMany({
+      where: { capturedAt: { gte: new Date(now.getTime() - 60_000) } },
+      select: { marketId: true, asset: true, capturedAt: true, captureSkewMs: true },
+      orderBy: { capturedAt: "desc" },
+      take: 2_000,
+    }),
+    prisma.realtimeMarketTick.count({ where: { capturedAt: { gte: last24Hours }, arbitrageViolation: true } }),
     prisma.pipelineHeartbeat.findMany({ orderBy: { id: "asc" } }),
     Promise.all(monitoredAssets.map((asset) => prisma.hyperliquidSnapshot.findFirst({ where: { asset }, orderBy: { capturedAt: "desc" } }))),
     prisma.modelEvaluationRun.findFirst({ where: { status: "completed" }, orderBy: { completedAt: "desc" } }),
@@ -329,11 +346,17 @@ export async function getMonitoringSnapshot() {
   const newestDataAt = latestDate(
     polymarketAggregate._max.capturedAt,
     hyperAggregate._max.capturedAt,
+    realtimeAggregate._max.capturedAt,
     paperEquityAggregate._max.capturedAt,
     combinedSnapshotAggregate._max.capturedAt,
     ...heartbeats.map((heartbeat) => heartbeat.lastSuccessAt),
   );
-  const oldestDataAt = earliestDate(polymarketAggregate._min.capturedAt, hyperAggregate._min.capturedAt, paperEquityAggregate._min.capturedAt);
+  const oldestDataAt = earliestDate(
+    polymarketAggregate._min.capturedAt,
+    hyperAggregate._min.capturedAt,
+    realtimeAggregate._min.capturedAt,
+    paperEquityAggregate._min.capturedAt,
+  );
   const ageMs = newestDataAt ? now.getTime() - newestDataAt.getTime() : Number.POSITIVE_INFINITY;
   const status = ageMs <= freshnessMs ? "live" : ageMs <= 60 * 60 * 1_000 ? "delayed" : "offline";
   const combinedEdgeConfirmed = forwardEvaluation?.status === "promising" || shortTermEvaluation?.status === "promising";
@@ -343,6 +366,9 @@ export async function getMonitoringSnapshot() {
   const executionReadiness = getHyperliquidExecutionReadiness();
   const testnetReconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
   const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
+  const realtimeHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "realtime-market-data");
+  const realtimeMarketIds = new Set(realtimeRecent.map((row) => row.marketId));
+  const realtimeAssets = Array.from(new Set(realtimeRecent.map((row) => row.asset))).sort();
   const tunnelStatus = readTunnelStatus();
   const backupStatus = readBackupStatus();
   const combinedShadowRunning = activeCombinedRuns.some((run) => run.status === "running") || shortTermStrategyRun?.status === "running";
@@ -374,8 +400,20 @@ export async function getMonitoringSnapshot() {
     collection: {
       startedAt: oldestDataAt?.toISOString() ?? null,
       latestAt: newestDataAt?.toISOString() ?? null,
-      totalRecords: polymarketAggregate._count._all + hyperAggregate._count._all + backtestPointCount + paperEquityAggregate._count._all + aiRows.length + combinedDecisionCount + combinedSnapshotAggregate._count._all,
-      last24Hours: polymarketLast24Hours + hyperLast24Hours + paperEquityLast24Hours + combinedSnapshotsLast24Hours,
+      totalRecords: polymarketAggregate._count._all + hyperAggregate._count._all + realtimeAggregate._count._all + backtestPointCount + paperEquityAggregate._count._all + aiRows.length + combinedDecisionCount + combinedSnapshotAggregate._count._all,
+      last24Hours: polymarketLast24Hours + hyperLast24Hours + realtimeLast24Hours + paperEquityLast24Hours + combinedSnapshotsLast24Hours,
+      realtimePrices: {
+        status: operationalStatus(realtimeHeartbeat, now, 30_000),
+        records: realtimeAggregate._count._all,
+        last24Hours: realtimeLast24Hours,
+        latestAt: realtimeAggregate._max.capturedAt?.toISOString() ?? null,
+        maximumSkewMs: realtimeAggregate._max.captureSkewMs ?? null,
+        activeMarkets: realtimeMarketIds.size,
+        assets: realtimeAssets,
+        arbitrageViolations: realtimeArbitrageViolations,
+        targetCadenceSeconds: 5,
+        synchronizationVersion: "websocket-v1",
+      },
       synchronizedPrices: {
         records: synchronizedAggregate._count._all,
         last24Hours: synchronizedLast24Hours,
@@ -736,6 +774,7 @@ function pipelineStatuses(input: {
   return [
     pipeline("polymarket", "価格同期収集", "1分ごと", input.polymarketAt, heartbeatMap.get("polymarket"), input.now),
     pipeline("hyperliquid", "相場データ収集", "1分ごと", input.hyperliquidAt, heartbeatMap.get("hyperliquid"), input.now),
+    pipeline("realtime-market-data", "秒単位の板収集", "5秒ごと", null, heartbeatMap.get("realtime-market-data"), input.now, 30_000),
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("forward-experiment", "固定フォワード検証", "5分ごと", input.combinedAt, heartbeatMap.get("forward-experiment"), input.now),
     pipeline("short-term-direction", "15分モデル検証", "1分ごと", null, heartbeatMap.get("short-term-direction"), input.now, 5 * 60 * 1_000),

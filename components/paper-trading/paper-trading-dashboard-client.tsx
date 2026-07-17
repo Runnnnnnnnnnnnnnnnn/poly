@@ -108,6 +108,18 @@ type MonitoringSnapshot = {
     latestAt: string | null;
     totalRecords: number;
     last24Hours: number;
+    realtimePrices?: {
+      status: "healthy" | "waiting" | "error";
+      records: number;
+      last24Hours: number;
+      latestAt: string | null;
+      maximumSkewMs: number | null;
+      activeMarkets: number;
+      assets: string[];
+      arbitrageViolations: number;
+      targetCadenceSeconds: number;
+      synchronizationVersion: "websocket-v1";
+    };
     synchronizedPrices?: {
       records: number;
       last24Hours: number;
@@ -1212,6 +1224,7 @@ function PaperExperimentPanel({ snapshot }: { snapshot: MonitoringSnapshot | nul
 
 function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapshot | null; readOnly: boolean }) {
   const healthyPipelines = snapshot?.pipelines.filter((pipeline) => pipeline.status === "healthy").length ?? 0;
+  const realtimePrices = snapshot?.collection.realtimePrices;
   const synchronizedPrices = snapshot?.collection.synchronizedPrices;
   const synchronizedQuality = synchronizedPrices?.quality;
   const prospective = synchronizedPrices?.prospective;
@@ -1241,10 +1254,16 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
           <Server className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-bold text-slate-950">データ収集・検証基盤</h2>
         </div>
-        <span className="text-xs font-bold text-muted-foreground">{readOnly ? "公開時点" : `${healthyPipelines}/${snapshot?.pipelines.length ?? 4} 稼働`}</span>
+        <span className="text-xs font-bold text-muted-foreground">{readOnly ? "公開時点" : `${healthyPipelines}/${snapshot?.pipelines.length ?? 6} 稼働`}</span>
       </div>
       <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
-        <MonitorMetric label="蓄積データ" value={formatCompact(snapshot?.collection.totalRecords)} note={`24時間 +${formatCompact(snapshot?.collection.last24Hours)}`} />
+        <MonitorMetric
+          label="5秒板価格同期"
+          value={formatCompact(realtimePrices?.records)}
+          note={realtimePrices?.records
+            ? `稼働 ${realtimePrices.activeMarkets}市場・最大ずれ ${formatMilliseconds(realtimePrices.maximumSkewMs)}`
+            : "WebSocketの記録を開始"}
+        />
         <MonitorMetric
           label="1分板価格同期"
           value={formatCompact(synchronizedPrices?.records)}
@@ -1263,7 +1282,7 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
           note={synchronizedQuality ? "48時間で品質判定" : relativeTime(snapshot?.collection.latestAt)}
         />
       </div>
-      <div className="grid grid-cols-2 border-t sm:grid-cols-5 sm:divide-x sm:divide-border">
+      <div className="grid grid-cols-2 border-t sm:grid-cols-3 lg:grid-cols-6 lg:divide-x lg:divide-border">
         {(snapshot?.pipelines ?? fallbackPipelines).map((pipeline) => (
           <div key={pipeline.id} className="flex items-center justify-between gap-2 border-b px-3 py-2.5 odd:border-r sm:border-b-0 sm:border-r-0 sm:px-4 sm:py-3">
             <div className="flex min-w-0 items-center gap-2">
@@ -1398,7 +1417,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
         </div>
         <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
-          CLOB板・判定参照価格・Hyperliquid板を1分ごとに同時保存しています。収集開始後に実際に観測できた市場だけを対象にし、決着後に未使用期間として評価します。収集前の価格は1分板の実績には含めません。
+          15分市場はUp/Down両板・Chainlink・Binance・Hyperliquid板を5秒ごとに保存します。長期市場の1分板とは分離し、どちらも収集開始後に実際に観測できた市場だけを評価します。
         </p>
       </div>
       </div>
@@ -1418,6 +1437,7 @@ function CompactMetric({ label, value }: { label: string; value: string }) {
 const fallbackPipelines = [
   { id: "polymarket", label: "価格同期収集", cadence: "1分ごと", status: "waiting" as const },
   { id: "hyperliquid", label: "相場データ収集", cadence: "1分ごと", status: "waiting" as const },
+  { id: "realtime-market-data", label: "秒単位の板収集", cadence: "5秒ごと", status: "waiting" as const },
   { id: "backtest", label: "モデル再検証", cadence: "6時間ごと", status: "waiting" as const },
   { id: "forward-experiment", label: "固定フォワード検証", cadence: "5分ごと", status: "waiting" as const },
   { id: "short-term-direction", label: "15分モデル検証", cadence: "1分ごと", status: "waiting" as const },

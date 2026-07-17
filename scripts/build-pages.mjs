@@ -1,7 +1,8 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
 import { createConnection } from "node:net";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -31,6 +32,20 @@ function restore(moved) {
     rmSync(disabledRoot, { recursive: true, force: true });
   }
   moved.length = 0;
+}
+
+function clearBuildOutput(path) {
+  if (!existsSync(path)) return;
+  const trashRoot = join(homedir(), ".polymarket-watch", "build-trash");
+  const stalePath = join(trashRoot, `${basename(path)}-${Date.now()}-${process.pid}`);
+  mkdirSync(trashRoot, { recursive: true });
+  try {
+    renameSync(path, stalePath);
+    const cleanup = spawn("/bin/rm", ["-rf", stalePath], { detached: true, stdio: "ignore" });
+    cleanup.unref();
+  } catch {
+    rmSync(path, { recursive: true, force: true });
+  }
 }
 
 const moved = [];
@@ -85,7 +100,7 @@ if (!process.env.CI && process.env.ALLOW_PAGES_BUILD_WITH_DEV_SERVER !== "1") {
 }
 
 try {
-  rmSync(disabledRoot, { recursive: true, force: true });
+  clearBuildOutput(disabledRoot);
   for (const [from, to] of moves) {
     if (moveExisting(from, to)) moved.push([from, to]);
   }
@@ -115,8 +130,8 @@ try {
     spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/gen-monitoring-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
   }
 
-  rmSync(join(root, ".next"), { recursive: true, force: true });
-  rmSync(join(root, "out"), { recursive: true, force: true });
+  clearBuildOutput(join(root, ".next"));
+  clearBuildOutput(join(root, "out"));
 
   const next = spawnSync(process.execPath, ["node_modules/next/dist/bin/next", "build"], { cwd: root, env, stdio: "inherit" });
   if (next.status !== 0) {

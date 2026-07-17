@@ -35,6 +35,13 @@ import { selectProspectiveExecutionTriplet } from "../src/lib/model-evaluation/p
 import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
+import { buildRealtimeMarketTick, isRealtimeCaptureWindow } from "../src/lib/realtime-market-data/collector";
+import {
+  normalizeHyperliquidWebSocketMessage,
+  normalizePolymarketWebSocketMessage,
+  normalizeRtdsReferenceMessage,
+} from "../src/lib/realtime-market-data/normalizers";
+import type { ActiveCryptoDirectionMarket } from "../src/lib/backtest/polymarket";
 
 const metrics = calculateBacktestMetrics(
   [
@@ -113,6 +120,126 @@ assert.equal(normalizeHyperliquidOrderBook({
     [{ px: "100.1", sz: "1", n: 1 }],
   ],
 }), null);
+
+const realtimeNow = new Date("2026-01-01T00:05:00.000Z");
+const polymarketUpdates = normalizePolymarketWebSocketMessage(JSON.stringify({
+  event_type: "book",
+  asset_id: "yes-token",
+  timestamp: realtimeNow.getTime(),
+  bids: [{ price: "0.44", size: "20" }, { price: "0.45", size: "10" }],
+  asks: [{ price: "0.48", size: "30" }, { price: "0.47", size: "15" }],
+}));
+assert.equal(polymarketUpdates.length, 1);
+assert.equal(polymarketUpdates[0]?.bestBid, 0.45);
+assert.equal(polymarketUpdates[0]?.bestAsk, 0.47);
+assert.equal(polymarketUpdates[0]?.bidSize, 10);
+assert.equal(polymarketUpdates[0]?.askSize, 15);
+assert.deepEqual(normalizePolymarketWebSocketMessage(JSON.stringify([{
+  event_type: "price_change",
+  timestamp: realtimeNow.getTime(),
+  price_changes: [{ asset_id: "no-token", best_bid: "0.53", best_ask: "0.55" }],
+}])), [{
+  tokenId: "no-token",
+  bestBid: 0.53,
+  bestAsk: 0.55,
+  bidSize: null,
+  askSize: null,
+  updatedAt: realtimeNow,
+}]);
+
+const realtimeHyperliquidBook = normalizeHyperliquidWebSocketMessage(JSON.stringify({
+  channel: "l2Book",
+  data: {
+    coin: "BTC",
+    time: realtimeNow.getTime() - 2_000,
+    levels: [
+      [{ px: "99.9", sz: "2" }, { px: "100.0", sz: "1" }],
+      [{ px: "100.2", sz: "3" }, { px: "100.1", sz: "4" }],
+    ],
+  },
+}));
+assert.ok(realtimeHyperliquidBook && "bestBid" in realtimeHyperliquidBook);
+assert.equal(realtimeHyperliquidBook.bestBid, 100);
+assert.equal(realtimeHyperliquidBook.bestAsk, 100.1);
+const realtimeHyperliquidContext = normalizeHyperliquidWebSocketMessage({
+  channel: "activeAssetCtx",
+  data: { coin: "BTC", ctx: { markPx: "100.05", oraclePx: "99.98", funding: "0.00001" } },
+});
+assert.ok(realtimeHyperliquidContext && "markPrice" in realtimeHyperliquidContext);
+assert.equal(realtimeHyperliquidContext.markPrice, 100.05);
+assert.equal(realtimeHyperliquidContext.fundingRate, 0.00001);
+const realtimeBinance = normalizeRtdsReferenceMessage({
+  topic: "crypto_prices",
+  payload: { symbol: "btcusdt", value: 99, timestamp: realtimeNow.getTime() - 500 },
+});
+assert.equal(realtimeBinance?.asset, "BTC");
+assert.equal(realtimeBinance?.source, "BINANCE");
+
+const realtimeMarket: ActiveCryptoDirectionMarket = {
+  id: "market-15m",
+  eventId: "event-15m",
+  asset: "BTC",
+  tokenId: "yes-token",
+  noTokenId: "no-token",
+  title: "Bitcoin Up or Down",
+  slug: "btc-updown-15m",
+  eventStartTime: "2026-01-01T00:00:00.000Z",
+  endDate: "2026-01-01T00:15:00.000Z",
+  durationMinutes: 15,
+  resolved: false,
+  result: null,
+  currentProbability: 0.46,
+  volume: 1_000,
+  liquidity: 500,
+  bestBid: 0.45,
+  bestAsk: 0.47,
+  minOrderSize: 5,
+  tickSize: 0.01,
+  feesEnabled: true,
+  referenceSource: "UNKNOWN",
+};
+assert.equal(isRealtimeCaptureWindow(realtimeMarket, new Date("2025-12-31T23:58:59.999Z")), false);
+assert.equal(isRealtimeCaptureWindow(realtimeMarket, new Date("2025-12-31T23:59:00.000Z")), true);
+assert.equal(isRealtimeCaptureWindow(realtimeMarket, new Date("2026-01-01T00:16:00.001Z")), false);
+const realtimeTick = buildRealtimeMarketTick({
+  market: realtimeMarket,
+  positiveBook: polymarketUpdates[0] ?? null,
+  negativeBook: {
+    bestBid: 0.53,
+    bestAsk: 0.55,
+    bidSize: 12,
+    askSize: 18,
+    updatedAt: new Date(realtimeNow.getTime() - 1_000),
+  },
+  hyperliquidBook: realtimeHyperliquidBook && "bestBid" in realtimeHyperliquidBook ? realtimeHyperliquidBook : null,
+  hyperliquidContext: realtimeHyperliquidContext && "markPrice" in realtimeHyperliquidContext ? realtimeHyperliquidContext : null,
+  references: {
+    BINANCE: realtimeBinance,
+    CHAINLINK: { asset: "BTC", source: "CHAINLINK", price: 98.9, updatedAt: new Date(realtimeNow.getTime() - 20_000) },
+  },
+  now: realtimeNow,
+  intervalMs: 5_000,
+});
+assert.ok(realtimeTick);
+assert.ok(Math.abs(realtimeTick.probability - 0.46) < 1e-12);
+assert.equal(realtimeTick.referenceSource, "BINANCE");
+assert.equal(realtimeTick.chainlinkPrice, null);
+assert.ok(Math.abs(realtimeTick.complementBidSum - 0.98) < 1e-12);
+assert.ok(Math.abs(realtimeTick.complementAskSum - 1.02) < 1e-12);
+assert.equal(realtimeTick.arbitrageViolation, false);
+assert.equal(realtimeTick.captureSkewMs, 2_000);
+assert.ok(Math.abs(realtimeTick.priceBasisPct - (100.05 / 99 - 1)) < 1e-12);
+assert.equal(buildRealtimeMarketTick({
+  market: realtimeMarket,
+  positiveBook: polymarketUpdates[0] ?? null,
+  negativeBook: { bestBid: 0.53, bestAsk: 0.55, bidSize: null, askSize: null, updatedAt: realtimeNow },
+  hyperliquidBook: realtimeHyperliquidBook && "bestBid" in realtimeHyperliquidBook ? realtimeHyperliquidBook : null,
+  hyperliquidContext: null,
+  references: { BINANCE: { ...realtimeBinance!, updatedAt: new Date(realtimeNow.getTime() - 20_000) }, CHAINLINK: null },
+  now: realtimeNow,
+}), null);
+
+console.log("realtime market data tests passed");
 
 const longBookReturn = calculateDirectionalBookReturn({
   entryPrice: 100,
@@ -665,12 +792,12 @@ assert.deepEqual(compareTestnetPositions(
 ), [{ asset: "ETH", expectedSize: -0.1, actualSize: -0.2, kind: "quantity" }]);
 
 const alertNow = new Date("2026-01-01T01:00:00Z");
-const healthyHeartbeats = ["polymarket", "hyperliquid", "forward-experiment", "short-term-direction", "backtest"].map((id) => ({
+const healthyHeartbeats = ["polymarket", "hyperliquid", "realtime-market-data", "forward-experiment", "short-term-direction", "backtest"].map((id) => ({
   id,
   status: "healthy",
   message: null,
-  lastSuccessAt: new Date("2026-01-01T00:55:00Z"),
-  lastAttemptAt: new Date("2026-01-01T00:55:00Z"),
+  lastSuccessAt: new Date(id === "realtime-market-data" ? "2026-01-01T00:59:55Z" : "2026-01-01T00:55:00Z"),
+  lastAttemptAt: new Date(id === "realtime-market-data" ? "2026-01-01T00:59:55Z" : "2026-01-01T00:55:00Z"),
 }));
 assert.equal(evaluatePipelineAlerts(healthyHeartbeats, alertNow).length, 0);
 assert.equal(evaluatePipelineAlerts(healthyHeartbeats.map((item) => item.id === "short-term-direction"

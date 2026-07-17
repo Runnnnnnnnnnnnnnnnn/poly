@@ -72,6 +72,60 @@ model HyperliquidSnapshot {
   @@index([capturedAt])
 }
 
+model RealtimeMarketTick {
+  id                           String   @id
+  eventId                      String?
+  marketId                     String
+  positiveTokenId              String
+  negativeTokenId              String
+  asset                        String
+  marketStartAt                DateTime
+  marketEndAt                  DateTime
+  marketPhase                  String
+  probability                  Float
+  polymarketBestBid            Float
+  polymarketBestAsk            Float
+  polymarketBidSize            Float?
+  polymarketAskSize            Float?
+  polymarketSpread             Float
+  polymarketUpdatedAt          DateTime
+  negativeBestBid              Float
+  negativeBestAsk              Float
+  negativeBidSize              Float?
+  negativeAskSize              Float?
+  negativeSpread               Float
+  negativeUpdatedAt            DateTime
+  hyperliquidBestBid           Float
+  hyperliquidBestAsk           Float
+  hyperliquidBidSize           Float?
+  hyperliquidAskSize           Float?
+  hyperliquidSpread            Float
+  hyperliquidMidPrice          Float
+  hyperliquidMarkPrice         Float?
+  hyperliquidOraclePrice       Float?
+  hyperliquidFundingRate       Float?
+  hyperliquidUpdatedAt         DateTime
+  chainlinkPrice               Float?
+  chainlinkUpdatedAt           DateTime?
+  binancePrice                 Float?
+  binanceUpdatedAt             DateTime?
+  referencePrice               Float
+  referenceSource              String
+  referenceUpdatedAt           DateTime
+  priceBasisPct                Float
+  complementBidSum             Float
+  complementAskSum             Float
+  arbitrageViolation           Boolean  @default(false)
+  captureSkewMs                Int
+  synchronizationVersion       String
+  capturedAt                   DateTime @default(now())
+
+  @@index([marketId, capturedAt])
+  @@index([asset, capturedAt])
+  @@index([capturedAt, captureSkewMs])
+  @@index([synchronizationVersion, capturedAt])
+}
+
 model PipelineHeartbeat {
   id            String    @id
   status        String

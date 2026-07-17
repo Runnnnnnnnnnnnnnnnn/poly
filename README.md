@@ -117,6 +117,7 @@ For GitHub Pages, `npm run build:pages` generates a static UI snapshot in `out/`
 - Email notifications
 - Admin screen
 - Static snapshot export for GitHub Pages
+- Five-second WebSocket capture of Polymarket Up/Down books, Hyperliquid books, and Chainlink/Binance references
 
 ## Crypto prediction backtest API
 

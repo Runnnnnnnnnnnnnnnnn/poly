@@ -9,6 +9,7 @@ import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../
 
 const intervalMs = boundedNumber(process.env.ALERT_CHECK_INTERVAL_MS, 60_000, 60_000, 60 * 60 * 1_000);
 const reminderIntervalMs = boundedNumber(process.env.ALERT_REMINDER_INTERVAL_MS, 6 * 60 * 60 * 1_000, 15 * 60 * 1_000, 7 * 24 * 60 * 60 * 1_000);
+const startupDelayMs = boundedNumber(process.env.ALERT_STARTUP_DELAY_MS, 15_000, 0, 60_000);
 const stateDir = resolve(homedir(), ".polymarket-watch");
 const statePath = process.env.ALERT_STATE_PATH || resolve(stateDir, "alert-state.json");
 const logPath = process.env.ALERT_LOG_PATH || resolve(stateDir, "alerts.ndjson");
@@ -100,8 +101,11 @@ function boundedNumber(value: string | undefined, fallback: number, minimum: num
   return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, parsed)) : fallback;
 }
 
-await checkAlerts();
-if (!once) {
+if (once) {
+  await checkAlerts();
+} else {
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, startupDelayMs));
+  await checkAlerts();
   setInterval(() => void checkAlerts(), intervalMs);
-  console.log(`operational alert worker: every ${intervalMs}ms / reminder ${reminderIntervalMs}ms`);
+  console.log(`operational alert worker: startup ${startupDelayMs}ms / every ${intervalMs}ms / reminder ${reminderIntervalMs}ms`);
 }

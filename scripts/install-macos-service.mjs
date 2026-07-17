@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -82,8 +83,10 @@ function installAgent(label, plist) {
 
 function stageRuntime() {
   mkdirSync(deployedRoot, { recursive: true });
-  const runtimePackage = resolve(deployedRoot, "package.json");
-  const dependenciesChanged = !existsSync(runtimePackage) || readFileSync(runtimePackage, "utf8") !== readFileSync(resolve(root, "package.json"), "utf8");
+  const dependencyMarker = resolve(deployedRoot, "node_modules/.polymarket-runtime-dependencies");
+  const sourceDependencyFingerprint = dependencyFingerprint(root);
+  const dependenciesChanged = !existsSync(dependencyMarker)
+    || readFileSync(dependencyMarker, "utf8") !== sourceDependencyFingerprint;
   execFileSync("/usr/bin/rsync", [
     "-a",
     "--delete",
@@ -104,11 +107,48 @@ function stageRuntime() {
     const target = resolve(deployedRoot, directory);
     if (directory === "node_modules" && !dependenciesChanged && existsSync(resolve(target, "next/package.json"))) continue;
     rmSync(target, { recursive: true, force: true });
-    execFileSync("/bin/cp", ["-cR", source, target], { stdio: "inherit" });
+    mkdirSync(target, { recursive: true });
+    const excludes = directory === ".next"
+      ? ["--exclude=cache/", "--exclude=* [0-9]*"]
+      : ["--exclude=* [0-9]*"];
+    execFileSync("/usr/bin/rsync", [
+      "-a",
+      "--delete",
+      "--delete-excluded",
+      ...excludes,
+      `${source}/`,
+      `${target}/`,
+    ], { stdio: "inherit" });
+    if (directory === "node_modules") {
+      writeFileSync(resolve(target, ".polymarket-runtime-dependencies"), sourceDependencyFingerprint, "utf8");
+    }
   }
 
   const runtimeDatabase = resolve(deployedRoot, "prisma/dev.db");
   if (!existsSync(runtimeDatabase)) copyFileSync(resolve(root, "prisma/dev.db"), runtimeDatabase);
+}
+
+function dependencyFingerprint(directory) {
+  try {
+    const packageJson = JSON.parse(readFileSync(resolve(directory, "package.json"), "utf8"));
+    const dependencyConfig = {
+      dependencies: packageJson.dependencies ?? {},
+      devDependencies: packageJson.devDependencies ?? {},
+      optionalDependencies: packageJson.optionalDependencies ?? {},
+      peerDependencies: packageJson.peerDependencies ?? {},
+      overrides: packageJson.overrides ?? {},
+      packageManager: packageJson.packageManager ?? null,
+    };
+    const lockPath = resolve(directory, "pnpm-lock.yaml");
+    const lockfile = existsSync(lockPath) ? readFileSync(lockPath, "utf8") : "";
+    return createHash("sha256")
+      .update(JSON.stringify(dependencyConfig))
+      .update("\n")
+      .update(lockfile)
+      .digest("hex");
+  } catch {
+    return `unreadable:${directory}`;
+  }
 }
 
 function shellQuote(value) {

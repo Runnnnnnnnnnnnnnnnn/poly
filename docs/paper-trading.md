@@ -10,7 +10,9 @@
 
 - Gamma API: 市場の発見、タイトル、終了日、結果、token ID
 - CLOB REST API: 板、best bid / ask、価格履歴
-- CLOB Market WebSocket: 将来の低遅延化に利用できるが、現在の live paper run はポーリングで動く
+- CLOB Market WebSocket: 15分Up/Down市場のUp/Down両板を5秒ごとに同期保存する
+- Polymarket RTDS: Binance・Chainlinkの参照価格を同じtickへ保存する
+- Hyperliquid WebSocket: L2板、mark、oracle、fundingを同じtickへ保存する
 - YES / NO の価格は0〜1の暗黙確率
 - 表示される midpoint と、実際に買える ask / 売れる bid は異なる
 - 現在のペーパー注文は FAK 相当の即時注文。板の ask を上から消費し、板が足りなければ部分約定として保存する
@@ -53,6 +55,7 @@ fair_probability - effective_buy_price - fee_per_share > entry_edge
 - `PaperFill`: 実際に仮想約定した数量、価格、手数料
 - `PaperPosition`: YES / NO ポジションと決済損益
 - `PaperEquitySnapshot`: キャッシュ、ポジション評価額、資産曲線
+- `RealtimeMarketTick`: Up/Down両板、Hyperliquid板、Chainlink・Binance参照価格を5秒単位で同期した前向きデータ
 
 本番では履歴データの取得時刻・API応答・データ品質も別途保存することを推奨する。現在の実装は正規化済みの市場、価格、約定を保存する。
 
