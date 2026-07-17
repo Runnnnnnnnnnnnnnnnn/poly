@@ -9,6 +9,7 @@ import {
   parseHyperliquidOrderEvidence,
 } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
+import { authorizeApiRequest, requiredApiAccess, resolveViewerAccessToken } from "../src/lib/server/api-access";
 import { selectCombinedSignalScan, type CombinedSignalScan } from "../src/lib/combined-trading/live-signal";
 import { applyCombinedSignalRule, calculateCombinedClose, selectCombinedSignalCandidate } from "../src/lib/combined-trading/service";
 import {
@@ -957,6 +958,36 @@ assert.deepEqual(compareTestnetPositions(
   [{ coin: "BTC", size: 0.04 }],
   [{ asset: "BTC", side: "LONG", action: "OPEN", quantity: 0.1, filledQuantity: 0.04, status: "PARTIALLY_FILLED" }],
 ), []);
+
+assert.equal(requiredApiAccess("GET", "/api/public-dashboard"), "public");
+assert.equal(requiredApiAccess("GET", "/api/markets/123"), "public");
+assert.equal(requiredApiAccess("POST", "/api/markets"), "admin");
+assert.equal(requiredApiAccess("POST", "/api/ai/chat"), "viewer");
+const derivedViewerToken = await resolveViewerAccessToken("admin-secret", "");
+assert.equal(derivedViewerToken.length, 64);
+assert.equal(await resolveViewerAccessToken("admin-secret", "explicit-viewer"), "explicit-viewer");
+assert.equal(authorizeApiRequest({
+  method: "POST",
+  pathname: "/api/ai/chat",
+  authorization: `Bearer ${derivedViewerToken}`,
+  adminToken: "admin-secret",
+  viewerToken: derivedViewerToken,
+}), "viewer");
+assert.equal(authorizeApiRequest({
+  method: "POST",
+  pathname: "/api/combined-trading",
+  authorization: `Bearer ${derivedViewerToken}`,
+  adminToken: "admin-secret",
+  viewerToken: derivedViewerToken,
+}), null);
+assert.equal(authorizeApiRequest({
+  method: "POST",
+  pathname: "/api/combined-trading",
+  authorization: "Bearer admin-secret",
+  adminToken: "admin-secret",
+  viewerToken: derivedViewerToken,
+}), "admin");
+console.log("API access-scope tests passed");
 
 const alertNow = new Date("2026-01-01T01:00:00Z");
 const healthyHeartbeats = ["polymarket", "hyperliquid", "realtime-market-data", "forward-experiment", "short-term-direction", "backtest"].map((id) => ({

@@ -2,6 +2,7 @@
 
 const LOCAL_API_STORAGE_KEY = "jmw.localApiBase";
 const LOCAL_API_TOKEN_STORAGE_KEY = "jmw.localApiToken";
+const VIEWER_API_TOKEN_STORAGE_KEY = "jmw.viewerApiToken";
 const DEFAULT_STATIC_LOCAL_API_BASE = process.env.NEXT_PUBLIC_LOCAL_API_BASE ?? "";
 const LIVE_CONNECTION_URL = process.env.NEXT_PUBLIC_LIVE_CONNECTION_URL
   ?? "https://raw.githubusercontent.com/Runnnnnnnnnnnnnnnnn/poly/refs/heads/live/connection.json";
@@ -13,7 +14,7 @@ let liveConnectionCheckedAt = 0;
 export function initializeLocalApiBaseFromUrl() {
   if (typeof window === "undefined") return "";
   const apiBase = getUrlApiBase();
-  initializeLocalApiTokenFromUrl();
+  initializeApiAccessFromUrl();
   if (!apiBase) return getLocalApiBase();
   setLocalApiBase(apiBase);
   return apiBase;
@@ -79,21 +80,20 @@ export async function discoverLiveApiBase() {
   return liveConnectionPromise;
 }
 
-export function initializeLocalApiTokenFromUrl() {
+export function initializeApiAccessFromUrl() {
   if (typeof window === "undefined") return "";
-  const token = getUrlApiToken();
-  if (token) setLocalApiToken(token);
-  return getLocalApiToken();
+  const adminToken = getUrlAdminToken();
+  const viewerToken = getHashViewerToken();
+  if (isLocalAdminHost() && adminToken) setLocalApiToken(adminToken);
+  if (!isLocalAdminHost()) setLocalApiToken("");
+  if (viewerToken) setViewerApiToken(viewerToken);
+  scrubAccessTokensFromUrl();
+  return viewerToken || adminToken;
 }
 
 export function getLocalApiToken() {
   if (typeof window === "undefined") return "";
-  const fromUrl = getUrlApiToken();
-  if (fromUrl) {
-    const saved = window.localStorage.getItem(LOCAL_API_TOKEN_STORAGE_KEY);
-    if (saved !== fromUrl) window.localStorage.setItem(LOCAL_API_TOKEN_STORAGE_KEY, fromUrl);
-    return fromUrl;
-  }
+  if (!isLocalAdminHost()) return "";
   return window.localStorage.getItem(LOCAL_API_TOKEN_STORAGE_KEY)?.trim() ?? "";
 }
 
@@ -102,6 +102,24 @@ export function setLocalApiToken(value: string) {
   if (normalized) window.localStorage.setItem(LOCAL_API_TOKEN_STORAGE_KEY, normalized);
   else window.localStorage.removeItem(LOCAL_API_TOKEN_STORAGE_KEY);
   window.dispatchEvent(new Event("local-api-token-changed"));
+}
+
+export function getViewerApiToken() {
+  if (typeof window === "undefined") return "";
+  const fromHash = getHashViewerToken();
+  if (fromHash) {
+    const saved = window.localStorage.getItem(VIEWER_API_TOKEN_STORAGE_KEY);
+    if (saved !== fromHash) window.localStorage.setItem(VIEWER_API_TOKEN_STORAGE_KEY, fromHash);
+    return fromHash;
+  }
+  return window.localStorage.getItem(VIEWER_API_TOKEN_STORAGE_KEY)?.trim() ?? "";
+}
+
+export function setViewerApiToken(value: string) {
+  const normalized = value.trim();
+  if (normalized) window.localStorage.setItem(VIEWER_API_TOKEN_STORAGE_KEY, normalized);
+  else window.localStorage.removeItem(VIEWER_API_TOKEN_STORAGE_KEY);
+  window.dispatchEvent(new Event("viewer-api-token-changed"));
 }
 
 export function localApiUrl(path: string) {
@@ -147,7 +165,12 @@ export function aiEndpoint(path: string) {
  * - そうでなければ、ローカル /api がある（=スナップショットでない）場合のみ利用可能。
  */
 export function isAiAvailable() {
-  return aiApiBase() !== "" || !isSnapshotMode();
+  if (aiApiBase() !== "") return true;
+  if (typeof window === "undefined") return false;
+  if (process.env.NEXT_PUBLIC_STATIC_EXPORT === "1") {
+    return Boolean(getViewerApiToken() || getLocalApiToken());
+  }
+  return true;
 }
 
 export async function fetchLocalApi<T>(path: string, init: RequestInit = {}) {
@@ -172,7 +195,7 @@ export async function fetchLocalApi<T>(path: string, init: RequestInit = {}) {
 
 /** AIエンドポイント（aiApiBase 優先）に対する GET。 */
 export async function fetchAi<T>(path: string, init: RequestInit = {}) {
-  const token = getLocalApiToken();
+  const token = getViewerApiToken() || getLocalApiToken();
   const response = await fetch(aiEndpoint(path), {
     ...init,
     cache: "no-store",
@@ -197,8 +220,38 @@ function getUrlApiBase() {
   return (params.get("api") || params.get("apiBase") || "").trim().replace(/\/$/, "");
 }
 
-function getUrlApiToken() {
+function getUrlAdminToken() {
   if (typeof window === "undefined") return "";
+  if (!isLocalAdminHost()) return "";
   const params = new URLSearchParams(window.location.search);
-  return (params.get("apiToken") || params.get("token") || "").trim();
+  return (params.get("adminToken") || params.get("apiToken") || params.get("token") || "").trim();
+}
+
+function getHashViewerToken() {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return (params.get("viewerToken") || params.get("accessToken") || "").trim();
+}
+
+function scrubAccessTokensFromUrl() {
+  const url = new URL(window.location.href);
+  let changed = false;
+  for (const key of ["adminToken", "apiToken", "token"]) {
+    if (!url.searchParams.has(key)) continue;
+    url.searchParams.delete(key);
+    changed = true;
+  }
+  const hashParams = new URLSearchParams(url.hash.replace(/^#/, ""));
+  for (const key of ["viewerToken", "accessToken"]) {
+    if (!hashParams.has(key)) continue;
+    hashParams.delete(key);
+    changed = true;
+  }
+  if (!changed) return;
+  const nextHash = hashParams.toString();
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${nextHash ? `#${nextHash}` : ""}`);
+}
+
+function isLocalAdminHost() {
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 }

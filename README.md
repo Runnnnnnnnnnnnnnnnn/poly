@@ -53,7 +53,7 @@ Expose `http://localhost:3000` with an HTTPS tunnel such as Cloudflare Tunnel or
 node scripts/demo-link.mjs https://your-tunnel-url.trycloudflare.com
 ```
 
-Send the generated URL. It includes `?api=...` and the local `API_ACCESS_TOKEN`, so the GitHub Pages UI can securely read markets, news, FX, paper-trading results, and DeepSeek chat from your local server. The token is read from `.env` by the script and is never committed.
+Send the generated URL. Public market, news, FX, and monitoring data use read-only GET routes. When AI access is configured, the URL fragment contains a viewer-only token that can call AI routes but cannot run backtests, stop workers, or submit testnet orders. `API_ACCESS_TOKEN` is never included in the shared URL.
 
 ## Validation
 
@@ -72,6 +72,7 @@ DEEPSEEK_API_KEY=""
 DEEPSEEK_BASE_URL="https://api.deepseek.com"
 DEEPSEEK_MODEL="deepseek-v4-flash"
 API_ACCESS_TOKEN="generate-a-long-random-token"
+VIEWER_ACCESS_TOKEN=""
 HYPERLIQUID_TESTNET_ENABLED="0"
 HYPERLIQUID_TESTNET_AUTO_MIRROR="0"
 CLOUDFLARED_TUNNEL_TOKEN=""
@@ -79,7 +80,7 @@ CLOUDFLARED_PUBLIC_URL=""
 POLYMARKET_ALERT_WEBHOOK_URL=""
 ```
 
-`API_ACCESS_TOKEN` protects every runtime `/api/*` route. Use a long random value, keep it in `.env`, and regenerate it if a shared URL is exposed. The GitHub Pages version is read-only and displays a static snapshot when the local server is unavailable.
+`API_ACCESS_TOKEN` protects management and write routes. It is accepted from URL parameters only on localhost and must never be shared. Public data routes allow GET requests only. AI routes accept a separate viewer-only token; when `VIEWER_ACCESS_TOKEN` is empty, one is derived from `API_ACCESS_TOKEN` without exposing the admin token. The generated viewer token is placed after `#` and removed from the address bar after the browser stores it. If an older link containing `apiToken=` was shared, rotate `API_ACCESS_TOKEN` after deploying this version.
 
 `DEEPSEEK_MODEL` is configurable. The default is `deepseek-v4-flash`, based on the current DeepSeek official docs. The older `deepseek-chat` and `deepseek-reasoner` names are not used as defaults.
 

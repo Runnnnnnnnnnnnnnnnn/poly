@@ -1,4 +1,7 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+
+const viewerTokenContext = "polymarket-watch-viewer:v1:";
 
 function readEnvValue(name) {
   if (process.env[name]?.trim()) return process.env[name].trim();
@@ -24,7 +27,9 @@ const normalizedTunnel = tunnelUrl.replace(/\/$/, "");
 const pagesBase = process.env.PAGES_BASE_URL || "https://runnnnnnnnnnnnnnnnn.github.io/poly";
 const url = new URL(`${pagesBase.replace(/\/$/, "")}/onboarding/`);
 url.searchParams.set("api", normalizedTunnel);
-const apiToken = readEnvValue("API_ACCESS_TOKEN");
-if (apiToken) url.searchParams.set("apiToken", apiToken);
+const adminToken = readEnvValue("API_ACCESS_TOKEN");
+const viewerToken = readEnvValue("VIEWER_ACCESS_TOKEN")
+  || (adminToken ? createHash("sha256").update(`${viewerTokenContext}${adminToken}`).digest("hex") : "");
+if (viewerToken) url.hash = new URLSearchParams({ viewerToken }).toString();
 
 console.log(url.toString());
