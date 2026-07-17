@@ -4,8 +4,17 @@ import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
 import { calculateCaptureSkewMs } from "../src/lib/backtest/service";
 import { compareTestnetPositions, normalizeExchangeOrderStatus } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
-import { applyCombinedSignalRule, calculateCombinedClose } from "../src/lib/combined-trading/service";
-import { evaluateForwardExperiment, type ForwardEvaluationPosition } from "../src/lib/combined-trading/forward-evaluation";
+import { selectCombinedSignalScan, type CombinedSignalScan } from "../src/lib/combined-trading/live-signal";
+import { applyCombinedSignalRule, calculateCombinedClose, selectCombinedSignalCandidate } from "../src/lib/combined-trading/service";
+import {
+  evaluateForwardExperiment,
+  forwardControlExperimentKey,
+  forwardObservationHorizons,
+  forwardStrategyExperimentKey,
+  isForwardControlExperimentKey,
+  isForwardStrategyExperimentKey,
+  type ForwardEvaluationPosition,
+} from "../src/lib/combined-trading/forward-evaluation";
 import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
 import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts } from "../src/lib/monitoring/operational-alerts";
 import { evaluateSynchronizedPriceQuality } from "../src/lib/monitoring/synchronized-quality";
@@ -328,6 +337,27 @@ const unprovenForwardEvaluation = evaluateForwardExperiment({
 assert.equal(unprovenForwardEvaluation.status, "underperforming");
 assert.equal(unprovenForwardEvaluation.gates.find((gate) => gate.id === "benchmark")?.passed, false);
 
+const sameEventAcrossHorizons = [6, 12].map((horizonHours, index) => ({
+  ...syntheticForwardPosition(index, true),
+  eventId: "shared-event",
+  horizonHours,
+}));
+const sameEventControl = sameEventAcrossHorizons.map((position) => ({ ...position }));
+const separateHorizonEvaluation = evaluateForwardExperiment({
+  ...forwardEvaluationInput,
+  strategyPositions: sameEventAcrossHorizons,
+  controlPositions: sameEventControl,
+});
+assert.equal(separateHorizonEvaluation.trades, 2);
+assert.equal(separateHorizonEvaluation.comparableEvents, 2);
+
+assert.deepEqual(forwardObservationHorizons, [6, 12, 24, 48]);
+for (const horizonHours of forwardObservationHorizons) {
+  assert.equal(isForwardStrategyExperimentKey(forwardStrategyExperimentKey(horizonHours)), true);
+  assert.equal(isForwardControlExperimentKey(forwardControlExperimentKey(horizonHours)), true);
+}
+assert.equal(new Set(forwardObservationHorizons.map(forwardStrategyExperimentKey)).size, 4);
+
 console.log("forward experiment evaluation tests passed");
 
 const syntheticLiveSignal = {
@@ -365,6 +395,43 @@ assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, side: "LONG", tre
 assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "hyperliquid-funding-carry").side, "SHORT");
 assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, hyperliquidFunding24h: -0.0007 }, "hyperliquid-funding-momentum").side, "SHORT");
 assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "polymarket-funding-consensus").side, "SHORT");
+
+const secondaryLiveSignal = { ...syntheticLiveSignal, eventId: "event-2", marketId: "market-2", signalZ: 0.8 };
+const selectedCandidate = selectCombinedSignalCandidate(
+  [syntheticLiveSignal, secondaryLiveSignal],
+  { minimumSignalZ: 0.25, minimumTrendZ: 0, minimumFunding24h: 0, signalRule: "polymarket-only" },
+  new Set(["event:24"]),
+);
+assert.equal(selectedCandidate?.actionable, true);
+assert.equal(selectedCandidate?.signal.eventId, "event-2");
+const differentHorizonCandidate = selectCombinedSignalCandidate(
+  [{ ...syntheticLiveSignal, horizonHours: 12 }],
+  { minimumSignalZ: 0.25, minimumTrendZ: 0, minimumFunding24h: 0, signalRule: "polymarket-only" },
+  new Set(["event:24"]),
+);
+assert.equal(differentHorizonCandidate?.actionable, true);
+
+const multiHorizonScan: CombinedSignalScan = {
+  signal: syntheticLiveSignal,
+  signals: [syntheticLiveSignal, { ...secondaryLiveSignal, horizonHours: 12 }],
+  horizons: [
+    { horizonHours: 12, signal: { ...secondaryLiveSignal, horizonHours: 12 }, signals: [{ ...secondaryLiveSignal, horizonHours: 12 }], horizonEligibleMarkets: 4, groupedEvents: 1, priceReadyEvents: 1, nextWindowAt: null, closestHoursToEnd: 12, reason: "12h" },
+    { horizonHours: 24, signal: syntheticLiveSignal, signals: [syntheticLiveSignal], horizonEligibleMarkets: 6, groupedEvents: 2, priceReadyEvents: 1, nextWindowAt: null, closestHoursToEnd: 24, reason: "24h" },
+  ],
+  scannedMarkets: 20,
+  structuredMarkets: 10,
+  horizonEligibleMarkets: 10,
+  groupedEvents: 3,
+  priceReadyEvents: 2,
+  eligibleEvents: 2,
+  nextWindowAt: null,
+  closestHoursToEnd: 24,
+  reason: "all",
+};
+const twelveHourScan = selectCombinedSignalScan(multiHorizonScan, 12);
+assert.equal(twelveHourScan.signal?.horizonHours, 12);
+assert.equal(twelveHourScan.horizonEligibleMarkets, 4);
+assert.equal(twelveHourScan.groupedEvents, 1);
 
 console.log("combined shadow signal-rule tests passed");
 

@@ -51,12 +51,26 @@ export type CombinedLiveSignal = {
 
 export type CombinedSignalScan = {
   signal: CombinedLiveSignal | null;
+  signals: CombinedLiveSignal[];
+  horizons: CombinedHorizonSignalScan[];
   scannedMarkets: number;
   structuredMarkets: number;
   horizonEligibleMarkets: number;
   groupedEvents: number;
   priceReadyEvents: number;
   eligibleEvents: number;
+  nextWindowAt: string | null;
+  closestHoursToEnd: number | null;
+  reason: string;
+};
+
+export type CombinedHorizonSignalScan = {
+  horizonHours: number;
+  signal: CombinedLiveSignal | null;
+  signals: CombinedLiveSignal[];
+  horizonEligibleMarkets: number;
+  groupedEvents: number;
+  priceReadyEvents: number;
   nextWindowAt: string | null;
   closestHoursToEnd: number | null;
   reason: string;
@@ -87,15 +101,18 @@ export async function scanCombinedLiveSignal(now = new Date()): Promise<Combined
     const matched = matchObservationHorizon(market, now);
     return matched ? [{ market, ...matched }] : [];
   });
-  const groups = groupMarkets(horizonEligible)
-    .sort((left, right) => right.volume - left.volume)
-    .slice(0, 16);
+  const groups = observationHorizons.flatMap(({ hours }) => groupMarkets(
+    horizonEligible.filter((item) => item.horizonHours === hours),
+  ).sort((left, right) => right.volume - left.volume).slice(0, 4));
   const nextWindowAt = findNextWindowAt(structured, now);
   const closestHoursToEnd = findClosestHoursToEnd(structured, now);
 
   if (!groups.length) {
+    const horizons = buildHorizonScans(structured, horizonEligible, groups, [], now);
     return {
       signal: null,
+      signals: [],
+      horizons,
       scannedMarkets: markets.length,
       structuredMarkets: structured.length,
       horizonEligibleMarkets: horizonEligible.length,
@@ -187,10 +204,13 @@ export async function scanCombinedLiveSignal(now = new Date()): Promise<Combined
     };
   });
   const signals = evaluatedSignals.filter((signal): signal is CombinedLiveSignal => signal !== null);
-
-  const signal = signals.sort((left, right) => Math.abs(right.signalZ) - Math.abs(left.signalZ))[0] ?? null;
+  signals.sort((left, right) => Math.abs(right.signalZ) - Math.abs(left.signalZ));
+  const signal = signals[0] ?? null;
+  const horizons = buildHorizonScans(structured, horizonEligible, groups, signals, now);
   return {
     signal,
+    signals,
+    horizons,
     scannedMarkets: markets.length,
     structuredMarkets: structured.length,
     horizonEligibleMarkets: horizonEligible.length,
@@ -203,6 +223,55 @@ export async function scanCombinedLiveSignal(now = new Date()): Promise<Combined
       ? `${signal.asset}・${signal.horizonHours}時間モデルを${signal.sourceMarkets}市場から算出`
       : "価格帯を束ねられる市場、板情報、または相場データが不足しています",
   };
+}
+
+export function selectCombinedSignalScan(scan: CombinedSignalScan, horizonHours: number): CombinedSignalScan {
+  const horizon = scan.horizons.find((item) => item.horizonHours === horizonHours);
+  if (!horizon) return scan;
+  return {
+    ...scan,
+    signal: horizon.signal,
+    signals: horizon.signals,
+    horizonEligibleMarkets: horizon.horizonEligibleMarkets,
+    groupedEvents: horizon.groupedEvents,
+    priceReadyEvents: horizon.priceReadyEvents,
+    eligibleEvents: horizon.priceReadyEvents,
+    nextWindowAt: horizon.nextWindowAt,
+    closestHoursToEnd: horizon.closestHoursToEnd,
+    reason: horizon.reason,
+  };
+}
+
+function buildHorizonScans(
+  structured: CryptoMarket[],
+  horizonEligible: HorizonMarket[],
+  groups: ReturnType<typeof groupMarkets>,
+  signals: CombinedLiveSignal[],
+  now: Date,
+): CombinedHorizonSignalScan[] {
+  return observationHorizons.map(({ hours }) => {
+    const horizonSignals = signals.filter((signal) => signal.horizonHours === hours);
+    const signal = horizonSignals[0] ?? null;
+    const groupedEvents = groups.filter((group) => group.horizonHours === hours).length;
+    const nextWindowAt = findNextWindowAt(structured, now, hours);
+    return {
+      horizonHours: hours,
+      signal,
+      signals: horizonSignals,
+      horizonEligibleMarkets: horizonEligible.filter((item) => item.horizonHours === hours).length,
+      groupedEvents,
+      priceReadyEvents: horizonSignals.length,
+      nextWindowAt,
+      closestHoursToEnd: findClosestHoursToEnd(structured, now, hours),
+      reason: signal
+        ? `${signal.asset}・${hours}時間モデルを${signal.sourceMarkets}市場から算出`
+        : groupedEvents > 0
+          ? "価格帯を束ねられる市場、板情報、または相場データが不足しています"
+          : nextWindowAt
+            ? `次の${hours}時間観測は${formatJapanTime(nextWindowAt)}です`
+            : `${hours}時間の観測帯に入る価格市場がありません`,
+    };
+  });
 }
 
 function isStructuredMarket(market: CryptoMarket) {
@@ -267,11 +336,11 @@ async function currentProbability(market: CryptoMarket): Promise<PriceObservatio
     : { probability: clamp(market.currentProbability, 0.01, 0.99), bestBid, bestAsk, spread: null };
 }
 
-function findNextWindowAt(markets: CryptoMarket[], now: Date) {
+function findNextWindowAt(markets: CryptoMarket[], now: Date, onlyHorizonHours?: number) {
   const candidates = markets.flatMap((market) => {
     if (!market.endDate) return [];
     const endAt = new Date(market.endDate).getTime();
-    return observationHorizons.flatMap((horizon) => {
+    return observationHorizons.filter((horizon) => onlyHorizonHours === undefined || horizon.hours === onlyHorizonHours).flatMap((horizon) => {
       const startsAt = endAt - (horizon.hours + horizon.tolerance) * 60 * 60 * 1_000;
       return startsAt > now.getTime() ? [startsAt] : [];
     });
@@ -280,11 +349,11 @@ function findNextWindowAt(markets: CryptoMarket[], now: Date) {
   return next ? new Date(next).toISOString() : null;
 }
 
-function findClosestHoursToEnd(markets: CryptoMarket[], now: Date) {
+function findClosestHoursToEnd(markets: CryptoMarket[], now: Date, targetHours = 24) {
   const values = markets.flatMap((market) => market.endDate
     ? [(new Date(market.endDate).getTime() - now.getTime()) / (60 * 60 * 1_000)]
     : []);
-  return values.length ? values.sort((left, right) => Math.abs(left - 24) - Math.abs(right - 24))[0] : null;
+  return values.length ? values.sort((left, right) => Math.abs(left - targetHours) - Math.abs(right - targetHours))[0] : null;
 }
 
 function formatJapanTime(value: string) {

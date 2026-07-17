@@ -196,6 +196,9 @@ type MonitoringSnapshot = {
       minimumTrades: number;
       minimumComparableEvents: number;
       progressPct: number;
+      activeHorizonHours?: number;
+      totalTrades?: number;
+      totalMinimumTrades?: number;
       comparisonStartedAt: string | null;
       netReturnPct: number | null;
       benchmarkReturnPct: number | null;
@@ -225,6 +228,23 @@ type MonitoringSnapshot = {
           averageTradeReturnPct: number | null;
         }>;
       };
+      horizons?: Array<{
+        horizonHours: number;
+        status: "collecting" | "promising" | "underperforming";
+        trades: number;
+        minimumTrades: number;
+        progressPct: number;
+        netReturnPct: number | null;
+        excessReturnPct: number | null;
+        maxDrawdownPct: number;
+        passedGates: number;
+        totalGates: number;
+        horizonEligibleMarkets: number;
+        priceReadyEvents: number;
+        latestAction: string | null;
+        latestReason: string;
+        nextWindowAt: string | null;
+      }>;
     } | null;
     settlementBasis: {
       status: "collecting" | "healthy" | "attention";
@@ -863,7 +883,11 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
   const decisionLabel = formatShadowAction(latest?.action);
   const hasClosedTrades = (forward?.trades ?? shadow?.trades ?? 0) > 0;
   const forwardOnly = shadow?.forwardOnly === true;
-  const remainingTrades = Math.max(0, (forward?.minimumTrades ?? 50) - (forward?.trades ?? 0));
+  const progressTrades = forward?.trades ?? shadow?.trades ?? 0;
+  const requiredTrades = forward?.minimumTrades ?? 50;
+  const allHorizonTrades = forward?.totalTrades ?? progressTrades;
+  const remainingTrades = Math.max(0, requiredTrades - progressTrades);
+  const totalProgress = requiredTrades > 0 ? progressTrades / requiredTrades : 0;
   const evaluationMeta = forward?.status === "promising"
     ? { label: "基準達成", tone: "good" as const }
     : forward?.status === "underperforming"
@@ -875,25 +899,25 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
         <div className="flex items-center gap-2">
           <DecisionIcon className={`h-4 w-4 ${running ? "text-emerald-600" : "text-amber-600"}`} />
-          <h2 className="text-sm font-bold text-slate-950">{forwardOnly ? "次期モデルのフォワード検証" : "リアルタイム検証"}</h2>
+          <h2 className="text-sm font-bold text-slate-950">{forward?.horizons?.length ? "4時間軸の固定フォワード検証" : forwardOnly ? "次期モデルのフォワード検証" : "リアルタイム検証"}</h2>
           <span className={`rounded-sm px-2 py-0.5 text-[10px] font-bold ${tonePillClass(evaluationMeta.tone)}`}>{forwardOnly ? evaluationMeta.label : "候補収集"}</span>
         </div>
         <span className={`rounded-sm px-2 py-1 text-[11px] font-bold ${running ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{running ? "5分ごとに市場を確認" : shadow?.emergencyStopped ? "緊急停止中" : "開始待ち"}</span>
       </div>
       <div className="grid lg:grid-cols-[minmax(250px,0.8fr)_minmax(0,1.5fr)]">
         <div className={`border-b p-5 lg:border-b-0 lg:border-r sm:p-6 ${toneSoftClass(pnlSignal.tone)}`}>
-          <p className="text-xs font-bold text-muted-foreground">コスト控除後の累計損益</p>
+          <p className="text-xs font-bold text-muted-foreground">{forward?.activeHorizonHours ? `先行中の${forward.activeHorizonHours}時間モデル` : "コスト控除後の累計損益"}</p>
           <p className={`mt-3 text-4xl font-bold leading-none sm:text-5xl ${pnlSignal.tone === "good" ? "text-emerald-700" : pnlSignal.tone === "bad" ? "text-rose-700" : "text-slate-950"}`}>{hasClosedTrades ? formatSignedPct(displayedReturn) : "未判定"}</p>
           <div className="mt-5 flex items-center justify-between gap-3 text-xs font-bold text-slate-700">
-            <span>{forward?.trades ?? shadow?.trades ?? 0} / {forward?.minimumTrades ?? 50}取引</span>
+            <span>{progressTrades} / {requiredTrades}取引</span>
             <span>{forward?.status === "collecting" || !forward ? `あと${remainingTrades}件` : `${forward.passedGates} / ${forward.totalGates}条件`}</span>
           </div>
-          <VisualMeter tone={evaluationMeta.tone} value={(forward?.progressPct ?? 0) * 100} className="mt-2" />
-          <p className="mt-3 text-xs font-semibold leading-5 text-slate-600">{forward?.status === "promising" ? "優位性の基準をすべて満たしました。次はテストネット検証です。" : forward?.status === "underperforming" ? "十分な件数で基準を満たさず、実取引には進みません。" : "50件までは結果を確定せず、固定条件のまま収集します。"}</p>
+          <VisualMeter tone={evaluationMeta.tone} value={Math.min(100, totalProgress * 100)} className="mt-2" />
+          <p className="mt-3 text-xs font-semibold leading-5 text-slate-600">{forward?.status === "promising" ? "優位性の基準をすべて満たしました。次はテストネット検証です。" : forward?.status === "underperforming" ? "十分な件数で基準を満たさず、実取引には進みません。" : forward?.horizons?.length ? "4つを混ぜず、各時間軸50件まで固定条件で収集します。" : "50件までは結果を確定せず、固定条件のまま収集します。"}</p>
         </div>
         <div className="grid min-w-0">
           <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
-            <CompactMetric label="決済完了" value={`${forward?.trades ?? shadow?.trades ?? 0} / ${forward?.minimumTrades ?? 50}`} />
+            <CompactMetric label="全時間軸の決済" value={`${allHorizonTrades}件`} />
             <CompactMetric label="単純戦略との差" value={hasClosedTrades ? formatSignedPct(forward?.excessReturnPct) : "未判定"} />
             <CompactMetric label="95%下限" value={forward?.status !== "collecting" ? formatSignedPct(forward?.excessConfidenceInterval95?.[0]) : "50件後"} />
             <CompactMetric label="最大下落" value={hasClosedTrades ? formatPct(forward?.maxDrawdownPct ?? shadow?.maxDrawdownPct) : "未判定"} />
@@ -915,6 +939,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
           </div>
         </div>
       </div>
+      {forward?.horizons?.length ? <ForwardHorizonProgress horizons={forward.horizons} /> : null}
       <ScanFunnel funnel={shadow?.funnel} />
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-[11px] font-bold text-slate-600 sm:px-5">
         <span>比較対象: {forward?.benchmarkLabel ?? "Polymarket方向のみを同時収集中"}</span>
@@ -958,6 +983,37 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
         </div>
       </details>
     </section>
+  );
+}
+
+function ForwardHorizonProgress({ horizons }: {
+  horizons: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["forwardEvaluation"]>["horizons"]>;
+}) {
+  return (
+    <div className="border-t bg-slate-50" aria-label="時間軸別のフォワード検証進捗">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+        <p className="text-xs font-bold text-slate-800">時間軸別</p>
+        <p className="text-[10px] font-semibold text-muted-foreground">各50取引を独立評価</p>
+      </div>
+      <div className="grid grid-cols-2 border-t sm:grid-cols-4">
+        {horizons.map((horizon, index) => {
+          const tone = horizon.status === "promising" ? "good" : horizon.status === "underperforming" ? "bad" : "neutral";
+          return (
+            <div key={horizon.horizonHours} className={`min-w-0 p-3 sm:p-4 ${index % 2 === 0 ? "border-r" : ""} ${index < 2 ? "border-b sm:border-b-0" : ""} sm:border-r sm:last:border-r-0`}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-base font-bold tabular-nums text-slate-950">{horizon.horizonHours}時間</p>
+                <span className={`rounded-sm px-1.5 py-0.5 text-[9px] font-bold ${tonePillClass(tone)}`}>{horizon.status === "promising" ? "合格" : horizon.status === "underperforming" ? "不合格" : "収集中"}</span>
+              </div>
+              <p className="mt-2 text-xl font-bold tabular-nums text-slate-950">{horizon.trades}<span className="ml-1 text-xs font-semibold text-slate-500">/ {horizon.minimumTrades}</span></p>
+              <VisualMeter tone={tone} value={horizon.progressPct * 100} className="mt-2" />
+              <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500">対象 {horizon.horizonEligibleMarkets}件 / 計算可能 {horizon.priceReadyEvents}件</p>
+              <p className="mt-1 line-clamp-2 min-h-8 text-[10px] font-semibold leading-4 text-slate-600">{horizon.latestReason}</p>
+              {horizon.nextWindowAt ? <p className="mt-1 text-[10px] font-bold text-sky-700">次回 {formatJapanDateTime(horizon.nextWindowAt)}</p> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

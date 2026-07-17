@@ -1,5 +1,5 @@
 import { prisma } from "@/src/lib/server/prisma";
-import { forwardStrategyExperimentKey } from "@/src/lib/combined-trading/forward-evaluation";
+import { isForwardStrategyExperimentKey } from "@/src/lib/combined-trading/forward-evaluation";
 import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
 
 export type OperationalAlertCandidate = {
@@ -29,14 +29,18 @@ export async function collectOperationalAlertCandidates(now = new Date()) {
     prisma.pipelineHeartbeat.findMany(),
     prisma.combinedShadowRun.findMany({ orderBy: { startedAt: "desc" }, take: 20 }),
   ]);
-  const run = runs.find((item) => (
-    parseJson<Partial<CombinedShadowConfig>>(item.configJson)?.experimentKey === forwardStrategyExperimentKey
-  )) ?? null;
-  const [latestSnapshot, settlementBasisRows] = run
+  const strategyRuns = runs.filter((item) => (
+    isForwardStrategyExperimentKey(parseJson<Partial<CombinedShadowConfig>>(item.configJson)?.experimentKey)
+  ));
+  const activeRuns = strategyRuns.length
+    ? strategyRuns
+    : runs.filter((item) => parseJson<Partial<CombinedShadowConfig>>(item.configJson)?.forwardOnly === true).slice(0, 1);
+  const activeRunIds = activeRuns.map((run) => run.id);
+  const [latestSnapshot, settlementBasisRows] = activeRunIds.length
     ? await Promise.all([
-        prisma.combinedShadowEquitySnapshot.findFirst({ where: { runId: run.id }, orderBy: { capturedAt: "desc" } }),
+        prisma.combinedShadowEquitySnapshot.findFirst({ where: { runId: { in: activeRunIds } }, orderBy: { capturedAt: "desc" } }),
         prisma.combinedShadowPosition.findMany({
-          where: { runId: run.id, status: "CLOSED", exitPriceBasisPct: { not: null } },
+          where: { runId: { in: activeRunIds }, status: "CLOSED", exitPriceBasisPct: { not: null } },
           select: { exitPriceBasisPct: true, exitReferenceCapturedAt: true, closedAt: true },
           orderBy: { closedAt: "desc" },
           take: 50,
@@ -56,14 +60,14 @@ export async function collectOperationalAlertCandidates(now = new Date()) {
     });
   }
 
-  if (run?.emergencyStopped || run?.riskStatus === "EMERGENCY_STOP") {
+  if (activeRuns.some((run) => run.emergencyStopped || run.riskStatus === "EMERGENCY_STOP")) {
     alerts.push({
       key: "combined-emergency-stop",
       severity: "critical",
       title: "緊急停止中",
       message: "組み合わせ戦略の緊急停止が有効です",
     });
-  } else if (run?.riskStatus === "RISK_PAUSED") {
+  } else if (activeRuns.some((run) => run.riskStatus === "RISK_PAUSED")) {
     alerts.push({
       key: "combined-risk-paused",
       severity: "critical",

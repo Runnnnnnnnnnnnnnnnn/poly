@@ -8,8 +8,24 @@ const minimumComparableEvents = 50;
 const minimumDeflatedSharpeProbability = 0.95;
 const maximumDrawdownPct = 0.05;
 
-export const forwardStrategyExperimentKey = "poly-funding-consensus-v1";
-export const forwardControlExperimentKey = "polymarket-only-forward-control-v1";
+export const forwardObservationHorizons = [6, 12, 24, 48] as const;
+export type ForwardObservationHorizon = (typeof forwardObservationHorizons)[number];
+
+export function forwardStrategyExperimentKey(horizonHours: ForwardObservationHorizon) {
+  return `poly-funding-consensus-forward-v2-h${horizonHours}`;
+}
+
+export function forwardControlExperimentKey(horizonHours: ForwardObservationHorizon) {
+  return `polymarket-only-forward-control-v2-h${horizonHours}`;
+}
+
+export function isForwardStrategyExperimentKey(value: string | null | undefined) {
+  return forwardObservationHorizons.some((horizonHours) => value === forwardStrategyExperimentKey(horizonHours));
+}
+
+export function isForwardControlExperimentKey(value: string | null | undefined) {
+  return forwardObservationHorizons.some((horizonHours) => value === forwardControlExperimentKey(horizonHours));
+}
 
 export type ForwardEvaluationPosition = {
   eventId: string;
@@ -23,6 +39,7 @@ export type ForwardEvaluationPosition = {
   realizedPnl: number | null;
   polymarketSide: string | null;
   entryFunding24h: number | null;
+  horizonHours?: number | null;
   status: string;
   openedAt: Date;
   closedAt: Date | null;
@@ -39,6 +56,7 @@ export type ForwardEvaluationInput = {
   fundingPer24h: number;
   maxDrawdownPct: number;
   settlementBasisStatus: "collecting" | "healthy" | "attention";
+  strategyTrials?: number;
 };
 
 type BenchmarkLabel = "Polymarket方向のみ" | "常時ロング" | "常時ショート";
@@ -64,16 +82,16 @@ export function evaluateForwardExperiment(input: ForwardEvaluationInput) {
   const allStrategyClosed = strategyPositions.filter(isClosedPosition);
   const allControlClosed = controlPositions.filter(isClosedPosition);
   const openEventIds = new Set([
-    ...strategyPositions.filter((position) => position.status === "OPEN").map((position) => position.eventId),
-    ...controlPositions.filter((position) => position.status === "OPEN").map((position) => position.eventId),
+    ...strategyPositions.filter((position) => position.status === "OPEN").map(positionEventKey),
+    ...controlPositions.filter((position) => position.status === "OPEN").map(positionEventKey),
   ]);
   const strategyByEvent = positionsByEvent(allStrategyClosed);
   const controlByEvent = positionsByEvent(allControlClosed);
   const eventIds = Array.from(new Set([...strategyByEvent.keys(), ...controlByEvent.keys()]))
     .filter((eventId) => !openEventIds.has(eventId));
   const comparableEventIds = new Set(eventIds);
-  const strategyClosed = allStrategyClosed.filter((position) => comparableEventIds.has(position.eventId));
-  const controlClosed = allControlClosed.filter((position) => comparableEventIds.has(position.eventId));
+  const strategyClosed = allStrategyClosed.filter((position) => comparableEventIds.has(positionEventKey(position)));
+  const controlClosed = allControlClosed.filter((position) => comparableEventIds.has(positionEventKey(position)));
   const wins = strategyClosed.filter((position) => position.realizedPnl > 0).length;
   const events = eventIds.map((eventId): EventResult => {
     const strategyPosition = strategyByEvent.get(eventId);
@@ -106,7 +124,7 @@ export function evaluateForwardExperiment(input: ForwardEvaluationInput) {
     : null;
   const excessEventReturns = events.map((event) => event.strategyReturn - event[bestBenchmark.field]);
   const excessConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(excessEventReturns);
-  const deflatedSharpe = deflatedSharpeProbability(excessEventReturns, 1);
+  const deflatedSharpe = deflatedSharpeProbability(excessEventReturns, Math.max(1, input.strategyTrials ?? 1));
   const gates = [
     { id: "trades" as const, label: `${minimumTrades}取引以上`, passed: strategyClosed.length >= minimumTrades },
     { id: "control" as const, label: `同期間比較${minimumComparableEvents}件以上`, passed: events.length >= minimumComparableEvents },
@@ -164,7 +182,11 @@ function isClosedPosition(position: ForwardEvaluationPosition): position is Forw
 }
 
 function positionsByEvent(positions: ForwardEvaluationPosition[]) {
-  return new Map(positions.map((position) => [position.eventId, position]));
+  return new Map(positions.map((position) => [positionEventKey(position), position]));
+}
+
+function positionEventKey(position: ForwardEvaluationPosition) {
+  return `${position.eventId}:${position.horizonHours ?? "legacy"}`;
 }
 
 function portfolioContribution(position: ForwardEvaluationPosition | undefined, initialEquity: number) {

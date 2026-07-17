@@ -1,7 +1,13 @@
 import type { CombinedShadowPosition, CombinedShadowRun } from "@prisma/client";
 
 import { executeHyperliquidTestnetOrder, getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
-import { scanCombinedLiveSignal, type CombinedLiveSignal } from "@/src/lib/combined-trading/live-signal";
+import {
+  scanCombinedLiveSignal,
+  selectCombinedSignalScan,
+  type CombinedLiveSignal,
+  type CombinedSignalScan,
+} from "@/src/lib/combined-trading/live-signal";
+import { isForwardControlExperimentKey, isForwardStrategyExperimentKey } from "@/src/lib/combined-trading/forward-evaluation";
 import { calculatePriceBasisPct, fetchPolymarketReferencePrices, selectReferencePrice } from "@/src/lib/combined-trading/polymarket-reference";
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
@@ -10,6 +16,7 @@ export type CombinedShadowConfig = {
   experimentKey: string;
   experimentLabel: string;
   forwardOnly: boolean;
+  observationHorizonHours: number | null;
   initialEquity: number;
   minimumSignalZ: number;
   minimumTrendZ: number;
@@ -30,6 +37,7 @@ const defaultConfig: CombinedShadowConfig = {
   experimentKey: "legacy-shadow-v1",
   experimentLabel: "従来の組み合わせ検証",
   forwardOnly: false,
+  observationHorizonHours: null,
   initialEquity: 10_000,
   minimumSignalZ: 0.5,
   minimumTrendZ: 0.1,
@@ -88,7 +96,7 @@ export async function ensureCombinedShadowRun(configOverride: Partial<CombinedSh
   });
 }
 
-export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
+export async function tickCombinedShadowRun(runId?: string, now = new Date(), precomputedScan?: CombinedSignalScan) {
   let run = runId
     ? await prisma.combinedShadowRun.findUniqueOrThrow({ where: { id: runId } })
     : await ensureCombinedShadowRun();
@@ -138,8 +146,23 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
   positionsPnl = openPositionsPnl(positions, prices, config, now);
   equity = run.cash + positionsPnl;
 
-  const scan = await scanCombinedLiveSignal(now);
-  const executableSignal = scan.signal ? applyCombinedSignalRule(scan.signal, config.signalRule) : null;
+  const fullScan = precomputedScan ?? await scanCombinedLiveSignal(now);
+  const scan = config.observationHorizonHours === null
+    ? fullScan
+    : selectCombinedSignalScan(fullScan, config.observationHorizonHours);
+  const observedPositions = scan.signals.length
+    ? await prisma.combinedShadowPosition.findMany({
+        where: { runId: run.id },
+        select: { eventId: true, horizonHours: true },
+      })
+    : [];
+  const selection = selectCombinedSignalCandidate(
+    scan.signals,
+    config,
+    new Set(observedPositions.map((position) => signalEventKey(position.eventId, position.horizonHours))),
+  );
+  const signal = selection?.signal ?? null;
+  const executableSignal = selection?.executableSignal ?? null;
   let action = "WAIT";
   let reason = scan.reason;
   if (riskReason) {
@@ -148,41 +171,24 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
   } else if (positions.length >= config.maxConcurrentPositions) {
     action = "HOLD";
     reason = `${positions.length}件の仮想ポジションを保有中`;
-  } else if (!scan.signal) {
+  } else if (!signal) {
     action = "NO_SIGNAL";
-  } else if (isHyperliquidSignalRule(config.signalRule) && Math.abs(scan.signal.trendZ6h) < config.minimumTrendZ) {
-    action = "WAIT";
-    reason = `6時間値動き${Math.abs(scan.signal.trendZ6h).toFixed(2)}が基準${config.minimumTrendZ.toFixed(2)}未満`;
-  } else if (isFundingSignalRule(config.signalRule) && (scan.signal.hyperliquidFunding24h === null || Math.abs(scan.signal.hyperliquidFunding24h) < config.minimumFunding24h)) {
-    action = "WAIT";
-    reason = scan.signal.hyperliquidFunding24h === null
-      ? "24時間の資金調達率を確認中"
-      : `24時間資金調達率${formatPct(Math.abs(scan.signal.hyperliquidFunding24h))}が基準${formatPct(config.minimumFunding24h)}未満`;
-  } else if (config.signalRule === "polymarket-funding-consensus" && executableSignal?.side !== scan.signal.side) {
-    action = "WAIT";
-    reason = "Polymarketの方向と資金調達を受け取る方向が一致していません";
-  } else if (Math.abs(scan.signal.signalZ) < config.minimumSignalZ) {
-    action = "WAIT";
-    reason = `シグナル強度${Math.abs(scan.signal.signalZ).toFixed(2)}が基準${config.minimumSignalZ.toFixed(2)}未満`;
+  } else if (!selection?.actionable) {
+    action = selection?.alreadyObserved ? "SKIP" : "WAIT";
+    reason = selection?.reason ?? scan.reason;
   } else {
-    const alreadyObserved = await prisma.combinedShadowPosition.findFirst({ where: { runId: run.id, eventId: scan.signal.eventId } });
-    if (alreadyObserved) {
-      action = "SKIP";
-      reason = "同じ予測テーマはすでに検証済み";
-    } else {
-      const opened = await openShadowPosition(run, executableSignal as CombinedLiveSignal, equity, config, now);
-      run = opened.run;
-      positions.push(opened.position);
-      prices.set(opened.position.asset, scan.signal.spotPrice);
-      await maybeMirrorTestnetOrder(run, opened.position, "OPEN", scan.signal.spotPrice);
-      action = executableSignal?.side === "LONG" ? "OPEN_LONG" : "OPEN_SHORT";
-      reason = `${scan.signal.asset}を${executableSignal?.side === "LONG" ? "ロング" : "ショート"}で仮想発注`;
-    }
+    const opened = await openShadowPosition(run, executableSignal as CombinedLiveSignal, equity, config, now);
+    run = opened.run;
+    positions.push(opened.position);
+    prices.set(opened.position.asset, signal.spotPrice);
+    await maybeMirrorTestnetOrder(run, opened.position, "OPEN", signal.spotPrice);
+    action = executableSignal?.side === "LONG" ? "OPEN_LONG" : "OPEN_SHORT";
+    reason = `${signal.asset}・${signal.horizonHours}時間を${executableSignal?.side === "LONG" ? "ロング" : "ショート"}で仮想発注`;
   }
 
   positions = await prisma.combinedShadowPosition.findMany({ where: { runId: run.id, status: "OPEN" }, orderBy: { openedAt: "asc" } });
   prices = await latestPrices(positions.map((position) => position.asset));
-  if (scan.signal) prices.set(scan.signal.asset, prices.get(scan.signal.asset) ?? scan.signal.spotPrice);
+  if (signal) prices.set(signal.asset, prices.get(signal.asset) ?? signal.spotPrice);
   positionsPnl = openPositionsPnl(positions, prices, config, now);
   equity = run.cash + positionsPnl;
   const peakEquity = Math.max(run.peakEquity, equity);
@@ -205,36 +211,36 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
     data: {
       id: crypto.randomUUID(),
       runId: run.id,
-      eventId: scan.signal?.eventId ?? null,
-      marketId: scan.signal?.marketId ?? null,
-      asset: scan.signal?.asset ?? null,
+      eventId: signal?.eventId ?? null,
+      marketId: signal?.marketId ?? null,
+      asset: signal?.asset ?? null,
       action,
       reason,
-      probability: scan.signal?.marketProbability ?? null,
-      spotPrice: scan.signal?.spotPrice ?? null,
-      targetPrice: scan.signal?.impliedTarget ?? null,
-      signalZ: scan.signal?.signalZ ?? null,
-      polymarketSide: scan.signal?.side ?? null,
-      strategySide: isFundingSignalRule(config.signalRule) && scan.signal?.hyperliquidFunding24h === null
+      probability: signal?.marketProbability ?? null,
+      spotPrice: signal?.spotPrice ?? null,
+      targetPrice: signal?.impliedTarget ?? null,
+      signalZ: signal?.signalZ ?? null,
+      polymarketSide: signal?.side ?? null,
+      strategySide: isFundingSignalRule(config.signalRule) && signal?.hyperliquidFunding24h === null
         ? null
         : executableSignal?.side ?? null,
-      trendZ6h: scan.signal?.trendZ6h ?? null,
-      hyperliquidFunding24h: scan.signal?.hyperliquidFunding24h ?? null,
+      trendZ6h: signal?.trendZ6h ?? null,
+      hyperliquidFunding24h: signal?.hyperliquidFunding24h ?? null,
       threshold: config.minimumSignalZ,
-      horizonHours: scan.signal?.horizonHours ?? null,
+      horizonHours: signal?.horizonHours ?? config.observationHorizonHours,
       scannedMarkets: scan.scannedMarkets,
       structuredMarkets: scan.structuredMarkets,
       horizonEligibleMarkets: scan.horizonEligibleMarkets,
       groupedEvents: scan.groupedEvents,
       priceReadyEvents: scan.priceReadyEvents,
-      marketBestBid: scan.signal?.marketBestBid ?? null,
-      marketBestAsk: scan.signal?.marketBestAsk ?? null,
-      marketSpread: scan.signal?.marketSpread ?? null,
-      polymarketReferencePrice: scan.signal?.polymarketReferencePrice ?? null,
-      referenceSource: scan.signal?.referenceSource ?? null,
-      referenceCapturedAt: scan.signal?.referenceCapturedAt ? new Date(scan.signal.referenceCapturedAt) : null,
-      priceBasisPct: scan.signal?.priceBasisPct ?? null,
-      ladderViolations: scan.signal?.ladderViolations ?? null,
+      marketBestBid: signal?.marketBestBid ?? null,
+      marketBestAsk: signal?.marketBestAsk ?? null,
+      marketSpread: signal?.marketSpread ?? null,
+      polymarketReferencePrice: signal?.polymarketReferencePrice ?? null,
+      referenceSource: signal?.referenceSource ?? null,
+      referenceCapturedAt: signal?.referenceCapturedAt ? new Date(signal.referenceCapturedAt) : null,
+      priceBasisPct: signal?.priceBasisPct ?? null,
+      ladderViolations: signal?.ladderViolations ?? null,
       nextWindowAt: scan.nextWindowAt ? new Date(scan.nextWindowAt) : null,
       observedAt: now,
     },
@@ -267,7 +273,7 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
 export async function getCombinedShadowStatus(runId?: string) {
   const run = runId
     ? await prisma.combinedShadowRun.findUnique({ where: { id: runId } })
-    : await prisma.combinedShadowRun.findFirst({ orderBy: { startedAt: "desc" } });
+    : await findPrimaryForwardRun();
   if (!run) return null;
   const [latestDecision, latestSnapshot, openPositions, closedPositions, winningPositions] = await Promise.all([
     prisma.combinedShadowDecision.findFirst({ where: { runId: run.id }, orderBy: { observedAt: "desc" } }),
@@ -289,9 +295,37 @@ export async function getCombinedShadowStatus(runId?: string) {
 }
 
 export async function setCombinedShadowEmergencyStop(stopped: boolean) {
-  const run = await ensureCombinedShadowRun();
-  await prisma.combinedShadowRun.update({ where: { id: run.id }, data: { emergencyStopped: stopped } });
-  return tickCombinedShadowRun(run.id);
+  const runs = await findActiveForwardRuns();
+  if (!runs.length) throw new Error("固定フォワード検証が起動していません");
+  await prisma.combinedShadowRun.updateMany({
+    where: { id: { in: runs.map((run) => run.id) } },
+    data: { emergencyStopped: stopped },
+  });
+  return tickActiveForwardRuns();
+}
+
+export async function tickActiveForwardRuns(now = new Date()) {
+  const runs = await findActiveForwardRuns();
+  if (!runs.length) throw new Error("固定フォワード検証が起動していません");
+  const scan = await scanCombinedLiveSignal(now);
+  const statuses = [];
+  for (const run of runs) statuses.push(await tickCombinedShadowRun(run.id, now, scan));
+  return statuses;
+}
+
+async function findActiveForwardRuns() {
+  const runs = await prisma.combinedShadowRun.findMany({ where: { status: "running" }, orderBy: { startedAt: "desc" } });
+  return runs.filter((run) => {
+    const key = parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.experimentKey;
+    return isForwardStrategyExperimentKey(key) || isForwardControlExperimentKey(key);
+  });
+}
+
+async function findPrimaryForwardRun() {
+  const runs = await prisma.combinedShadowRun.findMany({ orderBy: { startedAt: "desc" }, take: 50 });
+  return runs.find((run) => isForwardStrategyExperimentKey(parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.experimentKey))
+    ?? runs[0]
+    ?? null;
 }
 
 async function openShadowPosition(run: CombinedShadowRun, signal: CombinedLiveSignal, equity: number, config: CombinedShadowConfig, now: Date) {
@@ -366,6 +400,65 @@ export function applyCombinedSignalRule(signal: CombinedLiveSignal, rule: Combin
     };
   }
   return signal;
+}
+
+export function selectCombinedSignalCandidate(
+  signals: CombinedLiveSignal[],
+  config: Pick<CombinedShadowConfig, "minimumSignalZ" | "minimumTrendZ" | "minimumFunding24h" | "signalRule">,
+  observedEvents = new Set<string>(),
+) {
+  const evaluated = [...signals]
+    .sort((left, right) => Math.abs(right.signalZ) - Math.abs(left.signalZ))
+    .map((signal) => {
+      const executableSignal = applyCombinedSignalRule(signal, config.signalRule);
+      return {
+        signal,
+        executableSignal,
+        rejectionReason: combinedSignalRejectionReason(signal, executableSignal, config),
+        alreadyObserved: observedEvents.has(signalEventKey(signal.eventId, signal.horizonHours)),
+      };
+    });
+  const actionable = evaluated.find((candidate) => !candidate.rejectionReason && !candidate.alreadyObserved);
+  if (actionable) return { ...actionable, actionable: true as const, reason: null };
+  const eligible = evaluated.find((candidate) => !candidate.rejectionReason);
+  if (eligible) return {
+    ...eligible,
+    actionable: false as const,
+    alreadyObserved: true,
+    reason: "同じ予測テーマと時間軸はすでに検証済み",
+  };
+  const rejected = evaluated[0];
+  return rejected ? {
+    ...rejected,
+    actionable: false as const,
+    reason: rejected.rejectionReason,
+  } : null;
+}
+
+function combinedSignalRejectionReason(
+  signal: CombinedLiveSignal,
+  executableSignal: CombinedLiveSignal,
+  config: Pick<CombinedShadowConfig, "minimumSignalZ" | "minimumTrendZ" | "minimumFunding24h" | "signalRule">,
+) {
+  if (isHyperliquidSignalRule(config.signalRule) && Math.abs(signal.trendZ6h) < config.minimumTrendZ) {
+    return `6時間値動き${Math.abs(signal.trendZ6h).toFixed(2)}が基準${config.minimumTrendZ.toFixed(2)}未満`;
+  }
+  if (isFundingSignalRule(config.signalRule) && (signal.hyperliquidFunding24h === null || Math.abs(signal.hyperliquidFunding24h) < config.minimumFunding24h)) {
+    return signal.hyperliquidFunding24h === null
+      ? "24時間の資金調達率を確認中"
+      : `24時間資金調達率${formatPct(Math.abs(signal.hyperliquidFunding24h))}が基準${formatPct(config.minimumFunding24h)}未満`;
+  }
+  if (config.signalRule === "polymarket-funding-consensus" && executableSignal.side !== signal.side) {
+    return "Polymarketの方向と資金調達を受け取る方向が一致していません";
+  }
+  if (Math.abs(signal.signalZ) < config.minimumSignalZ) {
+    return `シグナル強度${Math.abs(signal.signalZ).toFixed(2)}が基準${config.minimumSignalZ.toFixed(2)}未満`;
+  }
+  return null;
+}
+
+function signalEventKey(eventId: string, horizonHours: number | null | undefined) {
+  return `${eventId}:${horizonHours ?? "legacy"}`;
 }
 
 async function closeShadowPosition(
@@ -582,6 +675,7 @@ function normalizeConfig(override: Partial<CombinedShadowConfig>) {
     experimentKey: normalizedText(override.experimentKey, defaultConfig.experimentKey),
     experimentLabel: normalizedText(override.experimentLabel, defaultConfig.experimentLabel),
     forwardOnly: override.forwardOnly === true,
+    observationHorizonHours: isObservationHorizon(override.observationHorizonHours) ? override.observationHorizonHours : null,
     initialEquity: positive(override.initialEquity, defaultConfig.initialEquity),
     minimumSignalZ: clamp(override.minimumSignalZ ?? defaultConfig.minimumSignalZ, 0.1, 3),
     minimumTrendZ: clamp(override.minimumTrendZ ?? defaultConfig.minimumTrendZ, 0, 3),
@@ -607,6 +701,10 @@ function isExecutableSignalRule(rule: unknown): rule is CombinedShadowConfig["si
     || rule === "hyperliquid-funding-carry"
     || rule === "hyperliquid-funding-momentum"
     || rule === "polymarket-funding-consensus";
+}
+
+function isObservationHorizon(value: unknown): value is number {
+  return value === 6 || value === 12 || value === 24 || value === 48;
 }
 
 function isHyperliquidSignalRule(rule: CombinedShadowConfig["signalRule"]) {

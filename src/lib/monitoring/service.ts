@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import type { BacktestMetrics } from "@/src/lib/backtest/types";
 import {
   evaluateForwardExperiment,
+  forwardObservationHorizons,
   forwardControlExperimentKey,
   forwardStrategyExperimentKey,
 } from "@/src/lib/combined-trading/forward-evaluation";
@@ -134,7 +135,7 @@ export async function getMonitoringSnapshot() {
     prisma.pipelineHeartbeat.findMany({ orderBy: { id: "asc" } }),
     Promise.all(monitoredAssets.map((asset) => prisma.hyperliquidSnapshot.findFirst({ where: { asset }, orderBy: { capturedAt: "desc" } }))),
     prisma.modelEvaluationRun.findFirst({ where: { status: "completed" }, orderBy: { completedAt: "desc" } }),
-    prisma.combinedShadowRun.findMany({ orderBy: { startedAt: "desc" }, take: 20 }),
+    prisma.combinedShadowRun.findMany({ orderBy: { startedAt: "desc" }, take: 50 }),
     prisma.combinedShadowDecision.count(),
     prisma.combinedShadowEquitySnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
     prisma.combinedShadowEquitySnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
@@ -156,14 +157,23 @@ export async function getMonitoringSnapshot() {
     latestAt: synchronizedCompleteAggregate._max.capturedAt,
   });
   const evaluation = parseJson<ModelEvaluationMetrics>(latestEvaluation?.metricsJson ?? null);
-  const combinedRun = combinedRuns.find((run) => (
-    parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.experimentKey === forwardStrategyExperimentKey
-  )) ?? combinedRuns.find((run) => (
-    parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.forwardOnly === true
-  )) ?? combinedRuns[0] ?? null;
-  const controlRun = combinedRuns.find((run) => (
-    parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.experimentKey === forwardControlExperimentKey
-  )) ?? null;
+  const combinedRunConfigs = new Map(combinedRuns.map((run) => [run.id, parseJson<Partial<CombinedShadowConfig>>(run.configJson)]));
+  const forwardStrategyRuns = forwardObservationHorizons.flatMap((horizonHours) => {
+    const run = combinedRuns.find((candidate) => combinedRunConfigs.get(candidate.id)?.experimentKey === forwardStrategyExperimentKey(horizonHours));
+    return run ? [{ horizonHours, run }] : [];
+  });
+  const forwardControlRuns = forwardObservationHorizons.flatMap((horizonHours) => {
+    const run = combinedRuns.find((candidate) => combinedRunConfigs.get(candidate.id)?.experimentKey === forwardControlExperimentKey(horizonHours));
+    return run ? [{ horizonHours, run }] : [];
+  });
+  const legacyCombinedRun = combinedRuns.find((run) => combinedRunConfigs.get(run.id)?.forwardOnly === true) ?? combinedRuns[0] ?? null;
+  const activeCombinedRuns = forwardStrategyRuns.length ? forwardStrategyRuns.map((item) => item.run) : legacyCombinedRun ? [legacyCombinedRun] : [];
+  const activeControlRuns = forwardStrategyRuns.length
+    ? forwardControlRuns.map((item) => item.run)
+    : combinedRuns.filter((run) => combinedRunConfigs.get(run.id)?.experimentKey === "polymarket-only-forward-control-v1").slice(0, 1);
+  const combinedRun = activeCombinedRuns[0] ?? null;
+  const activeCombinedRunIds = activeCombinedRuns.map((run) => run.id);
+  const activeControlRunIds = activeControlRuns.map((run) => run.id);
 
   const resolvedAiRows = aiRows.filter((row) => row.resolvedOutcome !== null && row.brierScore !== null);
   const averageAiBrier = average(resolvedAiRows.map((row) => row.brierScore as number));
@@ -179,61 +189,108 @@ export async function getMonitoringSnapshot() {
         prisma.paperFill.count({ where: { runId: latestRunningPaper.id } }),
       ])
     : [null, 0, 0];
-  const [latestCombinedDecision, latestCombinedSnapshot, combinedOpenPositions, combinedClosedTrades, combinedWinningTrades, combinedDecisions, combinedPositions, controlPositions] = combinedRun
+  const [latestCombinedDecision, latestCombinedSnapshot, combinedOpenPositions, combinedClosedTrades, combinedWinningTrades, combinedDecisions, combinedPositions, controlPositions] = activeCombinedRunIds.length
     ? await Promise.all([
-        prisma.combinedShadowDecision.findFirst({ where: { runId: combinedRun.id }, orderBy: { observedAt: "desc" } }),
-        prisma.combinedShadowEquitySnapshot.findFirst({ where: { runId: combinedRun.id }, orderBy: { capturedAt: "desc" } }),
-        prisma.combinedShadowPosition.findMany({ where: { runId: combinedRun.id, status: "OPEN" }, orderBy: { openedAt: "asc" } }),
-        prisma.combinedShadowPosition.count({ where: { runId: combinedRun.id, status: "CLOSED" } }),
-        prisma.combinedShadowPosition.count({ where: { runId: combinedRun.id, status: "CLOSED", realizedPnl: { gt: 0 } } }),
+        prisma.combinedShadowDecision.findFirst({ where: { runId: { in: activeCombinedRunIds } }, orderBy: { observedAt: "desc" } }),
+        prisma.combinedShadowEquitySnapshot.findFirst({ where: { runId: { in: activeCombinedRunIds } }, orderBy: { capturedAt: "desc" } }),
+        prisma.combinedShadowPosition.findMany({ where: { runId: { in: activeCombinedRunIds }, status: "OPEN" }, orderBy: { openedAt: "asc" } }),
+        prisma.combinedShadowPosition.count({ where: { runId: { in: activeCombinedRunIds }, status: "CLOSED" } }),
+        prisma.combinedShadowPosition.count({ where: { runId: { in: activeCombinedRunIds }, status: "CLOSED", realizedPnl: { gt: 0 } } }),
         prisma.combinedShadowDecision.findMany({
-          where: { runId: combinedRun.id },
-          select: { action: true, signalZ: true, threshold: true },
-          orderBy: { observedAt: "asc" },
+          where: { runId: { in: activeCombinedRunIds } },
+          select: {
+            runId: true,
+            action: true,
+            horizonHours: true,
+            horizonEligibleMarkets: true,
+            groupedEvents: true,
+            priceReadyEvents: true,
+            reason: true,
+            nextWindowAt: true,
+            observedAt: true,
+          },
+          orderBy: { observedAt: "desc" },
         }),
         prisma.combinedShadowPosition.findMany({
-          where: { runId: combinedRun.id },
+          where: { runId: { in: activeCombinedRunIds } },
           orderBy: { openedAt: "asc" },
         }),
-        controlRun
-          ? prisma.combinedShadowPosition.findMany({ where: { runId: controlRun.id }, orderBy: { openedAt: "asc" } })
+        activeControlRunIds.length
+          ? prisma.combinedShadowPosition.findMany({ where: { runId: { in: activeControlRunIds } }, orderBy: { openedAt: "asc" } })
           : Promise.resolve([]),
       ])
     : [null, null, [], 0, 0, [], [], []];
-  const measuredBasis = combinedPositions.flatMap((position) => (
-    typeof position.exitPriceBasisPct === "number" ? [position] : []
-  ));
-  const absoluteBasisValues = measuredBasis.map((position) => Math.abs(position.exitPriceBasisPct as number));
-  const referenceCaptureLags = measuredBasis.flatMap((position) => (
-    position.closedAt && position.exitReferenceCapturedAt
-      ? [Math.abs(position.closedAt.getTime() - position.exitReferenceCapturedAt.getTime()) / 1_000]
-      : []
-  ));
-  const medianAbsoluteBasisPct = median(absoluteBasisValues);
-  const medianReferenceCaptureLagSeconds = median(referenceCaptureLags);
-  const referenceTimingComplete = referenceCaptureLags.length === measuredBasis.length;
-  const settlementBasisStatus = measuredBasis.length < 10
-    ? "collecting" as const
-    : (medianAbsoluteBasisPct ?? Number.POSITIVE_INFINITY) <= 0.001
-      && referenceTimingComplete
-      && (medianReferenceCaptureLagSeconds ?? Number.POSITIVE_INFINITY) <= 60
-      ? "healthy" as const
-      : "attention" as const;
+  const settlementBasis = summarizeSettlementBasis(combinedPositions);
   const combinedConfig = parseJson<Partial<CombinedShadowConfig>>(combinedRun?.configJson ?? null);
-  const forwardEvaluation = combinedRun && combinedConfig?.forwardOnly === true
+  const horizonEvaluations = forwardStrategyRuns.flatMap(({ horizonHours, run }) => {
+    const controlRun = forwardControlRuns.find((item) => item.horizonHours === horizonHours)?.run ?? null;
+    const config = combinedRunConfigs.get(run.id);
+    if (!controlRun || !config) return [];
+    const strategyPositions = combinedPositions.filter((position) => position.runId === run.id);
+    const horizonControlPositions = controlPositions.filter((position) => position.runId === controlRun.id);
+    const evaluation = evaluateForwardExperiment({
+      strategyPositions,
+      controlPositions: horizonControlPositions,
+      strategyStartedAt: run.startedAt,
+      controlStartedAt: controlRun.startedAt,
+      initialEquity: run.initialEquity,
+      takerFeePerSide: config.takerFeePerSide ?? 0.00045,
+      slippagePerSide: config.slippagePerSide ?? 0.0002,
+      fundingPer24h: config.fundingPer24h ?? 0.0003,
+      maxDrawdownPct: run.maxDrawdownPct,
+      settlementBasisStatus: summarizeSettlementBasis(strategyPositions).status,
+      strategyTrials: forwardObservationHorizons.length,
+    });
+    const latestDecision = combinedDecisions.find((decision) => decision.runId === run.id) ?? null;
+    return [{ horizonHours, run, evaluation, latestDecision }];
+  });
+  const leadingHorizon = [...horizonEvaluations].sort((left, right) => (
+    Number(right.evaluation.status === "promising") - Number(left.evaluation.status === "promising")
+    || right.evaluation.trades - left.evaluation.trades
+    || (left.latestDecision?.nextWindowAt?.getTime() ?? Number.POSITIVE_INFINITY)
+      - (right.latestDecision?.nextWindowAt?.getTime() ?? Number.POSITIVE_INFINITY)
+    || left.horizonHours - right.horizonHours
+  ))[0] ?? null;
+  const displayCombinedDecision = leadingHorizon
+    ? await prisma.combinedShadowDecision.findFirst({ where: { runId: leadingHorizon.run.id }, orderBy: { observedAt: "desc" } })
+    : latestCombinedDecision;
+  const legacyForwardEvaluation = combinedRun && combinedConfig?.forwardOnly === true && !horizonEvaluations.length
     ? evaluateForwardExperiment({
         strategyPositions: combinedPositions,
         controlPositions,
         strategyStartedAt: combinedRun.startedAt,
-        controlStartedAt: controlRun?.startedAt ?? null,
+        controlStartedAt: activeControlRuns[0]?.startedAt ?? null,
         initialEquity: combinedRun.initialEquity,
         takerFeePerSide: combinedConfig.takerFeePerSide ?? 0.00045,
         slippagePerSide: combinedConfig.slippagePerSide ?? 0.0002,
         fundingPer24h: combinedConfig.fundingPer24h ?? 0.0003,
         maxDrawdownPct: combinedRun.maxDrawdownPct,
-        settlementBasisStatus,
+        settlementBasisStatus: settlementBasis.status,
       })
     : null;
+  const forwardEvaluation = leadingHorizon ? {
+    ...leadingHorizon.evaluation,
+    activeHorizonHours: leadingHorizon.horizonHours,
+    totalTrades: horizonEvaluations.reduce((total, item) => total + item.evaluation.trades, 0),
+    totalMinimumTrades: horizonEvaluations.length * leadingHorizon.evaluation.minimumTrades,
+    horizons: horizonEvaluations.map(({ horizonHours, evaluation: item, latestDecision }) => ({
+      horizonHours,
+      status: item.status,
+      trades: item.trades,
+      minimumTrades: item.minimumTrades,
+      progressPct: item.progressPct,
+      netReturnPct: item.netReturnPct,
+      excessReturnPct: item.excessReturnPct,
+      maxDrawdownPct: item.maxDrawdownPct,
+      passedGates: item.passedGates,
+      totalGates: item.totalGates,
+      horizonEligibleMarkets: latestDecision?.horizonEligibleMarkets ?? 0,
+      priceReadyEvents: latestDecision?.priceReadyEvents ?? 0,
+      latestAction: latestDecision?.action ?? null,
+      latestReason: latestDecision?.reason ?? "最初の市場確認を待っています",
+      nextWindowAt: latestDecision?.nextWindowAt?.toISOString() ?? null,
+    })),
+  } : legacyForwardEvaluation;
   const latestPaperMetrics = parseJson<Record<string, number | null>>(latestCompletedPaper?.metricsJson ?? null);
   const newestDataAt = latestDate(
     polymarketAggregate._max.capturedAt,
@@ -245,10 +302,7 @@ export async function getMonitoringSnapshot() {
   const oldestDataAt = earliestDate(polymarketAggregate._min.capturedAt, hyperAggregate._min.capturedAt, paperEquityAggregate._min.capturedAt);
   const ageMs = newestDataAt ? now.getTime() - newestDataAt.getTime() : Number.POSITIVE_INFINITY;
   const status = ageMs <= freshnessMs ? "live" : ageMs <= 60 * 60 * 1_000 ? "delayed" : "offline";
-  const historicalCombinedEdgeConfirmed = evaluation?.quality.status === "promising"
-    && evaluation.combinedTrading?.selectedStrategy.id !== "no-trade guard"
-    && evaluation.combinedTrading?.statisticallyPositive === true;
-  const combinedEdgeConfirmed = historicalCombinedEdgeConfirmed || forwardEvaluation?.status === "promising";
+  const combinedEdgeConfirmed = forwardEvaluation?.status === "promising";
   const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
@@ -257,7 +311,18 @@ export async function getMonitoringSnapshot() {
   const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
   const tunnelStatus = readTunnelStatus();
   const backupStatus = readBackupStatus();
-  const combinedShadowRunning = combinedRun?.status === "running";
+  const combinedShadowRunning = activeCombinedRuns.some((run) => run.status === "running");
+  const aggregateInitialEquity = sum(activeCombinedRuns.map((run) => run.initialEquity));
+  const aggregateEquity = sum(activeCombinedRuns.map((run) => run.equity));
+  const aggregateCash = sum(activeCombinedRuns.map((run) => run.cash));
+  const aggregateRealizedPnl = sum(activeCombinedRuns.map((run) => run.realizedPnl));
+  const aggregateWins = horizonEvaluations.length
+    ? sum(horizonEvaluations.map((item) => item.evaluation.wins))
+    : combinedWinningTrades;
+  const aggregateTrades = horizonEvaluations.length
+    ? sum(horizonEvaluations.map((item) => item.evaluation.trades))
+    : combinedClosedTrades;
+  const latestHorizonDecisions = forwardStrategyRuns.map(({ run }) => combinedDecisions.find((decision) => decision.runId === run.id)).filter(Boolean);
 
   const inferredPipelines = pipelineStatuses({
     now,
@@ -313,15 +378,15 @@ export async function getMonitoringSnapshot() {
       ],
     },
     combinedShadow: {
-      status: combinedRun?.status ?? "not_started",
-      startedAt: combinedRun?.startedAt.toISOString() ?? null,
+      status: combinedShadowRunning ? "running" : combinedRun?.status ?? "not_started",
+      startedAt: activeCombinedRuns.length ? new Date(Math.min(...activeCombinedRuns.map((run) => run.startedAt.getTime()))).toISOString() : null,
       updatedAt: latestCombinedSnapshot?.capturedAt.toISOString() ?? null,
-      initialEquity: combinedRun?.initialEquity ?? null,
-      equity: latestCombinedSnapshot?.equity ?? combinedRun?.equity ?? null,
+      initialEquity: activeCombinedRuns.length ? aggregateInitialEquity : null,
+      equity: activeCombinedRuns.length ? aggregateEquity : null,
       returnPct: forwardEvaluation?.netReturnPct
-        ?? (combinedRun && combinedRun.initialEquity > 0 ? combinedRun.realizedPnl / combinedRun.initialEquity : null),
-      cash: combinedRun?.cash ?? null,
-      realizedPnl: combinedRun?.realizedPnl ?? null,
+        ?? (aggregateInitialEquity > 0 ? aggregateRealizedPnl / aggregateInitialEquity : null),
+      cash: activeCombinedRuns.length ? aggregateCash : null,
+      realizedPnl: activeCombinedRuns.length ? aggregateRealizedPnl : null,
       openPositions: combinedOpenPositions.map((position) => ({
         asset: position.asset,
         side: position.side,
@@ -337,61 +402,67 @@ export async function getMonitoringSnapshot() {
         openedAt: position.openedAt.toISOString(),
         exitAt: position.exitAt.toISOString(),
       })),
-      trades: forwardEvaluation?.trades ?? combinedClosedTrades,
-      wins: forwardEvaluation?.wins ?? combinedWinningTrades,
-      winRate: forwardEvaluation?.winRate ?? (combinedClosedTrades > 0 ? combinedWinningTrades / combinedClosedTrades : null),
-      maxDrawdownPct: combinedRun?.maxDrawdownPct ?? null,
-      riskStatus: combinedRun?.riskStatus ?? "NOT_STARTED",
-      emergencyStopped: combinedRun?.emergencyStopped ?? false,
-      experimentKey: combinedConfig?.experimentKey ?? null,
-      experimentLabel: combinedConfig?.experimentLabel ?? null,
+      trades: aggregateTrades,
+      wins: aggregateWins,
+      winRate: aggregateTrades > 0 ? aggregateWins / aggregateTrades : null,
+      maxDrawdownPct: activeCombinedRuns.length ? Math.max(...activeCombinedRuns.map((run) => run.maxDrawdownPct)) : null,
+      riskStatus: activeCombinedRuns.find((run) => run.riskStatus !== "NORMAL")?.riskStatus ?? combinedRun?.riskStatus ?? "NOT_STARTED",
+      emergencyStopped: activeCombinedRuns.some((run) => run.emergencyStopped),
+      experimentKey: horizonEvaluations.length ? "forward-v2-6-12-24-48" : combinedConfig?.experimentKey ?? null,
+      experimentLabel: horizonEvaluations.length ? "6・12・24・48時間の独立フォワード検証 v2" : combinedConfig?.experimentLabel ?? null,
       forwardOnly: combinedConfig?.forwardOnly === true,
       minimumSignalZ: combinedConfig?.minimumSignalZ ?? null,
       minimumFunding24h: combinedConfig?.minimumFunding24h ?? null,
       signalRule: combinedConfig?.signalRule ?? "polymarket-only",
-      modelVersion: combinedConfig?.modelVersion ?? null,
+      modelVersion: horizonEvaluations.length ? "Forward Experiment v2 2026-07-18 / no backfill" : combinedConfig?.modelVersion ?? null,
       forwardEvaluation,
       settlementBasis: {
-        status: settlementBasisStatus,
-        samples: measuredBasis.length,
-        medianAbsolutePct: medianAbsoluteBasisPct,
-        maximumAbsolutePct: absoluteBasisValues.length ? Math.max(...absoluteBasisValues) : null,
-        medianReferenceCaptureLagSeconds,
+        status: settlementBasis.status,
+        samples: settlementBasis.samples,
+        medianAbsolutePct: settlementBasis.medianAbsolutePct,
+        maximumAbsolutePct: settlementBasis.maximumAbsolutePct,
+        medianReferenceCaptureLagSeconds: settlementBasis.medianReferenceCaptureLagSeconds,
       },
       funnel: {
-        scans: combinedDecisions.length,
+        scans: Math.ceil(combinedDecisions.length / Math.max(1, activeCombinedRuns.length)),
         scannedMarkets: latestCombinedDecision?.scannedMarkets ?? 0,
         structuredMarkets: latestCombinedDecision?.structuredMarkets ?? 0,
-        horizonEligibleMarkets: latestCombinedDecision?.horizonEligibleMarkets ?? 0,
-        groupedEvents: latestCombinedDecision?.groupedEvents ?? 0,
-        priceReadyEvents: latestCombinedDecision?.priceReadyEvents ?? 0,
+        horizonEligibleMarkets: latestHorizonDecisions.length
+          ? sum(latestHorizonDecisions.map((decision) => decision?.horizonEligibleMarkets ?? 0))
+          : latestCombinedDecision?.horizonEligibleMarkets ?? 0,
+        groupedEvents: latestHorizonDecisions.length
+          ? sum(latestHorizonDecisions.map((decision) => decision?.groupedEvents ?? 0))
+          : latestCombinedDecision?.groupedEvents ?? 0,
+        priceReadyEvents: latestHorizonDecisions.length
+          ? sum(latestHorizonDecisions.map((decision) => decision?.priceReadyEvents ?? 0))
+          : latestCombinedDecision?.priceReadyEvents ?? 0,
         thresholdSignals: combinedDecisions.filter((decision) => (
-          typeof decision.signalZ === "number" && Math.abs(decision.signalZ) >= decision.threshold
+          decision.action === "OPEN_LONG" || decision.action === "OPEN_SHORT" || decision.action === "SKIP"
         )).length,
         opened: combinedDecisions.filter((decision) => decision.action === "OPEN_LONG" || decision.action === "OPEN_SHORT").length,
         closed: combinedClosedTrades,
       },
-      latestDecision: latestCombinedDecision ? {
-        action: latestCombinedDecision.action,
-        reason: latestCombinedDecision.reason,
-        asset: latestCombinedDecision.asset,
-        signalZ: latestCombinedDecision.signalZ,
-        spotPrice: latestCombinedDecision.spotPrice,
-        targetPrice: latestCombinedDecision.targetPrice,
-        polymarketSide: latestCombinedDecision.polymarketSide,
-        strategySide: latestCombinedDecision.strategySide,
-        trendZ6h: latestCombinedDecision.trendZ6h,
-        hyperliquidFunding24h: latestCombinedDecision.hyperliquidFunding24h,
-        horizonHours: latestCombinedDecision.horizonHours,
-        marketBestBid: latestCombinedDecision.marketBestBid,
-        marketBestAsk: latestCombinedDecision.marketBestAsk,
-        marketSpread: latestCombinedDecision.marketSpread,
-        polymarketReferencePrice: latestCombinedDecision.polymarketReferencePrice,
-        referenceSource: latestCombinedDecision.referenceSource,
-        priceBasisPct: latestCombinedDecision.priceBasisPct,
-        ladderViolations: latestCombinedDecision.ladderViolations,
-        nextWindowAt: latestCombinedDecision.nextWindowAt?.toISOString() ?? null,
-        observedAt: latestCombinedDecision.observedAt.toISOString(),
+      latestDecision: displayCombinedDecision ? {
+        action: displayCombinedDecision.action,
+        reason: displayCombinedDecision.reason,
+        asset: displayCombinedDecision.asset,
+        signalZ: displayCombinedDecision.signalZ,
+        spotPrice: displayCombinedDecision.spotPrice,
+        targetPrice: displayCombinedDecision.targetPrice,
+        polymarketSide: displayCombinedDecision.polymarketSide,
+        strategySide: displayCombinedDecision.strategySide,
+        trendZ6h: displayCombinedDecision.trendZ6h,
+        hyperliquidFunding24h: displayCombinedDecision.hyperliquidFunding24h,
+        horizonHours: displayCombinedDecision.horizonHours,
+        marketBestBid: displayCombinedDecision.marketBestBid,
+        marketBestAsk: displayCombinedDecision.marketBestAsk,
+        marketSpread: displayCombinedDecision.marketSpread,
+        polymarketReferencePrice: displayCombinedDecision.polymarketReferencePrice,
+        referenceSource: displayCombinedDecision.referenceSource,
+        priceBasisPct: displayCombinedDecision.priceBasisPct,
+        ladderViolations: displayCombinedDecision.ladderViolations,
+        nextWindowAt: displayCombinedDecision.nextWindowAt?.toISOString() ?? null,
+        observedAt: displayCombinedDecision.observedAt.toISOString(),
       } : null,
       testnet: {
         ...executionReadiness,
@@ -633,11 +704,44 @@ function average(values: number[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
+function sum(values: number[]) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
 function median(values: number[]) {
   if (!values.length) return null;
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function summarizeSettlementBasis(positions: Array<{
+  exitPriceBasisPct: number | null;
+  closedAt: Date | null;
+  exitReferenceCapturedAt: Date | null;
+}>) {
+  const measured = positions.filter((position) => typeof position.exitPriceBasisPct === "number");
+  const absoluteValues = measured.map((position) => Math.abs(position.exitPriceBasisPct as number));
+  const captureLags = measured.flatMap((position) => position.closedAt && position.exitReferenceCapturedAt
+    ? [Math.abs(position.closedAt.getTime() - position.exitReferenceCapturedAt.getTime()) / 1_000]
+    : []);
+  const medianAbsolutePct = median(absoluteValues);
+  const medianReferenceCaptureLagSeconds = median(captureLags);
+  const timingComplete = captureLags.length === measured.length;
+  const status = measured.length < 10
+    ? "collecting" as const
+    : (medianAbsolutePct ?? Number.POSITIVE_INFINITY) <= 0.001
+      && timingComplete
+      && (medianReferenceCaptureLagSeconds ?? Number.POSITIVE_INFINITY) <= 60
+      ? "healthy" as const
+      : "attention" as const;
+  return {
+    status,
+    samples: measured.length,
+    medianAbsolutePct,
+    maximumAbsolutePct: absoluteValues.length ? Math.max(...absoluteValues) : null,
+    medianReferenceCaptureLagSeconds,
+  };
 }
 
 async function loadSynchronizedPriceQuality(input: {
