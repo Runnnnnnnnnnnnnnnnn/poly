@@ -535,7 +535,7 @@ assert.deepEqual(compareTestnetPositions(
 ), [{ asset: "ETH", expectedSize: -0.1, actualSize: -0.2, kind: "quantity" }]);
 
 const alertNow = new Date("2026-01-01T01:00:00Z");
-const healthyHeartbeats = ["polymarket", "hyperliquid", "paper", "combined-shadow", "forward-experiment", "backtest"].map((id) => ({
+const healthyHeartbeats = ["polymarket", "hyperliquid", "forward-experiment", "backtest"].map((id) => ({
   id,
   status: "healthy",
   message: null,

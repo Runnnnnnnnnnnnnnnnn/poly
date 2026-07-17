@@ -1,4 +1,6 @@
 import { prisma } from "@/src/lib/server/prisma";
+import { forwardStrategyExperimentKey } from "@/src/lib/combined-trading/forward-evaluation";
+import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
 
 export type OperationalAlertCandidate = {
   key: string;
@@ -18,24 +20,29 @@ type HeartbeatLike = {
 const pipelineLimitsMs: Record<string, { label: string; maximumAgeMs: number }> = {
   polymarket: { label: "Polymarket収集", maximumAgeMs: 15 * 60 * 1_000 },
   hyperliquid: { label: "相場データ収集", maximumAgeMs: 15 * 60 * 1_000 },
-  paper: { label: "Polymarket仮想運用", maximumAgeMs: 15 * 60 * 1_000 },
-  "combined-shadow": { label: "組み合わせ市場確認", maximumAgeMs: 15 * 60 * 1_000 },
-  "forward-experiment": { label: "次期モデル検証", maximumAgeMs: 15 * 60 * 1_000 },
+  "forward-experiment": { label: "固定フォワード検証", maximumAgeMs: 15 * 60 * 1_000 },
   backtest: { label: "モデル再検証", maximumAgeMs: 30 * 60 * 60 * 1_000 },
 };
 
 export async function collectOperationalAlertCandidates(now = new Date()) {
-  const [heartbeats, run, latestSnapshot, settlementBasisRows] = await Promise.all([
+  const [heartbeats, runs] = await Promise.all([
     prisma.pipelineHeartbeat.findMany(),
-    prisma.combinedShadowRun.findFirst({ orderBy: { startedAt: "desc" } }),
-    prisma.combinedShadowEquitySnapshot.findFirst({ orderBy: { capturedAt: "desc" } }),
-    prisma.combinedShadowPosition.findMany({
-      where: { status: "CLOSED", exitPriceBasisPct: { not: null } },
-      select: { exitPriceBasisPct: true, exitReferenceCapturedAt: true, closedAt: true },
-      orderBy: { closedAt: "desc" },
-      take: 50,
-    }),
+    prisma.combinedShadowRun.findMany({ orderBy: { startedAt: "desc" }, take: 20 }),
   ]);
+  const run = runs.find((item) => (
+    parseJson<Partial<CombinedShadowConfig>>(item.configJson)?.experimentKey === forwardStrategyExperimentKey
+  )) ?? null;
+  const [latestSnapshot, settlementBasisRows] = run
+    ? await Promise.all([
+        prisma.combinedShadowEquitySnapshot.findFirst({ where: { runId: run.id }, orderBy: { capturedAt: "desc" } }),
+        prisma.combinedShadowPosition.findMany({
+          where: { runId: run.id, status: "CLOSED", exitPriceBasisPct: { not: null } },
+          select: { exitPriceBasisPct: true, exitReferenceCapturedAt: true, closedAt: true },
+          orderBy: { closedAt: "desc" },
+          take: 50,
+        }),
+      ])
+    : [null, []];
   const alerts = evaluatePipelineAlerts(heartbeats, now);
   alerts.push(...evaluateSettlementBasisAlerts(settlementBasisRows));
 
@@ -76,6 +83,14 @@ export async function collectOperationalAlertCandidates(now = new Date()) {
   }
 
   return alerts;
+}
+
+function parseJson<T>(value: string) {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
 }
 
 export function evaluateSettlementBasisAlerts(rows: Array<{

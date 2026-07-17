@@ -266,7 +266,6 @@ export async function getMonitoringSnapshot() {
     hyperliquidAt: hyperAggregate._max.capturedAt,
     backtestAt: latestBacktest?.run.completedAt ?? null,
     evaluationAt: latestEvaluation?.completedAt ?? null,
-    paperAt: paperEquityAggregate._max.capturedAt,
     combinedAt: combinedSnapshotAggregate._max.capturedAt,
   });
 
@@ -435,8 +434,8 @@ export async function getMonitoringSnapshot() {
       evaluationStatus: evaluation?.quality.status ?? "building",
       latestAsset: evaluation ? Object.keys(evaluation.dataset.assets).join("・") : null,
       latestBrierScore: evaluation?.probability.modelBrierScore ?? null,
-      latestAccuracy: evaluation?.combinedTrading?.directionalAccuracy ?? evaluation?.probability.modelAccuracy ?? null,
-      latestReturnPct: evaluation?.combinedTrading?.netReturnPct ?? evaluation?.trading.netReturnPct ?? null,
+      latestAccuracy: evaluation?.combinedTrading?.directionalAccuracy ?? null,
+      latestReturnPct: evaluation?.combinedTrading?.netReturnPct ?? null,
       benchmarkReturnPct: evaluation?.combinedTrading?.benchmarkReturnPct ?? null,
       benchmarkReturns: evaluation?.combinedTrading?.benchmarks ?? null,
       horizonStudies: evaluation?.horizonStudies ?? [],
@@ -447,8 +446,8 @@ export async function getMonitoringSnapshot() {
       observations: evaluation?.dataset.totalMarkets ?? 0,
       brierImprovement: evaluation?.probability.relativeImprovement ?? null,
       previousBrierScore: evaluation?.probability.marketBrierScore ?? null,
-      confidenceInterval95: evaluation?.combinedTrading?.returnConfidenceInterval95 ?? evaluation?.probability.confidenceInterval95 ?? null,
-      statisticallyPositive: evaluation?.combinedTrading?.statisticallyPositive ?? evaluation?.probability.statisticallyPositive ?? false,
+      confidenceInterval95: evaluation?.combinedTrading?.returnConfidenceInterval95 ?? null,
+      statisticallyPositive: evaluation?.combinedTrading?.statisticallyPositive ?? false,
       deflatedSharpeProbability: evaluation?.combinedTrading?.deflatedSharpeProbability ?? null,
       strategyTrials: evaluation?.combinedTrading?.strategyTrials ?? 0,
       walkForwardFolds: evaluation?.combinedTrading?.walkForwardFolds ?? 0,
@@ -456,12 +455,12 @@ export async function getMonitoringSnapshot() {
       completedAt: latestEvaluation?.completedAt?.toISOString() ?? null,
       datasetStartedAt: evaluation?.dataset.firstEndAt ?? null,
       datasetEndedAt: evaluation?.dataset.lastEndAt ?? null,
-      trades: evaluation?.combinedTrading?.trades ?? evaluation?.trading.trades ?? 0,
+      trades: evaluation?.combinedTrading?.trades ?? 0,
       longTrades: evaluation?.combinedTrading?.longTrades ?? 0,
       shortTrades: evaluation?.combinedTrading?.shortTrades ?? 0,
-      winRate: evaluation?.combinedTrading?.winRate ?? evaluation?.trading.winRate ?? null,
+      winRate: evaluation?.combinedTrading?.winRate ?? null,
       averageTradeReturn: evaluation?.combinedTrading?.averageNetTradeReturn ?? null,
-      maxDrawdownPct: evaluation?.combinedTrading?.maxDrawdownPct ?? evaluation?.trading.maxDrawdownPct ?? null,
+      maxDrawdownPct: evaluation?.combinedTrading?.maxDrawdownPct ?? null,
       medianObservationLagMinutes: evaluation?.dataset.medianObservationLagMinutes ?? null,
       medianEntryLagMinutes: evaluation?.dataset.medianEntryLagMinutes ?? null,
       medianExitLeadMinutes: evaluation?.dataset.medianExitLeadMinutes ?? null,
@@ -597,7 +596,6 @@ function pipelineStatuses(input: {
   hyperliquidAt: Date | null;
   backtestAt: Date | null;
   evaluationAt: Date | null;
-  paperAt: Date | null;
   combinedAt: Date | null;
 }) {
   const heartbeatMap = new Map(input.heartbeats.map((item) => [item.id, item]));
@@ -605,9 +603,7 @@ function pipelineStatuses(input: {
     pipeline("polymarket", "価格同期収集", "1分ごと", input.polymarketAt, heartbeatMap.get("polymarket"), input.now),
     pipeline("hyperliquid", "相場データ収集", "1分ごと", input.hyperliquidAt, heartbeatMap.get("hyperliquid"), input.now),
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
-    pipeline("paper", "Poly仮想運用", "5分ごと", input.paperAt, heartbeatMap.get("paper"), input.now),
-    pipeline("combined-shadow", "組み合わせ市場確認", "5分ごと", input.combinedAt, heartbeatMap.get("combined-shadow"), input.now),
-    pipeline("forward-experiment", "次期モデル検証", "5分ごと", input.combinedAt, heartbeatMap.get("forward-experiment"), input.now),
+    pipeline("forward-experiment", "固定フォワード検証", "5分ごと", input.combinedAt, heartbeatMap.get("forward-experiment"), input.now),
   ];
 }
 

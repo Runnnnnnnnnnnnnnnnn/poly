@@ -28,22 +28,25 @@ const env = {
   POLYMARKET_PROJECT_ROOT: root,
   PAPER_RUN_FILE: process.env.PAPER_RUN_FILE || join(root, ".paper-run-id"),
 };
+const enableLegacyExperiments = process.env.ENABLE_LEGACY_EXPERIMENTS === "1";
 const processes = [
   {
     name: "web",
     command: process.execPath,
     args: [join(root, "node_modules/next/dist/bin/next"), production ? "start" : "dev", root, "--hostname", "127.0.0.1", "--port", appPort],
   },
-  {
-    name: "worker",
-    command: process.execPath,
-    args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-paper-trading.mts")],
-  },
-  {
-    name: "combined-shadow",
-    command: process.execPath,
-    args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-combined-shadow.mts")],
-  },
+  ...(enableLegacyExperiments ? [
+    {
+      name: "worker",
+      command: process.execPath,
+      args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-paper-trading.mts")],
+    },
+    {
+      name: "combined-shadow",
+      command: process.execPath,
+      args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-combined-shadow.mts")],
+    },
+  ] : []),
   {
     name: "forward-experiment",
     command: process.execPath,

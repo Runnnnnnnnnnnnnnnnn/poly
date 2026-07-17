@@ -711,9 +711,14 @@ export function PaperTradingDashboardClient() {
           <h1 className="mt-1 max-w-3xl text-2xl font-bold leading-tight text-slate-950 md:text-3xl">予測で売買するモデルを検証中</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Polymarketの予測とHyperliquidの値動きを組み合わせ、ロング・ショート・見送りを判断する仕組みを開発しています。</p>
         </div>
-        <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${!snapshot && monitoring?.status === "live" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-          <span className={`h-2.5 w-2.5 rounded-full ${!snapshot && monitoring?.status === "live" ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
-          {snapshot ? "公開スナップショット" : monitoring?.status === "live" ? "稼働中" : monitoring?.status === "delayed" ? "更新遅延" : "接続確認中"}
+        <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${!snapshot && monitoring?.status === "live" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+            <span className={`h-2.5 w-2.5 rounded-full ${!snapshot && monitoring?.status === "live" ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
+            {snapshot ? "公開スナップショット" : monitoring?.status === "live" ? "稼働中" : monitoring?.status === "delayed" ? "更新遅延" : "接続確認中"}
+          </div>
+          <Button variant="outline" size="icon" onClick={() => void refresh()} disabled={loading} aria-label="最新情報に更新" title="最新情報に更新">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
         </div>
       </section>
 
@@ -725,9 +730,11 @@ export function PaperTradingDashboardClient() {
 
       <DevelopmentMonitor snapshot={monitoring} readOnly={snapshot} />
 
-      <PaperExperimentPanel snapshot={monitoring} />
+      <MonitoringDetails snapshot={monitoring} />
 
-      <details className="rounded-lg border border-border bg-white shadow-sm">
+      {!readOnly ? <PaperExperimentPanel snapshot={monitoring} /> : null}
+
+      {!readOnly ? <details className="rounded-lg border border-border bg-white shadow-sm">
         <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 sm:px-5">
           <span className="flex items-center gap-2 text-sm font-bold text-slate-950"><Gauge className="h-4 w-4 text-primary" />管理者用の操作</span>
           <span className="max-w-[60%] truncate text-xs text-muted-foreground">{readOnly ? message : "管理者用"}</span>
@@ -773,16 +780,14 @@ export function PaperTradingDashboardClient() {
             </div>
           </details>
         </div>
-      </details>
+      </details> : null}
 
-      <MonitoringDetails snapshot={monitoring} />
-
-      <section className="grid gap-4 xl:grid-cols-2">
+      {!readOnly ? <section className="grid gap-4 xl:grid-cols-2">
         <ScoreboardCard asset={asset} backtests={backtests} onSelect={readOnly ? undefined : (id) => void loadBacktest(id)} />
         <PaperRunsCard asset={asset} runs={runs} updatedAt={updatedAt} onSelect={readOnly ? undefined : (id) => void loadPaperRun(id)} />
-      </section>
+      </section> : null}
 
-      <DetailPanel paperRun={selectedPaperRun} backtest={selectedBacktest} loading={detailLoading} />
+      {!readOnly ? <DetailPanel paperRun={selectedPaperRun} backtest={selectedBacktest} loading={detailLoading} /> : null}
     </div>
   );
 }
@@ -1051,7 +1056,7 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
           <Server className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-bold text-slate-950">データ収集・検証基盤</h2>
         </div>
-        <span className="text-xs font-bold text-muted-foreground">{readOnly ? "公開時点" : `${healthyPipelines}/${snapshot?.pipelines.length ?? 5} 稼働`}</span>
+        <span className="text-xs font-bold text-muted-foreground">{readOnly ? "公開時点" : `${healthyPipelines}/${snapshot?.pipelines.length ?? 4} 稼働`}</span>
       </div>
       <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
         <MonitorMetric label="蓄積データ" value={formatCompact(snapshot?.collection.totalRecords)} note={`24時間 +${formatCompact(snapshot?.collection.last24Hours)}`} />
@@ -1069,7 +1074,7 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
           note={synchronizedQuality ? "48時間で品質判定" : relativeTime(snapshot?.collection.latestAt)}
         />
       </div>
-      <div className="grid grid-cols-2 border-t sm:grid-cols-5 sm:divide-x sm:divide-border">
+      <div className="grid grid-cols-2 border-t sm:grid-cols-4 sm:divide-x sm:divide-border">
         {(snapshot?.pipelines ?? fallbackPipelines).map((pipeline) => (
           <div key={pipeline.id} className="flex items-center justify-between gap-2 border-b px-3 py-2.5 odd:border-r sm:border-b-0 sm:border-r-0 sm:px-4 sm:py-3">
             <div className="flex min-w-0 items-center gap-2">
@@ -1216,8 +1221,7 @@ const fallbackPipelines = [
   { id: "polymarket", label: "価格同期収集", cadence: "1分ごと", status: "waiting" as const },
   { id: "hyperliquid", label: "相場データ収集", cadence: "1分ごと", status: "waiting" as const },
   { id: "backtest", label: "モデル再検証", cadence: "6時間ごと", status: "waiting" as const },
-  { id: "paper", label: "Poly仮想運用", cadence: "5分ごと", status: "waiting" as const },
-  { id: "combined-shadow", label: "組み合わせ市場確認", cadence: "5分ごと", status: "waiting" as const },
+  { id: "forward-experiment", label: "固定フォワード検証", cadence: "5分ごと", status: "waiting" as const },
 ];
 
 const fallbackReadinessGates: MonitoringSnapshot["tradeReadiness"]["gates"] = [
