@@ -95,12 +95,58 @@ type MonitoringSnapshot = {
     currentStage: "backtest" | "shadow";
     realTradingEnabled: boolean;
     combinedPaperRunning: boolean;
-    hyperliquidOrderConnection: "not_connected";
+    hyperliquidOrderConnection: "not_installed" | "connector_ready" | "testnet_ready" | "testnet_armed";
     gates: Array<{
-      id: "data" | "edge" | "shadow" | "live";
+      id: "data" | "edge" | "shadow" | "testnet" | "live";
       label: string;
-      status: "ready" | "attention" | "blocked" | "not_started" | "locked";
+      status: "ready" | "running" | "attention" | "blocked" | "not_started" | "locked";
     }>;
+  };
+  combinedShadow: {
+    status: string;
+    startedAt: string | null;
+    updatedAt: string | null;
+    initialEquity: number | null;
+    equity: number | null;
+    returnPct: number | null;
+    cash: number | null;
+    realizedPnl: number | null;
+    openPositions: Array<{
+      asset: string;
+      side: "LONG" | "SHORT";
+      quantity: number;
+      entryPrice: number;
+      markPrice: number;
+      signalZ: number;
+      openedAt: string;
+      exitAt: string;
+    }>;
+    trades: number;
+    wins: number;
+    winRate: number | null;
+    maxDrawdownPct: number | null;
+    riskStatus: string;
+    emergencyStopped: boolean;
+    minimumSignalZ: number | null;
+    latestDecision: {
+      action: string;
+      reason: string;
+      asset: string | null;
+      signalZ: number | null;
+      spotPrice: number | null;
+      targetPrice: number | null;
+      observedAt: string;
+    } | null;
+    testnet: {
+      installed: boolean;
+      accountConfigured: boolean;
+      apiWalletConfigured: boolean;
+      enabled: boolean;
+      autoMirrorEnabled: boolean;
+      ready: boolean;
+      maximumNotionalUsd: number;
+      mainnetSupported: false;
+    };
   };
   polymarket: { snapshots: number; markets: number; latestAt: string | null; backtestRuns: number; backtestPoints: number };
   model: {
@@ -353,6 +399,20 @@ export function PaperTradingDashboardClient() {
     }
   }
 
+  async function controlCombinedShadow(action: "tick" | "emergency-stop" | "resume") {
+    setLoading(true);
+    setMessage(action === "tick" ? "組み合わせ仮想売買を更新しています…" : action === "resume" ? "仮想売買を再開しています…" : "仮想売買を緊急停止しています…");
+    try {
+      await fetchLocalApi("/api/combined-trading", { method: "POST", body: JSON.stringify({ action }) });
+      await refresh();
+      setMessage(action === "tick" ? "組み合わせ仮想売買を更新しました" : action === "resume" ? "仮想売買を再開しました" : "仮想売買を緊急停止しました");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "組み合わせ仮想売買の操作に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function tickRun() {
     if (!activeRun) return;
     setLoading(true);
@@ -419,6 +479,8 @@ export function PaperTradingDashboardClient() {
 
       <TradingPurposePanel snapshot={monitoring} />
 
+      <CombinedShadowPanel snapshot={monitoring} />
+
       <ModelSummaryPanel monitoring={monitoring} />
 
       <PaperExperimentPanel snapshot={monitoring} />
@@ -435,6 +497,14 @@ export function PaperTradingDashboardClient() {
             <Button onClick={() => void runModelEvaluation()} disabled={loading || readOnly}><Target className="h-4 w-4" />モデルを再検証</Button>
             <Button variant="secondary" onClick={() => void collectSnapshot()} disabled={loading || readOnly}><Database className="h-4 w-4" />市場データを保存</Button>
             <Button variant="outline" onClick={() => void refresh()} disabled={loading}><RefreshCw className="h-4 w-4" />画面を更新</Button>
+          </div>
+          <div className="flex flex-wrap gap-2 border-t pt-4">
+            <Button variant="secondary" size="sm" onClick={() => void controlCombinedShadow("tick")} disabled={loading || readOnly}><RefreshCw className="h-4 w-4" />組み合わせを今すぐ更新</Button>
+            {monitoring?.combinedShadow.emergencyStopped ? (
+              <Button variant="outline" size="sm" onClick={() => void controlCombinedShadow("resume")} disabled={loading || readOnly}><Play className="h-4 w-4" />仮想売買を再開</Button>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => void controlCombinedShadow("emergency-stop")} disabled={loading || readOnly}><Square className="h-4 w-4" />組み合わせを緊急停止</Button>
+            )}
           </div>
           <details className="border-t pt-4">
             <summary className="cursor-pointer text-sm font-bold text-slate-700">銘柄別の検証</summary>
@@ -479,15 +549,16 @@ export function PaperTradingDashboardClient() {
 
 function TradingPurposePanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
   const gates = snapshot?.tradeReadiness?.gates ?? fallbackReadinessGates;
+  const shadowRunning = snapshot?.tradeReadiness.currentStage === "shadow";
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="取引モデルの仕組みと現在地">
-      <div className="grid gap-3 border-b border-amber-200 bg-amber-50 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
+      <div className={`grid gap-3 border-b px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5 ${shadowRunning ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
         <div className="flex min-w-0 items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-800"><AlertCircle className="h-5 w-5" /></span>
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${shadowRunning ? "bg-sky-100 text-sky-700" : "bg-amber-100 text-amber-800"}`}>{shadowRunning ? <Activity className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}</span>
           <div>
-            <p className="text-xs font-bold text-amber-800">現在地: 2. バックテスト</p>
-            <p className="mt-1 text-base font-bold text-slate-950">優位性が確認できるまで、実取引は行いません</p>
-            <p className="mt-1 text-xs leading-5 text-slate-600">未使用期間のテストで採用条件に届かず、Hyperliquidへの注文は停止しています。</p>
+            <p className={`text-xs font-bold ${shadowRunning ? "text-sky-700" : "text-amber-800"}`}>現在地: {shadowRunning ? "3. 組み合わせ仮想売買" : "2. バックテスト"}</p>
+            <p className="mt-1 text-base font-bold text-slate-950">{shadowRunning ? "実資金なしで売買判断を継続記録中" : "優位性が確認できるまで、実取引は行いません"}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">{shadowRunning ? "Polymarketの予測からHyperliquidの売買を仮想実行。採用条件を満たすまでは実注文を止めます。" : "未使用期間のテストで採用条件に届かず、Hyperliquidへの注文は停止しています。"}</p>
           </div>
         </div>
         <span className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 text-xs font-bold text-white"><LockKeyhole className="h-4 w-4" />実取引 OFF</span>
@@ -499,15 +570,15 @@ function TradingPurposePanel({ snapshot }: { snapshot: MonitoringSnapshot | null
           <ArrowRight className="h-5 w-5 rotate-90 self-center justify-self-center text-slate-300 md:rotate-0" />
           <FlowStep icon={BrainCircuit} number="2" title="方向を決める" source="予測モデル" detail="買い・売り・見送り" state="検証中" tone="watch" />
           <ArrowRight className="h-5 w-5 rotate-90 self-center justify-self-center text-slate-300 md:rotate-0" />
-          <FlowStep icon={TrendingUp} number="3" title="注文する" source="Hyperliquid" detail="ロング・ショート" state="未接続" tone="neutral" />
+          <FlowStep icon={TrendingUp} number="3" title="注文する" source="Hyperliquid" detail="ロング・ショート" state={shadowRunning ? "仮想稼働" : "未開始"} tone={shadowRunning ? "watch" : "neutral"} />
         </div>
       </div>
-      <div className="grid grid-cols-2 border-t sm:grid-cols-4">
+      <div className="grid grid-cols-2 border-t sm:grid-cols-5">
         {gates.map((gate, index) => (
           <div key={gate.id} className="flex min-w-0 items-center gap-2 border-b border-r p-3 last:border-r-0 sm:border-b-0 sm:p-4">
             <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${readinessStepClass(gate.status)}`}>{gate.status === "ready" ? <CheckCircle2 className="h-4 w-4" /> : index + 1}</span>
             <div className="min-w-0">
-              <p className="truncate text-xs font-bold text-slate-800">{gate.label}</p>
+              <p className="break-words text-xs font-bold leading-4 text-slate-800">{gate.label}</p>
               <p className="mt-0.5 text-[10px] font-semibold text-muted-foreground">{readinessStatusLabel(gate.status)}</p>
             </div>
           </div>
@@ -530,6 +601,64 @@ function FlowStep({ icon: Icon, number, title, source, detail, state, tone }: { 
         <p className="mt-0.5 truncate text-xs font-semibold text-slate-600">{source} / {detail}</p>
       </div>
     </div>
+  );
+}
+
+function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
+  const shadow = snapshot?.combinedShadow;
+  const running = shadow?.status === "running" && !shadow.emergencyStopped;
+  const pnlSignal = getProfitSignal(shadow?.returnPct);
+  const DecisionIcon = running ? Activity : AlertCircle;
+  const position = shadow?.openPositions[0];
+  const latest = shadow?.latestDecision;
+  const decisionLabel = formatShadowAction(latest?.action);
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="組み合わせ仮想売買の現在成績">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
+        <div className="flex items-center gap-2">
+          <DecisionIcon className={`h-4 w-4 ${running ? "text-emerald-600" : "text-amber-600"}`} />
+          <h2 className="text-sm font-bold text-slate-950">組み合わせ仮想売買</h2>
+        </div>
+        <span className={`rounded-sm px-2 py-1 text-[11px] font-bold ${running ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{running ? "5分ごとに稼働" : shadow?.emergencyStopped ? "緊急停止中" : "開始待ち"}</span>
+      </div>
+      <div className="grid lg:grid-cols-[minmax(250px,0.8fr)_minmax(0,1.5fr)]">
+        <div className={`border-b p-5 lg:border-b-0 lg:border-r sm:p-6 ${toneSoftClass(pnlSignal.tone)}`}>
+          <p className="text-xs font-bold text-muted-foreground">仮想資金の現在損益</p>
+          <p className={`mt-3 text-4xl font-bold leading-none sm:text-5xl ${pnlSignal.tone === "good" ? "text-emerald-700" : pnlSignal.tone === "bad" ? "text-rose-700" : "text-slate-950"}`}>{formatSignedPct(shadow?.returnPct)}</p>
+          <div className="mt-4 flex items-center justify-between gap-3 text-xs font-semibold text-slate-600">
+            <span>残高 {formatUsd(shadow?.equity)}</span>
+            <span>実資金 $0</span>
+          </div>
+          <VisualMeter tone={pnlSignal.tone} value={profitMeter(shadow?.returnPct)} className="mt-4" />
+        </div>
+        <div className="grid min-w-0">
+          <div className="grid grid-cols-3 divide-x divide-border">
+            <CompactMetric label="完了取引" value={`${shadow?.trades ?? 0}回`} />
+            <CompactMetric label="勝率" value={shadow?.winRate === null || shadow?.winRate === undefined ? "未判定" : formatPct(shadow.winRate)} />
+            <CompactMetric label="最大下落" value={formatPct(shadow?.maxDrawdownPct)} />
+          </div>
+          <div className="grid gap-3 border-t bg-slate-50 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-sm bg-white px-2 py-1 text-[10px] font-bold text-slate-700 ring-1 ring-border">直近の判断</span>
+                <span className="text-sm font-bold text-slate-950">{decisionLabel}</span>
+              </div>
+              <p className="mt-2 break-words text-xs leading-5 text-slate-600">{latest?.reason ?? "最初の市場確認を待っています"}</p>
+            </div>
+            <div className="text-left sm:text-right">
+              <p className="text-[10px] font-bold text-muted-foreground">現在の保有</p>
+              <p className="mt-1 text-sm font-bold text-slate-950">{position ? `${position.asset} ${position.side === "LONG" ? "ロング" : "ショート"}` : "なし"}</p>
+              <p className="mt-0.5 text-[10px] font-semibold text-muted-foreground">{latest?.observedAt ? relativeTime(latest.observedAt) : "更新待ち"}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-5">
+        <span>判定基準: シグナル強度 {formatNumber(shadow?.minimumSignalZ, 2)}以上 / 同時保有 1件</span>
+        <span>{shadow?.testnet.ready ? shadow.testnet.autoMirrorEnabled ? "テストネット連動: 待機中" : "テストネット接続可" : "テストネット: 設定待ち"}</span>
+      </div>
+    </section>
   );
 }
 
@@ -574,7 +703,7 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
           <Server className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-bold text-slate-950">データ収集・検証基盤</h2>
         </div>
-        <span className="text-xs font-bold text-muted-foreground">{readOnly ? "公開時点" : `${healthyPipelines}/${snapshot?.pipelines.length ?? 4} 稼働`}</span>
+        <span className="text-xs font-bold text-muted-foreground">{readOnly ? "公開時点" : `${healthyPipelines}/${snapshot?.pipelines.length ?? 5} 稼働`}</span>
       </div>
       <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
         <MonitorMetric label="蓄積データ" value={formatCompact(snapshot?.collection.totalRecords)} note={`24時間 +${formatCompact(snapshot?.collection.last24Hours)}`} />
@@ -582,12 +711,12 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
         <MonitorMetric label="最終テスト" value={`${snapshot?.model.testedEvents ?? 0}件`} note="未使用期間で評価" />
         <MonitorMetric label="連続蓄積" value={formatElapsed(snapshot?.collection.startedAt)} note={relativeTime(snapshot?.collection.latestAt)} />
       </div>
-      <div className="grid grid-cols-2 border-t sm:grid-cols-4 sm:divide-x sm:divide-border">
+      <div className="grid grid-cols-2 border-t sm:grid-cols-5 sm:divide-x sm:divide-border">
         {(snapshot?.pipelines ?? fallbackPipelines).map((pipeline) => (
           <div key={pipeline.id} className="flex items-center justify-between gap-2 border-b px-3 py-2.5 odd:border-r sm:border-b-0 sm:border-r-0 sm:px-4 sm:py-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${readOnly ? "bg-slate-300" : pipeline.status === "healthy" ? "bg-emerald-500" : pipeline.status === "error" ? "bg-rose-500" : "bg-amber-400"}`} />
-              <span className="truncate text-xs font-bold text-slate-800">{pipeline.label}</span>
+              <span className="break-words text-[11px] font-bold leading-4 text-slate-800">{pipeline.label}</span>
             </div>
             <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">{pipeline.cadence}</span>
           </div>
@@ -685,12 +814,14 @@ const fallbackPipelines = [
   { id: "hyperliquid", label: "相場データ収集", cadence: "5分ごと", status: "waiting" as const },
   { id: "backtest", label: "モデル再検証", cadence: "6時間ごと", status: "waiting" as const },
   { id: "paper", label: "Poly仮想運用", cadence: "5分ごと", status: "waiting" as const },
+  { id: "combined-shadow", label: "組み合わせ仮想売買", cadence: "5分ごと", status: "waiting" as const },
 ];
 
 const fallbackReadinessGates: MonitoringSnapshot["tradeReadiness"]["gates"] = [
   { id: "data", label: "データ収集", status: "attention" },
   { id: "edge", label: "優位性確認", status: "blocked" },
   { id: "shadow", label: "組み合わせ仮想売買", status: "not_started" },
+  { id: "testnet", label: "テストネット", status: "not_started" },
   { id: "live", label: "実取引", status: "locked" },
 ];
 
@@ -1079,6 +1210,7 @@ function profitMeter(value: number | null | undefined) {
 function readinessStatusLabel(status: MonitoringSnapshot["tradeReadiness"]["gates"][number]["status"]) {
   const labels = {
     ready: "完了",
+    running: "稼働中",
     attention: "確認中",
     blocked: "未合格",
     not_started: "未開始",
@@ -1089,6 +1221,7 @@ function readinessStatusLabel(status: MonitoringSnapshot["tradeReadiness"]["gate
 
 function readinessStepClass(status: MonitoringSnapshot["tradeReadiness"]["gates"][number]["status"]) {
   if (status === "ready") return "bg-emerald-100 text-emerald-700";
+  if (status === "running") return "bg-sky-100 text-sky-700";
   if (status === "attention") return "bg-sky-100 text-sky-700";
   if (status === "blocked") return "bg-amber-100 text-amber-800";
   return "bg-slate-100 text-slate-500";
@@ -1176,6 +1309,19 @@ function formatCombinedStrategy(strategy: string | null | undefined) {
   if (strategy === "no-trade guard") return "取引見送り";
   const threshold = strategy.match(/[0-9.]+$/)?.[0];
   return threshold ? `シグナル強度 ${threshold}以上` : strategy;
+}
+
+function formatShadowAction(action: string | null | undefined) {
+  const labels: Record<string, string> = {
+    OPEN_LONG: "ロングを仮想発注",
+    OPEN_SHORT: "ショートを仮想発注",
+    HOLD: "保有を継続",
+    WAIT: "条件待ち",
+    NO_SIGNAL: "対象市場待ち",
+    SKIP: "重複のため見送り",
+    BLOCKED: "リスク制限で停止",
+  };
+  return action ? labels[action] ?? action : "確認待ち";
 }
 
 function modelFeatureCoverage(snapshot: MonitoringSnapshot | null) {

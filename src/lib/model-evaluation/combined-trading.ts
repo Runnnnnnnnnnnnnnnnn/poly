@@ -188,10 +188,26 @@ function simulate(signals: TradeSignal[], candidate: CombinedStrategyCandidate, 
 }
 
 function impliedTerminalMedian(sample: EvaluationSample, volatility: number) {
-  if (sample.thresholdKind !== "above" && sample.thresholdKind !== "below") return null;
-  const threshold = sample.thresholdKind === "above" ? sample.thresholdLower : sample.thresholdUpper;
+  return impliedTerminalMedianForCondition(
+    sample.thresholdKind,
+    sample.thresholdLower,
+    sample.thresholdUpper,
+    sample.marketProbability,
+    volatility,
+  );
+}
+
+export function impliedTerminalMedianForCondition(
+  kind: EvaluationSample["thresholdKind"],
+  lower: number | null | undefined,
+  upper: number | null | undefined,
+  marketProbability: number,
+  volatility: number,
+) {
+  if (kind !== "above" && kind !== "below") return null;
+  const threshold = kind === "above" ? lower : upper;
   if (typeof threshold !== "number" || !Number.isFinite(threshold) || threshold <= 0) return null;
-  const probabilityBelow = sample.thresholdKind === "above" ? 1 - sample.marketProbability : sample.marketProbability;
+  const probabilityBelow = kind === "above" ? 1 - marketProbability : marketProbability;
   const quantile = inverseNormalCdf(clamp(probabilityBelow, 0.01, 0.99));
   return threshold / Math.exp(volatility * quantile);
 }

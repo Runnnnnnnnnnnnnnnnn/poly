@@ -1,18 +1,18 @@
 {
   "status": "live",
-  "generatedAt": "2026-07-17T06:34:59.111Z",
+  "generatedAt": "2026-07-17T07:23:45.695Z",
   "collection": {
     "startedAt": "2026-07-13T02:42:17.427Z",
-    "latestAt": "2026-07-17T06:34:01.116Z",
-    "totalRecords": 20392,
-    "last24Hours": 18721
+    "latestAt": "2026-07-17T07:19:08.656Z",
+    "totalRecords": 21264,
+    "last24Hours": 19584
   },
   "tradeReadiness": {
     "objective": "Polymarketの予測をシグナルにしてHyperliquidで売買する",
-    "currentStage": "backtest",
+    "currentStage": "shadow",
     "realTradingEnabled": false,
-    "combinedPaperRunning": false,
-    "hyperliquidOrderConnection": "not_connected",
+    "combinedPaperRunning": true,
+    "hyperliquidOrderConnection": "connector_ready",
     "gates": [
       {
         "id": "data",
@@ -27,7 +27,12 @@
       {
         "id": "shadow",
         "label": "組み合わせ仮想売買",
-        "status": "not_started"
+        "status": "running"
+      },
+      {
+        "id": "testnet",
+        "label": "テストネット",
+        "status": "attention"
       },
       {
         "id": "live",
@@ -36,10 +41,48 @@
       }
     ]
   },
+  "combinedShadow": {
+    "status": "running",
+    "startedAt": "2026-07-17T07:10:09.764Z",
+    "updatedAt": "2026-07-17T07:18:54.203Z",
+    "initialEquity": 10000,
+    "equity": 10000,
+    "returnPct": 0,
+    "cash": 10000,
+    "realizedPnl": 0,
+    "openPositions": [],
+    "trades": 0,
+    "wins": 0,
+    "winRate": null,
+    "maxDrawdownPct": 0,
+    "riskStatus": "NORMAL",
+    "emergencyStopped": false,
+    "minimumSignalZ": 0.5,
+    "latestDecision": {
+      "action": "NO_SIGNAL",
+      "reason": "24時間前後で終了する価格市場がありません",
+      "asset": null,
+      "signalZ": null,
+      "spotPrice": null,
+      "targetPrice": null,
+      "observedAt": "2026-07-17T07:18:54.203Z"
+    },
+    "testnet": {
+      "environment": "testnet",
+      "installed": true,
+      "accountConfigured": false,
+      "apiWalletConfigured": false,
+      "enabled": false,
+      "autoMirrorEnabled": false,
+      "ready": false,
+      "maximumNotionalUsd": 25,
+      "mainnetSupported": false
+    }
+  },
   "polymarket": {
-    "snapshots": 17784,
+    "snapshots": 18584,
     "markets": 177,
-    "latestAt": "2026-07-17T06:33:32.367Z",
+    "latestAt": "2026-07-17T07:18:54.789Z",
     "backtestRuns": 7,
     "backtestPoints": 781
   },
@@ -68,7 +111,7 @@
       0
     ],
     "statisticallyPositive": false,
-    "completedAt": "2026-07-17T06:13:46.913Z",
+    "completedAt": "2026-07-17T07:19:29.146Z",
     "datasetStartedAt": "2024-03-01T00:00:00.000Z",
     "datasetEndedAt": "2026-07-16T16:00:00.000Z",
     "trades": 0,
@@ -77,14 +120,14 @@
     "winRate": null,
     "averageTradeReturn": null,
     "maxDrawdownPct": 0,
-    "aiPredictions": 154,
+    "aiPredictions": 160,
     "aiResolved": 0,
     "aiBrierScore": null,
     "marketBrierScore": null,
     "aiImprovement": null,
     "paperRuns": 6,
     "runningPaperRuns": 1,
-    "paperSnapshots": 943,
+    "paperSnapshots": 953,
     "paperOrders": 5,
     "paperFills": 5,
     "paperReturnPct": 0
@@ -95,12 +138,12 @@
     "status": "running",
     "realMoney": false,
     "initialCash": 10000,
-    "equity": 9952.50769304321,
-    "returnPct": -0.004749230695679008,
-    "unrealizedPnl": -47.49230695679171,
+    "equity": 9949.920060633416,
+    "returnPct": -0.005007993936658406,
+    "unrealizedPnl": -50.07993936658568,
     "openPositions": 4,
     "fills": 4,
-    "updatedAt": "2026-07-17T06:34:01.116Z"
+    "updatedAt": "2026-07-17T07:19:08.656Z"
   },
   "backtestQuality": {
     "status": "inconclusive",
@@ -144,53 +187,53 @@
     ]
   },
   "hyperliquid": {
-    "snapshots": 730,
-    "latestAt": "2026-07-17T06:33:32.055Z",
+    "snapshots": 780,
+    "latestAt": "2026-07-17T07:18:54.793Z",
     "assets": [
       {
         "asset": "BTC",
-        "price": 62929.5,
-        "change24hPct": -0.028985619059375356,
-        "dayVolume": 1959004968.630139,
-        "openInterestUsd": 2509155702.7995,
+        "price": 62894.5,
+        "change24hPct": -0.026973297441133748,
+        "dayVolume": 1975646107.420057,
+        "openInterestUsd": 2519953526.9487596,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-17T06:33:32.055Z"
+        "capturedAt": "2026-07-17T07:18:54.793Z"
       },
       {
         "asset": "ETH",
-        "price": 1834.05,
-        "change24hPct": -0.04620625097508979,
-        "dayVolume": 1042707843.88445,
-        "openInterestUsd": 1741687712.1307995,
+        "price": 1829.65,
+        "change24hPct": -0.04745418575593496,
+        "dayVolume": 1036760151.71838,
+        "openInterestUsd": 1738801510.9972806,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-17T06:33:32.055Z"
+        "capturedAt": "2026-07-17T07:18:54.793Z"
       },
       {
         "asset": "SOL",
-        "price": 74.6505,
-        "change24hPct": -0.03468764951573078,
-        "dayVolume": 195662996.8593399,
-        "openInterestUsd": 328371297.22800016,
-        "fundingRate": 0.000011512,
-        "capturedAt": "2026-07-17T06:33:32.055Z"
+        "price": 74.5055,
+        "change24hPct": -0.0350778356256638,
+        "dayVolume": 195821275.1967002,
+        "openInterestUsd": 329376964.1596,
+        "fundingRate": 0.0000125,
+        "capturedAt": "2026-07-17T07:18:54.793Z"
       },
       {
         "asset": "XRP",
-        "price": 1.08565,
-        "change24hPct": -0.02571120883065603,
-        "dayVolume": 19225987.62869999,
-        "openInterestUsd": 100834137.852,
-        "fundingRate": 0.0000059784,
-        "capturedAt": "2026-07-17T06:33:32.055Z"
+        "price": 1.08365,
+        "change24hPct": -0.02602013302175088,
+        "dayVolume": 19350955.8919,
+        "openInterestUsd": 100719991.512,
+        "fundingRate": 0.0000125,
+        "capturedAt": "2026-07-17T07:18:54.793Z"
       },
       {
         "asset": "HYPE",
-        "price": 59.1935,
-        "change24hPct": -0.11331226220078483,
-        "dayVolume": 600703365.1998297,
-        "openInterestUsd": 1335205129.2040792,
+        "price": 59.005,
+        "change24hPct": -0.11651968197403695,
+        "dayVolume": 604751688.2568195,
+        "openInterestUsd": 1335427504.6575189,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-17T06:33:32.055Z"
+        "capturedAt": "2026-07-17T07:18:54.793Z"
       }
     ]
   },
@@ -200,32 +243,40 @@
       "label": "Polymarket収集",
       "cadence": "5分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-17T06:33:33.105Z",
-      "records": 11598
+      "lastSuccessAt": "2026-07-17T07:18:54.972Z",
+      "records": 12398
     },
     {
       "id": "hyperliquid",
       "label": "相場データ収集",
       "cadence": "5分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-17T06:33:32.180Z",
-      "records": 730
+      "lastSuccessAt": "2026-07-17T07:18:54.796Z",
+      "records": 780
     },
     {
       "id": "backtest",
       "label": "モデル再検証",
       "cadence": "6時間ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-17T01:49:55.991Z",
-      "records": 706
+      "lastSuccessAt": "2026-07-17T07:19:29.149Z",
+      "records": 1188
     },
     {
       "id": "paper",
       "label": "Poly仮想運用",
       "cadence": "5分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-17T06:34:01.205Z",
-      "records": 144
+      "lastSuccessAt": "2026-07-17T07:19:08.662Z",
+      "records": 154
+    },
+    {
+      "id": "combined-shadow",
+      "label": "組み合わせ仮想売買",
+      "cadence": "5分ごと",
+      "status": "healthy",
+      "lastSuccessAt": "2026-07-17T07:18:56.264Z",
+      "records": 3
     }
   ]
 }

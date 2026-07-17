@@ -1,6 +1,7 @@
 import type { BacktestRun, HyperliquidSnapshot, PipelineHeartbeat } from "@prisma/client";
 
 import type { BacktestMetrics } from "@/src/lib/backtest/types";
+import { getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
 
@@ -30,6 +31,10 @@ export async function getMonitoringSnapshot() {
     heartbeats,
     latestHyperliquid,
     latestEvaluation,
+    combinedRun,
+    combinedDecisionCount,
+    combinedSnapshotAggregate,
+    combinedSnapshotsLast24Hours,
   ] = await Promise.all([
     prisma.marketSnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
     prisma.marketSnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
@@ -48,6 +53,10 @@ export async function getMonitoringSnapshot() {
     prisma.pipelineHeartbeat.findMany({ orderBy: { id: "asc" } }),
     Promise.all(monitoredAssets.map((asset) => prisma.hyperliquidSnapshot.findFirst({ where: { asset }, orderBy: { capturedAt: "desc" } }))),
     prisma.modelEvaluationRun.findFirst({ where: { status: "completed" }, orderBy: { completedAt: "desc" } }),
+    prisma.combinedShadowRun.findFirst({ orderBy: { startedAt: "desc" } }),
+    prisma.combinedShadowDecision.count(),
+    prisma.combinedShadowEquitySnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
+    prisma.combinedShadowEquitySnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
   ]);
 
   const usableBacktests = backtestRuns
@@ -73,6 +82,15 @@ export async function getMonitoringSnapshot() {
         prisma.paperFill.count({ where: { runId: latestRunningPaper.id } }),
       ])
     : [null, 0, 0];
+  const [latestCombinedDecision, latestCombinedSnapshot, combinedOpenPositions, combinedClosedTrades, combinedWinningTrades] = combinedRun
+    ? await Promise.all([
+        prisma.combinedShadowDecision.findFirst({ where: { runId: combinedRun.id }, orderBy: { observedAt: "desc" } }),
+        prisma.combinedShadowEquitySnapshot.findFirst({ where: { runId: combinedRun.id }, orderBy: { capturedAt: "desc" } }),
+        prisma.combinedShadowPosition.findMany({ where: { runId: combinedRun.id, status: "OPEN" }, orderBy: { openedAt: "asc" } }),
+        prisma.combinedShadowPosition.count({ where: { runId: combinedRun.id, status: "CLOSED" } }),
+        prisma.combinedShadowPosition.count({ where: { runId: combinedRun.id, status: "CLOSED", realizedPnl: { gt: 0 } } }),
+      ])
+    : [null, null, [], 0, 0];
   const latestPaperMetrics = parseJson<Record<string, number | null>>(latestCompletedPaper?.metricsJson ?? null);
   const newestDataAt = latestDate(polymarketAggregate._max.capturedAt, hyperAggregate._max.capturedAt, paperEquityAggregate._max.capturedAt);
   const oldestDataAt = earliestDate(polymarketAggregate._min.capturedAt, hyperAggregate._min.capturedAt, paperEquityAggregate._min.capturedAt);
@@ -84,6 +102,9 @@ export async function getMonitoringSnapshot() {
   const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
+  const combinedConfig = parseJson<{ minimumSignalZ?: number }>(combinedRun?.configJson ?? null);
+  const executionReadiness = getHyperliquidExecutionReadiness();
+  const combinedShadowRunning = combinedRun?.status === "running";
 
   const inferredPipelines = pipelineStatuses({
     now,
@@ -93,6 +114,7 @@ export async function getMonitoringSnapshot() {
     backtestAt: latestBacktest?.run.completedAt ?? null,
     evaluationAt: latestEvaluation?.completedAt ?? null,
     paperAt: paperEquityAggregate._max.capturedAt,
+    combinedAt: combinedSnapshotAggregate._max.capturedAt,
   });
 
   return {
@@ -101,21 +123,61 @@ export async function getMonitoringSnapshot() {
     collection: {
       startedAt: oldestDataAt?.toISOString() ?? null,
       latestAt: newestDataAt?.toISOString() ?? null,
-      totalRecords: polymarketAggregate._count._all + hyperAggregate._count._all + backtestPointCount + paperEquityAggregate._count._all + aiRows.length,
-      last24Hours: polymarketLast24Hours + hyperLast24Hours + paperEquityLast24Hours,
+      totalRecords: polymarketAggregate._count._all + hyperAggregate._count._all + backtestPointCount + paperEquityAggregate._count._all + aiRows.length + combinedDecisionCount + combinedSnapshotAggregate._count._all,
+      last24Hours: polymarketLast24Hours + hyperLast24Hours + paperEquityLast24Hours + combinedSnapshotsLast24Hours,
     },
     tradeReadiness: {
       objective: "Polymarketの予測をシグナルにしてHyperliquidで売買する",
-      currentStage: combinedEdgeConfirmed ? "shadow" : "backtest",
+      currentStage: combinedShadowRunning ? "shadow" : "backtest",
       realTradingEnabled: false,
-      combinedPaperRunning: false,
-      hyperliquidOrderConnection: "not_connected",
+      combinedPaperRunning: combinedShadowRunning,
+      hyperliquidOrderConnection: executionReadiness.ready
+        ? executionReadiness.autoMirrorEnabled ? "testnet_armed" : "testnet_ready"
+        : executionReadiness.installed ? "connector_ready" : "not_installed",
       gates: [
         { id: "data", label: "データ収集", status: status === "live" ? "ready" : "attention" },
         { id: "edge", label: "優位性確認", status: combinedEdgeConfirmed ? "ready" : "blocked" },
-        { id: "shadow", label: "組み合わせ仮想売買", status: "not_started" },
+        { id: "shadow", label: "組み合わせ仮想売買", status: combinedShadowRunning ? "running" : "not_started" },
+        { id: "testnet", label: "テストネット", status: executionReadiness.ready ? "ready" : executionReadiness.installed ? "attention" : "not_started" },
         { id: "live", label: "実取引", status: "locked" },
       ],
+    },
+    combinedShadow: {
+      status: combinedRun?.status ?? "not_started",
+      startedAt: combinedRun?.startedAt.toISOString() ?? null,
+      updatedAt: latestCombinedSnapshot?.capturedAt.toISOString() ?? null,
+      initialEquity: combinedRun?.initialEquity ?? null,
+      equity: latestCombinedSnapshot?.equity ?? combinedRun?.equity ?? null,
+      returnPct: combinedRun && combinedRun.initialEquity > 0 ? combinedRun.equity / combinedRun.initialEquity - 1 : null,
+      cash: combinedRun?.cash ?? null,
+      realizedPnl: combinedRun?.realizedPnl ?? null,
+      openPositions: combinedOpenPositions.map((position) => ({
+        asset: position.asset,
+        side: position.side,
+        quantity: position.quantity,
+        entryPrice: position.entryPrice,
+        markPrice: position.markPrice,
+        signalZ: position.signalZ,
+        openedAt: position.openedAt.toISOString(),
+        exitAt: position.exitAt.toISOString(),
+      })),
+      trades: combinedClosedTrades,
+      wins: combinedWinningTrades,
+      winRate: combinedClosedTrades > 0 ? combinedWinningTrades / combinedClosedTrades : null,
+      maxDrawdownPct: combinedRun?.maxDrawdownPct ?? null,
+      riskStatus: combinedRun?.riskStatus ?? "NOT_STARTED",
+      emergencyStopped: combinedRun?.emergencyStopped ?? false,
+      minimumSignalZ: combinedConfig?.minimumSignalZ ?? null,
+      latestDecision: latestCombinedDecision ? {
+        action: latestCombinedDecision.action,
+        reason: latestCombinedDecision.reason,
+        asset: latestCombinedDecision.asset,
+        signalZ: latestCombinedDecision.signalZ,
+        spotPrice: latestCombinedDecision.spotPrice,
+        targetPrice: latestCombinedDecision.targetPrice,
+        observedAt: latestCombinedDecision.observedAt.toISOString(),
+      } : null,
+      testnet: executionReadiness,
     },
     polymarket: {
       snapshots: polymarketAggregate._count._all,
@@ -209,6 +271,7 @@ function pipelineStatuses(input: {
   backtestAt: Date | null;
   evaluationAt: Date | null;
   paperAt: Date | null;
+  combinedAt: Date | null;
 }) {
   const heartbeatMap = new Map(input.heartbeats.map((item) => [item.id, item]));
   return [
@@ -216,6 +279,7 @@ function pipelineStatuses(input: {
     pipeline("hyperliquid", "相場データ収集", "5分ごと", input.hyperliquidAt, heartbeatMap.get("hyperliquid"), input.now),
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("paper", "Poly仮想運用", "5分ごと", input.paperAt, heartbeatMap.get("paper"), input.now),
+    pipeline("combined-shadow", "組み合わせ仮想売買", "5分ごと", input.combinedAt, heartbeatMap.get("combined-shadow"), input.now),
   ];
 }
 

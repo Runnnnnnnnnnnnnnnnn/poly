@@ -1,6 +1,6 @@
 # Polymarket Watch
 
-世界で注目されている Polymarket テーマと、日本に関係するテーマを見やすく整理するダッシュボードです。情報提供に特化しており、自動売買、注文送信、ウォレット接続、秘密鍵入力、署名処理は実装していません。
+Polymarketの予測をシグナルに変換し、Hyperliquidの価格でバックテストと仮想売買を継続監視するダッシュボードです。実資金を使うメインネット注文は実装していません。任意のHyperliquidテストネット接続だけを、サーバー側の品質・損失制限の内側で利用できます。
 
 ## Stack
 
@@ -72,6 +72,8 @@ DEEPSEEK_API_KEY=""
 DEEPSEEK_BASE_URL="https://api.deepseek.com"
 DEEPSEEK_MODEL="deepseek-v4-flash"
 API_ACCESS_TOKEN="generate-a-long-random-token"
+HYPERLIQUID_TESTNET_ENABLED="0"
+HYPERLIQUID_TESTNET_AUTO_MIRROR="0"
 ```
 
 `API_ACCESS_TOKEN` protects every runtime `/api/*` route. Use a long random value, keep it in `.env`, and regenerate it if a shared URL is exposed. The GitHub Pages version is read-only and displays a static snapshot when the local server is unavailable.
@@ -148,9 +150,22 @@ ASSET=BTC npm run paper:trade
 
 `paper:trade` は live paper run を作成して5分ごとに公開データを評価します。これは実注文ではありません。runtime APIは `API_ACCESS_TOKEN` で保護されます。
 
+## Polymarket → Hyperliquid 組み合わせ検証
+
+常駐workerは、終了約24時間前のPolymarket価格帯を一つのテーマに束ね、暗黙の将来価格とHyperliquid現値の差からロング・ショート・見送りを判定します。仮想残高、手数料、スリッページ、資金調達コスト、最大下落、日次損失、注文判断をSQLiteへ保存します。
+
+Hyperliquid公式Python SDKをテストネット専用環境へ導入する場合:
+
+```sh
+python3 -m venv ~/.polymarket-watch/hyperliquid-venv
+~/.polymarket-watch/hyperliquid-venv/bin/pip install -r requirements-hyperliquid.txt
+```
+
+テストネット連動には、`.env`の`HYPERLIQUID_ACCOUNT_ADDRESS`と専用APIウォレットの`HYPERLIQUID_API_WALLET_PRIVATE_KEY`を設定します。さらに`HYPERLIQUID_TESTNET_ENABLED=1`と`HYPERLIQUID_TESTNET_AUTO_MIRROR=1`が必要です。バックテストの品質判定が合格していない場合は、これらを設定しても新規注文は出ません。メインネット接続はコード上で無効です。
+
 ## 統合起動
 
-画面、Polymarket・Hyperliquidの5分間隔データ収集、6時間間隔の自動バックテスト、仮想運用workerを一つのコマンドで起動できます。二重起動はロックファイルで防止されます。
+画面、Polymarket・Hyperliquidの5分間隔データ収集、6時間間隔の自動バックテスト、Polymarket単体の仮想運用、組み合わせ仮想売買workerを一つのコマンドで起動できます。二重起動はロックファイルで防止されます。
 
 ```sh
 npm run db:push
@@ -177,4 +192,4 @@ npm run service:install
 
 For durable history, move `DATABASE_URL` from SQLite to a managed PostgreSQL database, run the collector as a scheduled worker, and keep raw API responses plus request timestamps in object storage or a warehouse. Do not rely on an in-process timer on serverless hosting because it may be stopped between requests. For public deployment, use a server-capable host such as Render, Fly.io, Railway, or a VPS, put the database and worker in the same deployment environment, add authentication/rate limiting to the backtest and collection routes, and expose only HTTPS. GitHub Pages can host the UI snapshot but cannot execute these runtime API routes.
 
-Automatic trading is not part of the initial version.
+Mainnet automatic trading is not supported. Testnet mirroring is optional, capped, and qualification-gated.

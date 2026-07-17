@@ -256,3 +256,111 @@ model PaperEquitySnapshot {
 
   @@index([runId, capturedAt])
 }
+
+model CombinedShadowRun {
+  id               String                         @id
+  status           String
+  initialEquity    Float
+  cash             Float
+  equity           Float
+  peakEquity       Float
+  maxDrawdownPct   Float                          @default(0)
+  realizedPnl      Float                          @default(0)
+  riskStatus       String                         @default("NORMAL")
+  emergencyStopped Boolean                        @default(false)
+  configJson       String
+  lastDecisionJson String?
+  startedAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+  stoppedAt        DateTime?
+  positions        CombinedShadowPosition[]
+  decisions        CombinedShadowDecision[]
+  snapshots        CombinedShadowEquitySnapshot[]
+  orders           CombinedExecutionOrder[]
+
+  @@index([status, startedAt])
+}
+
+model CombinedShadowPosition {
+  id             String                   @id
+  runId          String
+  eventId        String
+  marketId       String
+  asset          String
+  side           String
+  quantity       Float
+  entryPrice     Float
+  markPrice      Float
+  impliedTarget  Float
+  signalZ        Float
+  entryFee       Float
+  accruedFunding Float                    @default(0)
+  realizedPnl    Float?
+  status         String
+  openedAt       DateTime                 @default(now())
+  exitAt         DateTime
+  closedAt       DateTime?
+  closeReason    String?
+  run            CombinedShadowRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  orders         CombinedExecutionOrder[]
+
+  @@index([runId, status])
+  @@index([eventId, asset])
+}
+
+model CombinedShadowDecision {
+  id          String            @id
+  runId       String
+  eventId     String?
+  marketId    String?
+  asset       String?
+  action      String
+  reason      String
+  probability Float?
+  spotPrice   Float?
+  targetPrice Float?
+  signalZ     Float?
+  threshold   Float
+  observedAt  DateTime          @default(now())
+  run         CombinedShadowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, observedAt])
+  @@index([action, observedAt])
+}
+
+model CombinedShadowEquitySnapshot {
+  id             String            @id
+  runId          String
+  cash           Float
+  positionsPnl   Float
+  equity         Float
+  drawdownPct    Float
+  dailyReturnPct Float
+  capturedAt     DateTime          @default(now())
+  run            CombinedShadowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, capturedAt])
+}
+
+model CombinedExecutionOrder {
+  id             String                  @id
+  runId          String
+  positionId     String?
+  environment    String
+  clientOrderId  String                  @unique
+  asset          String
+  side           String
+  action         String
+  quantity       Float
+  referencePrice Float?
+  status         String
+  reason         String?
+  responseJson   String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  run            CombinedShadowRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  position       CombinedShadowPosition? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+
+  @@index([runId, createdAt])
+  @@index([environment, status])
+}

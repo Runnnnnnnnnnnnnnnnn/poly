@@ -1,0 +1,36 @@
+import { ensureCombinedShadowRun, tickCombinedShadowRun } from "../src/lib/combined-trading/service";
+import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
+
+const intervalMs = Math.max(60_000, Number(process.env.COMBINED_SHADOW_INTERVAL_MS ?? 300_000));
+const config = {
+  initialEquity: Number(process.env.COMBINED_INITIAL_EQUITY ?? 10_000),
+  minimumSignalZ: Number(process.env.COMBINED_MINIMUM_SIGNAL_Z ?? 0.5),
+  positionPct: Number(process.env.COMBINED_POSITION_PCT ?? 0.1),
+  maxPositionNotional: Number(process.env.COMBINED_MAX_NOTIONAL ?? 1_000),
+  maxDailyLossPct: Number(process.env.COMBINED_MAX_DAILY_LOSS_PCT ?? 0.02),
+  maxDrawdownPct: Number(process.env.COMBINED_MAX_DRAWDOWN_PCT ?? 0.05),
+};
+let run = await ensureCombinedShadowRun(config);
+
+async function tick() {
+  try {
+    run = await ensureCombinedShadowRun(config);
+    await markPipelineAttempt("combined-shadow", "組み合わせシグナルを評価中");
+    const status = await tickCombinedShadowRun(run.id);
+    await markPipelineSuccess("combined-shadow", 1, status?.lastDecision?.reason ?? "組み合わせ仮想売買を更新");
+    console.log(JSON.stringify({
+      type: "combined-shadow-tick",
+      runId: run.id,
+      equity: status?.equity,
+      action: status?.lastDecision?.action,
+      openPositions: status?.openPositions.length,
+    }));
+  } catch (error) {
+    await markPipelineError("combined-shadow", error);
+    console.error(error instanceof Error ? error.message : error);
+  }
+}
+
+console.log(`combined shadow run ${run.id} running every ${intervalMs}ms`);
+await tick();
+if (process.env.ONCE !== "1") setInterval(tick, intervalMs);

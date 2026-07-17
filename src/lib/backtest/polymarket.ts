@@ -81,6 +81,25 @@ export async function discoverCryptoMarkets(options: { includeResolved?: boolean
   return Array.from(new Map(all.map((market) => [market.id, market])).values()).slice(0, limit);
 }
 
+export async function discoverActiveCryptoPriceMarkets(limit = 300) {
+  const now = new Date();
+  const url = new URL(`${GAMMA_API}/events`);
+  url.searchParams.set("active", "true");
+  url.searchParams.set("closed", "false");
+  url.searchParams.set("limit", "200");
+  url.searchParams.set("order", "volume24hr");
+  url.searchParams.set("ascending", "false");
+  url.searchParams.set("end_date_min", now.toISOString());
+  const response = await fetchWithTimeout(url.toString(), {}, 20_000);
+  if (!response.ok) throw new Error(`active crypto price events ${response.status}`);
+  const events = z.array(historicalEventSchema).parse(await response.json());
+  const markets = events.flatMap((event) => event.markets
+    .filter((market) => isFixedTerminalPriceQuestion(market.question ?? ""))
+    .map((market) => toCryptoMarket(market, String(event.id)))
+    .filter((market): market is CryptoMarket => Boolean(market && market.asset !== "OTHER" && !market.resolved)));
+  return Array.from(new Map(markets.map((market) => [market.id, market])).values()).slice(0, limit);
+}
+
 export async function discoverHistoricalCryptoEvents(options: { maxEvents?: number; horizonHours?: number; endDateMax?: Date } = {}) {
   const maxEvents = Math.min(300, Math.max(30, options.maxEvents ?? 180));
   const recentTarget = Math.min(40, Math.floor(maxEvents / 4));

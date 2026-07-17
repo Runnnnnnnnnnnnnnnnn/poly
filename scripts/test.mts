@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
-import { evaluateCombinedTrading } from "../src/lib/model-evaluation/combined-trading";
+import { calculateCombinedClose } from "../src/lib/combined-trading/service";
+import { evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { parseTerminalPriceCondition, probabilityForCondition } from "../src/lib/model-evaluation/price-structure";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
@@ -32,6 +33,33 @@ assert.ok(Math.abs(probabilityForCondition(100, 0.1, { kind: "above", lower: 100
 assert.ok(probabilityForCondition(100, 0.1, { kind: "above", lower: 90, upper: null }) > 0.5);
 
 console.log("price structure tests passed");
+
+const bullishTarget = impliedTerminalMedianForCondition("above", 100, null, 0.8, 0.05);
+const bearishTarget = impliedTerminalMedianForCondition("below", null, 100, 0.8, 0.05);
+assert.ok((bullishTarget ?? 0) > 100);
+assert.ok((bearishTarget ?? 200) < 100);
+assert.equal(impliedTerminalMedianForCondition("between", 90, 110, 0.5, 0.05), null);
+
+console.log("live signal inversion tests passed");
+
+const closeCost = {
+  quantity: 10,
+  entryPrice: 100,
+  entryFee: 0.45,
+  openedAt: new Date("2026-01-01T00:00:00Z"),
+  now: new Date("2026-01-02T00:00:00Z"),
+  takerFeePerSide: 0.00045,
+  slippagePerSide: 0.0002,
+  fundingPer24h: 0.0003,
+};
+const longClose = calculateCombinedClose({ ...closeCost, side: "LONG", markPrice: 102 });
+const shortClose = calculateCombinedClose({ ...closeCost, side: "SHORT", markPrice: 98 });
+assert.ok(longClose.realizedPnl > 18);
+assert.ok(shortClose.realizedPnl > 18);
+assert.ok(longClose.realizedPnl < longClose.grossPnl);
+assert.ok(shortClose.realizedPnl < shortClose.grossPnl);
+
+console.log("combined shadow cost tests passed");
 
 const evaluationSamples: EvaluationSample[] = [];
 for (let eventIndex = 0; eventIndex < 80; eventIndex += 1) {
