@@ -36,6 +36,9 @@ async function collectCycle() {
       await markPipelineAttempt("testnet-reconcile", "テストネット口座を照合中");
       try {
         const reconciliation = await reconcileHyperliquidTestnetOrders();
+        if (reconciliation.positionMismatches.length) {
+          throw new Error(`ポジション不一致: ${reconciliation.positionMismatches.map((item) => `${item.asset} DB ${item.expectedSize} / 取引所 ${item.actualSize}`).join(", ")}`);
+        }
         await markPipelineSuccess(
           "testnet-reconcile",
           reconciliation.checkedOrders,

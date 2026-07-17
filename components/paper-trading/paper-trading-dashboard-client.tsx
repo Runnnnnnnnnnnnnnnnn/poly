@@ -272,6 +272,11 @@ type MonitoringSnapshot = {
     latestAt: string | null;
     assets: Array<{ asset: string; price: number; change24hPct: number | null; dayVolume: number; openInterestUsd: number; fundingRate: number; capturedAt: string }>;
   };
+  operations?: {
+    alerts: { status: "healthy" | "waiting" | "error"; message: string; lastSuccessAt: string | null; webhookConfigured: boolean };
+    tunnel: { mode: string; status: "healthy" | "waiting" | "starting"; publicUrl: string | null; fixedUrl: boolean; fallback: boolean; publishedAt: string | null; updatedAt: string | null };
+    backup: { status: "healthy" | "waiting"; encrypted: boolean; copies: number; latestAt: string | null };
+  };
   pipelines: Array<{ id: string; label: string; cadence: string; status: "healthy" | "waiting" | "error"; lastSuccessAt: string | null; records: number }>;
 };
 
@@ -794,6 +799,23 @@ function PaperExperimentPanel({ snapshot }: { snapshot: MonitoringSnapshot | nul
 
 function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapshot | null; readOnly: boolean }) {
   const healthyPipelines = snapshot?.pipelines.filter((pipeline) => pipeline.status === "healthy").length ?? 0;
+  const operationRows = [
+    {
+      label: "異常通知",
+      value: snapshot?.operations?.alerts.status === "healthy" ? "監視中" : snapshot?.operations?.alerts.status === "error" ? "要確認" : "起動待ち",
+      status: snapshot?.operations?.alerts.status ?? "waiting",
+    },
+    {
+      label: "公開接続",
+      value: snapshot?.operations?.tunnel.fixedUrl ? "固定URL" : snapshot?.operations?.tunnel.status === "healthy" ? "自動接続" : "確認中",
+      status: snapshot?.operations?.tunnel.status === "healthy" ? "healthy" : "waiting",
+    },
+    {
+      label: "暗号化保管",
+      value: snapshot?.operations?.backup.status === "healthy" ? `${snapshot.operations.backup.copies}世代` : "確認中",
+      status: snapshot?.operations?.backup.status ?? "waiting",
+    },
+  ] as const;
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="開発稼働状況">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
@@ -817,6 +839,14 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
               <span className="break-words text-[11px] font-bold leading-4 text-slate-800">{pipeline.label}</span>
             </div>
             <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">{pipeline.cadence}</span>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 divide-x divide-border border-t bg-slate-50/70">
+        {operationRows.map((row) => (
+          <div key={row.label} className="flex min-w-0 items-center justify-center gap-2 px-2 py-2.5 sm:px-4">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${row.status === "healthy" ? "bg-emerald-500" : row.status === "error" ? "bg-rose-500" : "bg-amber-400"}`} />
+            <span className="min-w-0 truncate text-[10px] font-bold text-slate-700 sm:text-xs">{row.label} {row.value}</span>
           </div>
         ))}
       </div>

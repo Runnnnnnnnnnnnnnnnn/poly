@@ -1,4 +1,7 @@
 import type { BacktestRun, HyperliquidSnapshot, PipelineHeartbeat } from "@prisma/client";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 
 import type { BacktestMetrics } from "@/src/lib/backtest/types";
 import { getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
@@ -116,6 +119,9 @@ export async function getMonitoringSnapshot() {
   const combinedConfig = parseJson<{ minimumSignalZ?: number }>(combinedRun?.configJson ?? null);
   const executionReadiness = getHyperliquidExecutionReadiness();
   const testnetReconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
+  const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
+  const tunnelStatus = readTunnelStatus();
+  const backupStatus = readBackupStatus();
   const combinedShadowRunning = combinedRun?.status === "running";
 
   const inferredPipelines = pipelineStatuses({
@@ -313,8 +319,64 @@ export async function getMonitoringSnapshot() {
         capturedAt: item.capturedAt.toISOString(),
       })),
     },
+    operations: {
+      alerts: {
+        status: operationalStatus(alertHeartbeat, now, 5 * 60 * 1_000),
+        message: alertHeartbeat?.message ?? "起動待ち",
+        lastSuccessAt: alertHeartbeat?.lastSuccessAt?.toISOString() ?? null,
+        webhookConfigured: Boolean(process.env.POLYMARKET_ALERT_WEBHOOK_URL?.trim()),
+      },
+      tunnel: tunnelStatus,
+      backup: backupStatus,
+    },
     pipelines: inferredPipelines,
   };
+}
+
+function operationalStatus(heartbeat: PipelineHeartbeat | undefined, now: Date, maximumAgeMs: number) {
+  if (!heartbeat) return "waiting" as const;
+  if (heartbeat.status === "error") return "error" as const;
+  return heartbeat.lastSuccessAt && now.getTime() - heartbeat.lastSuccessAt.getTime() <= maximumAgeMs
+    ? "healthy" as const
+    : "waiting" as const;
+}
+
+function readTunnelStatus() {
+  const fallback = { mode: "unknown", status: "waiting", publicUrl: null, fixedUrl: false, fallback: false, publishedAt: null, updatedAt: null };
+  try {
+    const path = resolve(homedir(), ".polymarket-watch/tunnel-status.json");
+    if (!existsSync(path)) return fallback;
+    const value = JSON.parse(readFileSync(path, "utf8")) as Partial<typeof fallback>;
+    return {
+      mode: typeof value.mode === "string" ? value.mode : fallback.mode,
+      status: value.status === "healthy" || value.status === "waiting" || value.status === "starting" ? value.status : fallback.status,
+      publicUrl: typeof value.publicUrl === "string" ? value.publicUrl : null,
+      fixedUrl: value.fixedUrl === true,
+      fallback: value.fallback === true,
+      publishedAt: typeof value.publishedAt === "string" ? value.publishedAt : null,
+      updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : null,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function readBackupStatus() {
+  try {
+    const directory = resolve(homedir(), ".polymarket-watch/backups");
+    const files = readdirSync(directory)
+      .filter((name) => name.endsWith(".db.enc"))
+      .map((name) => ({ modifiedAt: statSync(resolve(directory, name)).mtime }))
+      .sort((left, right) => right.modifiedAt.getTime() - left.modifiedAt.getTime());
+    return {
+      status: files.length ? "healthy" as const : "waiting" as const,
+      encrypted: true,
+      copies: files.length,
+      latestAt: files[0]?.modifiedAt.toISOString() ?? null,
+    };
+  } catch {
+    return { status: "waiting" as const, encrypted: true, copies: 0, latestAt: null };
+  }
 }
 
 function pipelineStatuses(input: {

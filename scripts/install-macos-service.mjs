@@ -43,7 +43,7 @@ const cloudflared = [
 ].filter(Boolean).find((candidate) => existsSync(candidate));
 
 if (cloudflared) {
-  const tunnelCommand = `cd ${shellQuote(homedir())}; APP_PORT=3001 CLOUDFLARED_BIN=${shellQuote(cloudflared)} ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-tunnel.mjs"))}`;
+  const tunnelCommand = `set -a; source ${shellQuote(resolve(deployedRoot, ".env"))}; set +a; cd ${shellQuote(homedir())}; APP_PORT=3001 CLOUDFLARED_BIN=${shellQuote(cloudflared)} ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-tunnel.mjs"))}`;
   installAgent(tunnelLabel, makePlist(tunnelLabel, tunnelCommand, "/tmp/polymarket-watch-tunnel.log"));
 } else {
   console.warn("cloudflared was not found; the local runtime is installed without public tunneling");

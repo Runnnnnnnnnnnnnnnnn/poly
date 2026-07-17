@@ -93,6 +93,12 @@ export async function reconcileHyperliquidTestnetOrders() {
     updatedOrders += result.count;
   }
 
+  const filledOrders = await prisma.combinedExecutionOrder.findMany({
+    where: { environment: "TESTNET", status: "FILLED" },
+    select: { asset: true, side: true, action: true, quantity: true },
+  });
+  const positionMismatches = compareTestnetPositions(response.positions ?? [], filledOrders);
+
   return {
     ...readiness,
     connected: true,
@@ -102,7 +108,36 @@ export async function reconcileHyperliquidTestnetOrders() {
     positions: response.positions ?? [],
     openOrders: response.openOrders ?? [],
     recentFills: response.recentFills ?? [],
+    positionMismatches,
   };
+}
+
+export function compareTestnetPositions(
+  actualPositions: Array<{ coin?: string; size?: number }>,
+  filledOrders: Array<{ asset: string; side: string; action: string; quantity: number }>,
+) {
+  const expected = new Map<string, number>();
+  for (const order of filledOrders) {
+    const direction = order.side === "LONG" ? 1 : -1;
+    const action = order.action === "OPEN" ? 1 : -1;
+    expected.set(order.asset, (expected.get(order.asset) ?? 0) + order.quantity * direction * action);
+  }
+  const actual = new Map(actualPositions.flatMap((position) => (
+    position.coin && typeof position.size === "number" ? [[position.coin, position.size] as const] : []
+  )));
+  const assets = new Set([...expected.keys(), ...actual.keys()]);
+  return Array.from(assets).flatMap((asset) => {
+    const expectedSize = expected.get(asset) ?? 0;
+    const actualSize = actual.get(asset) ?? 0;
+    const tolerance = Math.max(1e-8, Math.abs(expectedSize) * 0.01);
+    if (Math.abs(expectedSize - actualSize) <= tolerance) return [];
+    return [{
+      asset,
+      expectedSize,
+      actualSize,
+      kind: Math.abs(expectedSize) <= tolerance ? "orphan" as const : Math.abs(actualSize) <= tolerance ? "missing" as const : "quantity" as const,
+    }];
+  });
 }
 
 function runExecutor(payload: Record<string, unknown>) {

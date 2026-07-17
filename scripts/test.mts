@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
-import { normalizeExchangeOrderStatus } from "../src/lib/combined-trading/hyperliquid-execution";
+import { compareTestnetPositions, normalizeExchangeOrderStatus } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculateCombinedClose } from "../src/lib/combined-trading/service";
+import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
+import { evaluatePipelineAlerts } from "../src/lib/monitoring/operational-alerts";
+import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/probability-ladder";
@@ -152,3 +155,48 @@ assert.equal(normalizeExchangeOrderStatus({ status: "order", order: { status: "f
 assert.equal(normalizeExchangeOrderStatus({ status: "order", order: { status: "open" } }), "OPEN");
 
 console.log("testnet reconciliation status tests passed");
+
+assert.deepEqual(compareTestnetPositions(
+  [{ coin: "BTC", size: 0.1 }, { coin: "ETH", size: -0.2 }],
+  [
+    { asset: "BTC", side: "LONG", action: "OPEN", quantity: 0.1 },
+    { asset: "ETH", side: "SHORT", action: "OPEN", quantity: 0.1 },
+  ],
+), [{ asset: "ETH", expectedSize: -0.1, actualSize: -0.2, kind: "quantity" }]);
+
+const alertNow = new Date("2026-01-01T01:00:00Z");
+const healthyHeartbeats = ["polymarket", "hyperliquid", "paper", "combined-shadow", "backtest"].map((id) => ({
+  id,
+  status: "healthy",
+  message: null,
+  lastSuccessAt: new Date("2026-01-01T00:55:00Z"),
+  lastAttemptAt: new Date("2026-01-01T00:55:00Z"),
+}));
+assert.equal(evaluatePipelineAlerts(healthyHeartbeats, alertNow).length, 0);
+const staleAlerts = evaluatePipelineAlerts(healthyHeartbeats.map((item) => item.id === "polymarket"
+  ? { ...item, lastSuccessAt: new Date("2026-01-01T00:30:00Z") }
+  : item), alertNow);
+assert.equal(staleAlerts.some((alert) => alert.key === "pipeline-stale:polymarket"), true);
+const firstAlertPlan = planAlertDeliveries(staleAlerts, {}, alertNow, 60 * 60 * 1_000);
+assert.equal(firstAlertPlan.deliveries[0]?.event, "triggered");
+const recoveredAlertPlan = planAlertDeliveries([], firstAlertPlan.next, new Date("2026-01-01T01:05:00Z"), 60 * 60 * 1_000);
+assert.equal(recoveredAlertPlan.deliveries[0]?.event, "recovered");
+
+console.log("operational alert tests passed");
+
+assert.deepEqual(resolveTunnelConfig({}, "3001"), {
+  mode: "quick",
+  args: ["tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:3001"],
+  publicUrl: "",
+  allowQuickFallback: false,
+});
+const namedTunnel = resolveTunnelConfig({
+  CLOUDFLARED_TUNNEL_TOKEN: "test-token",
+  CLOUDFLARED_PUBLIC_URL: "https://api.example.com/",
+}, "3001");
+assert.equal(namedTunnel.mode, "named-token");
+assert.equal(namedTunnel.publicUrl, "https://api.example.com");
+assert.equal(namedTunnel.allowQuickFallback, true);
+assert.throws(() => resolveTunnelConfig({ CLOUDFLARED_TUNNEL_TOKEN: "test-token" }, "3001"));
+
+console.log("tunnel configuration tests passed");
