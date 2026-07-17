@@ -2,6 +2,7 @@ import { discoverActiveCryptoPriceMarkets, discoverCryptoMarkets, fetchCurrentBo
 import type { CryptoMarket } from "@/src/lib/backtest/types";
 import { fetchWithTimeout } from "@/lib/utils";
 import {
+  calculatePriceBasisPct,
   fetchPolymarketReferencePrices,
   selectReferencePrice,
   type SupportedReferenceAsset,
@@ -153,7 +154,7 @@ export async function scanCombinedLiveSignal(now = new Date()): Promise<Combined
     if (!Number.isFinite(signalZ)) return null;
     const representative = [...estimates].sort((left, right) => right.market.volume - left.market.volume)[0];
     const reference = selectReferencePrice(referencePrices, group.asset, representative.market.referenceSource);
-    const priceBasisPct = reference ? priceState.spotPrice / reference.price - 1 : null;
+    const priceBasisPct = reference ? calculatePriceBasisPct(priceState.spotPrice, reference.price) : null;
 
     return {
       eventId: group.eventId,

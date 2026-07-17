@@ -85,7 +85,7 @@ export async function getMonitoringSnapshot() {
         prisma.paperFill.count({ where: { runId: latestRunningPaper.id } }),
       ])
     : [null, 0, 0];
-  const [latestCombinedDecision, latestCombinedSnapshot, combinedOpenPositions, combinedClosedTrades, combinedWinningTrades, combinedDecisions] = combinedRun
+  const [latestCombinedDecision, latestCombinedSnapshot, combinedOpenPositions, combinedClosedTrades, combinedWinningTrades, combinedDecisions, combinedClosedPositions] = combinedRun
     ? await Promise.all([
         prisma.combinedShadowDecision.findFirst({ where: { runId: combinedRun.id }, orderBy: { observedAt: "desc" } }),
         prisma.combinedShadowEquitySnapshot.findFirst({ where: { runId: combinedRun.id }, orderBy: { capturedAt: "desc" } }),
@@ -97,8 +97,32 @@ export async function getMonitoringSnapshot() {
           select: { action: true, signalZ: true, threshold: true },
           orderBy: { observedAt: "asc" },
         }),
+        prisma.combinedShadowPosition.findMany({
+          where: { runId: combinedRun.id, status: "CLOSED", exitPriceBasisPct: { not: null } },
+          select: { exitPriceBasisPct: true, exitReferenceCapturedAt: true, closedAt: true },
+          orderBy: { closedAt: "asc" },
+        }),
       ])
-    : [null, null, [], 0, 0, []];
+    : [null, null, [], 0, 0, [], []];
+  const measuredBasis = combinedClosedPositions.flatMap((position) => (
+    typeof position.exitPriceBasisPct === "number" ? [position] : []
+  ));
+  const absoluteBasisValues = measuredBasis.map((position) => Math.abs(position.exitPriceBasisPct as number));
+  const referenceCaptureLags = measuredBasis.flatMap((position) => (
+    position.closedAt && position.exitReferenceCapturedAt
+      ? [Math.abs(position.closedAt.getTime() - position.exitReferenceCapturedAt.getTime()) / 1_000]
+      : []
+  ));
+  const medianAbsoluteBasisPct = median(absoluteBasisValues);
+  const medianReferenceCaptureLagSeconds = median(referenceCaptureLags);
+  const referenceTimingComplete = referenceCaptureLags.length === measuredBasis.length;
+  const settlementBasisStatus = measuredBasis.length < 10
+    ? "collecting" as const
+    : (medianAbsoluteBasisPct ?? Number.POSITIVE_INFINITY) <= 0.001
+      && referenceTimingComplete
+      && (medianReferenceCaptureLagSeconds ?? Number.POSITIVE_INFINITY) <= 60
+      ? "healthy" as const
+      : "attention" as const;
   const latestPaperMetrics = parseJson<Record<string, number | null>>(latestCompletedPaper?.metricsJson ?? null);
   const newestDataAt = latestDate(
     polymarketAggregate._max.capturedAt,
@@ -190,6 +214,13 @@ export async function getMonitoringSnapshot() {
       minimumSignalZ: combinedConfig?.minimumSignalZ ?? null,
       signalRule: combinedConfig?.signalRule ?? "polymarket-only",
       modelVersion: combinedConfig?.modelVersion ?? null,
+      settlementBasis: {
+        status: settlementBasisStatus,
+        samples: measuredBasis.length,
+        medianAbsolutePct: medianAbsoluteBasisPct,
+        maximumAbsolutePct: absoluteBasisValues.length ? Math.max(...absoluteBasisValues) : null,
+        medianReferenceCaptureLagSeconds,
+      },
       funnel: {
         scans: combinedDecisions.length,
         scannedMarkets: latestCombinedDecision?.scannedMarkets ?? 0,
@@ -437,6 +468,13 @@ function parseJson<T>(value: string | null) {
 
 function average(values: number[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function median(values: number[]) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
 function latestDate(...values: Array<Date | null | undefined>) {

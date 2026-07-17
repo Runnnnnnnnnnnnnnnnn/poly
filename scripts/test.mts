@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
 import { compareTestnetPositions, normalizeExchangeOrderStatus } from "../src/lib/combined-trading/hyperliquid-execution";
+import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
 import { applyCombinedSignalRule, calculateCombinedClose } from "../src/lib/combined-trading/service";
 import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
-import { evaluatePipelineAlerts } from "../src/lib/monitoring/operational-alerts";
+import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts } from "../src/lib/monitoring/operational-alerts";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
@@ -112,6 +113,12 @@ assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, side: "SHORT", tr
 assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, side: "LONG", trendZ6h: -1 }, "hyperliquid-reversion").side, "LONG");
 
 console.log("combined shadow signal-rule tests passed");
+
+assert.ok(Math.abs((calculatePriceBasisPct(100.1, 100) ?? 0) - 0.001) < 1e-12);
+assert.equal(calculatePriceBasisPct(0, 100), null);
+assert.equal(calculatePriceBasisPct(100, Number.NaN), null);
+
+console.log("settlement reference basis tests passed");
 
 const evaluationSamples: EvaluationSample[] = [];
 for (let eventIndex = 0; eventIndex < 80; eventIndex += 1) {
@@ -252,6 +259,16 @@ const firstAlertPlan = planAlertDeliveries(staleAlerts, {}, alertNow, 60 * 60 * 
 assert.equal(firstAlertPlan.deliveries[0]?.event, "triggered");
 const recoveredAlertPlan = planAlertDeliveries([], firstAlertPlan.next, new Date("2026-01-01T01:05:00Z"), 60 * 60 * 1_000);
 assert.equal(recoveredAlertPlan.deliveries[0]?.event, "recovered");
+
+const basisAlertRows = Array.from({ length: 10 }, (_, index) => ({
+  exitPriceBasisPct: index % 2 ? 0.0012 : -0.0012,
+  exitReferenceCapturedAt: new Date("2026-01-01T00:00:00Z"),
+  closedAt: new Date("2026-01-01T00:01:30Z"),
+}));
+assert.equal(evaluateSettlementBasisAlerts(basisAlertRows.slice(0, 9)).length, 0);
+assert.equal(evaluateSettlementBasisAlerts(basisAlertRows)[0]?.severity, "warning");
+assert.equal(evaluateSettlementBasisAlerts(basisAlertRows.map((row) => ({ ...row, exitPriceBasisPct: 0.004 })))[0]?.severity, "critical");
+assert.equal(evaluateSettlementBasisAlerts(basisAlertRows.map((row) => ({ ...row, exitReferenceCapturedAt: null })))[0]?.severity, "warning");
 
 console.log("operational alert tests passed");
 

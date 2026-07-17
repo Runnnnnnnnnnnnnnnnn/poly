@@ -2,6 +2,7 @@ import type { CombinedShadowPosition, CombinedShadowRun } from "@prisma/client";
 
 import { executeHyperliquidTestnetOrder, getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
 import { scanCombinedLiveSignal, type CombinedLiveSignal } from "@/src/lib/combined-trading/live-signal";
+import { calculatePriceBasisPct, fetchPolymarketReferencePrices, selectReferencePrice } from "@/src/lib/combined-trading/polymarket-reference";
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
 
@@ -205,6 +206,7 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
       marketSpread: scan.signal?.marketSpread ?? null,
       polymarketReferencePrice: scan.signal?.polymarketReferencePrice ?? null,
       referenceSource: scan.signal?.referenceSource ?? null,
+      referenceCapturedAt: scan.signal?.referenceCapturedAt ? new Date(scan.signal.referenceCapturedAt) : null,
       priceBasisPct: scan.signal?.priceBasisPct ?? null,
       ladderViolations: scan.signal?.ladderViolations ?? null,
       nextWindowAt: scan.nextWindowAt ? new Date(scan.nextWindowAt) : null,
@@ -288,6 +290,9 @@ async function openShadowPosition(run: CombinedShadowRun, signal: CombinedLiveSi
       signalZ: signal.signalZ,
       horizonHours: signal.horizonHours,
       priceBasisPct: signal.priceBasisPct,
+      entryReferencePrice: signal.polymarketReferencePrice,
+      entryReferenceSource: signal.referenceSource,
+      entryReferenceCapturedAt: signal.referenceCapturedAt ? new Date(signal.referenceCapturedAt) : null,
       entryFee,
       status: "OPEN",
       openedAt: now,
@@ -334,6 +339,10 @@ async function closeShadowPosition(
   config: CombinedShadowConfig,
   now: Date,
 ) {
+  const settlementReference = await fetchPositionReference(position);
+  const exitPriceBasisPct = settlementReference
+    ? calculatePriceBasisPct(markPrice, settlementReference.price)
+    : null;
   const { grossPnl, exitFee, funding, realizedPnl } = calculateCombinedClose({
     side: position.side,
     quantity: position.quantity,
@@ -348,7 +357,18 @@ async function closeShadowPosition(
   });
   await prisma.combinedShadowPosition.update({
     where: { id: position.id },
-    data: { markPrice, accruedFunding: funding, realizedPnl, status: "CLOSED", closedAt: now, closeReason: reason },
+    data: {
+      markPrice,
+      accruedFunding: funding,
+      realizedPnl,
+      status: "CLOSED",
+      closedAt: now,
+      closeReason: reason,
+      exitReferencePrice: settlementReference?.price ?? null,
+      exitReferenceSource: settlementReference?.source ?? null,
+      exitReferenceCapturedAt: settlementReference ? new Date(settlementReference.capturedAt) : null,
+      exitPriceBasisPct,
+    },
   });
   await prisma.combinedExecutionOrder.create({
     data: {
@@ -372,6 +392,27 @@ async function closeShadowPosition(
   });
   await maybeMirrorTestnetOrder(updatedRun, position, "CLOSE", markPrice);
   return { run: updatedRun, realizedPnl };
+}
+
+async function fetchPositionReference(position: CombinedShadowPosition) {
+  if (!isReferenceAsset(position.asset)) return null;
+  let preferredSource = normalizeReferenceSource(position.entryReferenceSource);
+  if (preferredSource === "UNKNOWN") {
+    const entryDecision = await prisma.combinedShadowDecision.findFirst({
+      where: {
+        runId: position.runId,
+        eventId: position.eventId,
+        asset: position.asset,
+        referenceSource: { not: null },
+        observedAt: { lte: position.openedAt },
+      },
+      orderBy: { observedAt: "desc" },
+      select: { referenceSource: true },
+    });
+    preferredSource = normalizeReferenceSource(entryDecision?.referenceSource);
+  }
+  const prices = await fetchPolymarketReferencePrices([position.asset], 4_000).catch(() => []);
+  return selectReferencePrice(prices, position.asset, preferredSource);
 }
 
 async function maybeMirrorTestnetOrder(run: CombinedShadowRun, position: CombinedShadowPosition, action: "OPEN" | "CLOSE", referencePrice: number) {
@@ -518,6 +559,14 @@ function isExecutableSignalRule(rule: unknown): rule is CombinedShadowConfig["si
 
 function isHyperliquidSignalRule(rule: CombinedShadowConfig["signalRule"]) {
   return rule === "hyperliquid-momentum" || rule === "hyperliquid-reversion";
+}
+
+function isReferenceAsset(asset: string): asset is CombinedLiveSignal["asset"] {
+  return asset === "BTC" || asset === "ETH" || asset === "SOL" || asset === "XRP";
+}
+
+function normalizeReferenceSource(source: string | null | undefined): "BINANCE" | "CHAINLINK" | "UNKNOWN" {
+  return source === "BINANCE" || source === "CHAINLINK" ? source : "UNKNOWN";
 }
 
 function shadowClientOrderId(runId: string, positionId: string, action: string) {

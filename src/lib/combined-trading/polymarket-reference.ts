@@ -79,7 +79,9 @@ async function fetchRtdsReferencePrices(
         price: parsed.value,
         capturedAt: new Date(parsed.timestamp).toISOString(),
       });
-      if (uniqueAssets.every((candidate) => collected.has(`${candidate}:BINANCE`))) finish();
+      if (uniqueAssets.every((candidate) => (
+        collected.has(`${candidate}:BINANCE`) && collected.has(`${candidate}:CHAINLINK`)
+      ))) finish();
     });
     socket.addEventListener("error", finish);
   });
@@ -108,6 +110,11 @@ export function selectReferencePrice(
     if (preferred) return preferred;
   }
   return matching.find((price) => price.source === "BINANCE") ?? matching[0] ?? null;
+}
+
+export function calculatePriceBasisPct(venuePrice: number, referencePrice: number) {
+  if (!Number.isFinite(venuePrice) || venuePrice <= 0 || !Number.isFinite(referencePrice) || referencePrice <= 0) return null;
+  return venuePrice / referencePrice - 1;
 }
 
 function parseMessage(data: unknown) {

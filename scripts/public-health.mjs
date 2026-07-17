@@ -23,7 +23,7 @@ export async function checkPublicHealth(baseUrl, timeoutMs = 20_000) {
   throw lastError ?? new Error("public health hostname did not resolve");
 }
 
-function requestWithAddress(url, address, timeoutMs) {
+function requestWithAddress(url, address, timeoutMs, redirectCount = 0) {
   return new Promise((resolvePromise, reject) => {
     const request = get(url, {
       headers: { accept: "application/json", "user-agent": "Polymarket-Watch-Healthcheck/1.0" },
@@ -35,6 +35,11 @@ function requestWithAddress(url, address, timeoutMs) {
       response.resume();
       response.once("end", () => {
         if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) resolvePromise();
+        else if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location && redirectCount < 3) {
+          const redirectUrl = new URL(response.headers.location, url);
+          if (redirectUrl.hostname !== url.hostname) reject(new Error("public health redirect changed hostname"));
+          else requestWithAddress(redirectUrl, address, timeoutMs, redirectCount + 1).then(resolvePromise, reject);
+        }
         else reject(new Error(`public health check returned ${response.statusCode ?? "unknown"}`));
       });
     });

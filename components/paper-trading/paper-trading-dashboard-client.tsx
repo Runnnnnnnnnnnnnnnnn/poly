@@ -132,6 +132,13 @@ type MonitoringSnapshot = {
     minimumSignalZ: number | null;
     signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
     modelVersion: string | null;
+    settlementBasis: {
+      status: "collecting" | "healthy" | "attention";
+      samples: number;
+      medianAbsolutePct: number | null;
+      maximumAbsolutePct: number | null;
+      medianReferenceCaptureLagSeconds: number | null;
+    };
     funnel: {
       scans: number;
       scannedMarkets: number;
@@ -736,10 +743,11 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
           {hasClosedTrades ? <VisualMeter tone={pnlSignal.tone} value={profitMeter(shadow?.returnPct)} className="mt-4" /> : <p className="mt-4 text-xs font-semibold leading-5 text-slate-600">決済が完了すると、コスト控除後の損益を表示します。</p>}
         </div>
         <div className="grid min-w-0">
-          <div className="grid grid-cols-3 divide-x divide-border">
+          <div className="grid grid-cols-4 divide-x divide-border">
             <CompactMetric label="決済完了" value={`${shadow?.trades ?? 0} / 50`} />
             <CompactMetric label="保有中" value={`${shadow?.openPositions.length ?? 0}件`} />
             <CompactMetric label="最大下落" value={formatPct(shadow?.maxDrawdownPct)} />
+            <CompactMetric label="参照価格差" value={(shadow?.settlementBasis.samples ?? 0) > 0 ? formatBasisBps(shadow?.settlementBasis.medianAbsolutePct) : "待機"} />
           </div>
           <div className="grid gap-3 border-t bg-slate-50 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
             <div className="min-w-0">
@@ -762,6 +770,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-5">
         <span>採用前の固定ルールで収集中 / 実取引判断には不使用</span>
         <span>固定ルール: {formatShadowRule(shadow?.signalRule)} / 強度 {formatNumber(shadow?.minimumSignalZ, 2)}以上{shadow?.modelVersion ? ` / ${shadow.modelVersion}` : ""}</span>
+        <span>決済時の参照価格差: {shadow?.settlementBasis.samples ?? 0}件 / 中央 {formatBasisBps(shadow?.settlementBasis.medianAbsolutePct)} / 取得ずれ {formatSeconds(shadow?.settlementBasis.medianReferenceCaptureLagSeconds)}</span>
         <span>{shadow?.testnet.ready ? shadow.testnet.autoMirrorEnabled ? "テストネット連動: 待機中" : "テストネット接続可" : "テストネット: 設定待ち"}</span>
       </div>
     </section>
@@ -1681,6 +1690,17 @@ function formatJapanDateTime(value: string) {
 function formatMinutes(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   return value < 60 ? `${Math.round(value)}分` : `${(value / 60).toFixed(1)}時間`;
+}
+
+function formatBasisBps(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  const basisPoints = value * 10_000;
+  return `${basisPoints.toFixed(Math.abs(basisPoints) < 10 ? 1 : 0)}bp`;
+}
+
+function formatSeconds(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  return value < 60 ? `${Math.round(value)}秒` : `${(value / 60).toFixed(1)}分`;
 }
 
 function formatCompact(value: number | null | undefined) {

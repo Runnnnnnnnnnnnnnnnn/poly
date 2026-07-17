@@ -295,6 +295,13 @@ model CombinedShadowPosition {
   signalZ        Float
   horizonHours   Int?
   priceBasisPct  Float?
+  entryReferencePrice      Float?
+  entryReferenceSource     String?
+  entryReferenceCapturedAt DateTime?
+  exitReferencePrice       Float?
+  exitReferenceSource      String?
+  exitReferenceCapturedAt  DateTime?
+  exitPriceBasisPct         Float?
   entryFee       Float
   accruedFunding Float                    @default(0)
   realizedPnl    Float?
@@ -334,6 +341,7 @@ model CombinedShadowDecision {
   marketSpread            Float?
   polymarketReferencePrice Float?
   referenceSource         String?
+  referenceCapturedAt     DateTime?
   priceBasisPct           Float?
   ladderViolations        Int?
   nextWindowAt            DateTime?
