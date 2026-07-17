@@ -7,12 +7,15 @@ const configuredSignalRule = process.env.COMBINED_SIGNAL_RULE;
 const signalRule = configuredSignalRule === "contrarian"
   || configuredSignalRule === "hyperliquid-momentum"
   || configuredSignalRule === "hyperliquid-reversion"
+  || configuredSignalRule === "hyperliquid-funding-carry"
+  || configuredSignalRule === "hyperliquid-funding-momentum"
   ? configuredSignalRule
   : "polymarket-only";
 const config = {
   initialEquity: Number(process.env.COMBINED_INITIAL_EQUITY ?? 10_000),
   minimumSignalZ: Number(qualifiedModelConfig?.minimumSignalZ ?? process.env.COMBINED_MINIMUM_SIGNAL_Z ?? 0.5),
   minimumTrendZ: Number(qualifiedModelConfig?.minimumTrendZ ?? process.env.COMBINED_MINIMUM_TREND_Z ?? 0.1),
+  minimumFunding24h: Number(qualifiedModelConfig?.minimumFunding24h ?? process.env.COMBINED_MINIMUM_FUNDING_24H ?? 0.0003),
   signalRule: qualifiedModelConfig?.signalRule ?? signalRule,
   modelVersion: qualifiedModelConfig?.modelVersion ?? null,
   positionPct: Number(qualifiedModelConfig?.positionPct ?? process.env.COMBINED_POSITION_PCT ?? 0.1),

@@ -140,7 +140,12 @@ export async function getMonitoringSnapshot() {
   const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
-  const combinedConfig = parseJson<{ minimumSignalZ?: number; signalRule?: "polymarket-only" | "contrarian"; modelVersion?: string | null }>(combinedRun?.configJson ?? null);
+  const combinedConfig = parseJson<{
+    minimumSignalZ?: number;
+    minimumFunding24h?: number;
+    signalRule?: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
+    modelVersion?: string | null;
+  }>(combinedRun?.configJson ?? null);
   const executionReadiness = getHyperliquidExecutionReadiness();
   const testnetReconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
   const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
@@ -212,6 +217,7 @@ export async function getMonitoringSnapshot() {
       riskStatus: combinedRun?.riskStatus ?? "NOT_STARTED",
       emergencyStopped: combinedRun?.emergencyStopped ?? false,
       minimumSignalZ: combinedConfig?.minimumSignalZ ?? null,
+      minimumFunding24h: combinedConfig?.minimumFunding24h ?? null,
       signalRule: combinedConfig?.signalRule ?? "polymarket-only",
       modelVersion: combinedConfig?.modelVersion ?? null,
       settlementBasis: {
@@ -269,7 +275,7 @@ export async function getMonitoringSnapshot() {
       backtestPoints: backtestPointCount,
     },
     model: {
-      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v13",
+      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v14",
       selectedCandidate: evaluation?.selectedCandidate.id ?? null,
       selectedCandidateKind: evaluation?.selectedCandidate.kind ?? null,
       combinedStrategy: evaluation?.combinedTrading?.selectedStrategy.id ?? null,
@@ -286,6 +292,7 @@ export async function getMonitoringSnapshot() {
       closestValidationCandidate: evaluation?.combinedTrading?.closestValidationCandidate ?? null,
       candidateDiagnostics: evaluation?.combinedTrading?.candidateDiagnostics ?? [],
       structuralFeatureCoverage: evaluation?.dataset.testExecutionFeatureCoverage ?? evaluation?.dataset.executionFeatureCoverage ?? evaluation?.dataset.structuralFeatureCoverage ?? null,
+      fundingFeatureCoverage: evaluation?.dataset.testFundingFeatureCoverage ?? evaluation?.dataset.fundingFeatureCoverage ?? null,
       evaluationStatus: evaluation?.quality.status ?? "building",
       latestAsset: evaluation ? Object.keys(evaluation.dataset.assets).join("・") : null,
       latestBrierScore: evaluation?.probability.modelBrierScore ?? null,

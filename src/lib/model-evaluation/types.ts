@@ -21,6 +21,8 @@ export type EvaluationSample = {
   hyperliquidExitLeadMinutes?: number | null;
   hyperliquidMomentum6h?: number | null;
   hyperliquidMomentum24h?: number | null;
+  hyperliquidFunding24h?: number | null;
+  hyperliquidFundingDuringTrade?: number | null;
   thresholdKind?: "above" | "below" | "between" | null;
   thresholdLower?: number | null;
   thresholdUpper?: number | null;
@@ -38,8 +40,9 @@ export type ModelCandidate = {
 export type CombinedStrategyCandidate = {
   id: string;
   minimumSignalZ: number;
-  signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
+  signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
   minimumTrendZ: number;
+  minimumFunding24h: number;
   positionPct: number;
 };
 
@@ -85,6 +88,14 @@ export type ModelEvaluationMetrics = {
     executionFeatureCoverage: number;
     testExecutionFeatureMarkets: number;
     testExecutionFeatureCoverage: number;
+    fundingFeatureMarkets: number;
+    fundingFeatureCoverage: number;
+    testFundingFeatureMarkets: number;
+    testFundingFeatureCoverage: number;
+    fundingCostMarkets: number;
+    fundingCostCoverage: number;
+    testFundingCostMarkets: number;
+    testFundingCostCoverage: number;
     medianObservationLagMinutes: number | null;
     medianEntryLagMinutes: number | null;
     medianExitLeadMinutes: number | null;

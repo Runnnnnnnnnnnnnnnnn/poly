@@ -10,7 +10,8 @@ export type CombinedShadowConfig = {
   initialEquity: number;
   minimumSignalZ: number;
   minimumTrendZ: number;
-  signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
+  minimumFunding24h: number;
+  signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
   modelVersion: string | null;
   positionPct: number;
   maxPositionNotional: number;
@@ -26,6 +27,7 @@ const defaultConfig: CombinedShadowConfig = {
   initialEquity: 10_000,
   minimumSignalZ: 0.5,
   minimumTrendZ: 0.1,
+  minimumFunding24h: 0.0003,
   signalRule: "polymarket-only",
   modelVersion: null,
   positionPct: 0.1,
@@ -52,6 +54,7 @@ export async function getQualifiedModelShadowConfig(): Promise<Partial<CombinedS
   return {
     minimumSignalZ: strategy.minimumSignalZ,
     minimumTrendZ: strategy.minimumTrendZ,
+    minimumFunding24h: strategy.minimumFunding24h,
     signalRule: strategy.signalRule,
     positionPct: strategy.positionPct,
     modelVersion: metrics.modelVersion,
@@ -141,6 +144,11 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
   } else if (isHyperliquidSignalRule(config.signalRule) && Math.abs(scan.signal.trendZ6h) < config.minimumTrendZ) {
     action = "WAIT";
     reason = `6時間値動き${Math.abs(scan.signal.trendZ6h).toFixed(2)}が基準${config.minimumTrendZ.toFixed(2)}未満`;
+  } else if (isFundingSignalRule(config.signalRule) && (scan.signal.hyperliquidFunding24h === null || Math.abs(scan.signal.hyperliquidFunding24h) < config.minimumFunding24h)) {
+    action = "WAIT";
+    reason = scan.signal.hyperliquidFunding24h === null
+      ? "24時間の資金調達率を確認中"
+      : `24時間資金調達率${formatPct(Math.abs(scan.signal.hyperliquidFunding24h))}が基準${formatPct(config.minimumFunding24h)}未満`;
   } else if (Math.abs(scan.signal.signalZ) < config.minimumSignalZ) {
     action = "WAIT";
     reason = `シグナル強度${Math.abs(scan.signal.signalZ).toFixed(2)}が基準${config.minimumSignalZ.toFixed(2)}未満`;
@@ -328,6 +336,13 @@ export function applyCombinedSignalRule(signal: CombinedLiveSignal, rule: Combin
       side: rule === "hyperliquid-reversion" ? (momentumSide === "LONG" ? "SHORT" : "LONG") : momentumSide,
     };
   }
+  if (isFundingSignalRule(rule)) {
+    const fundingSide = (signal.hyperliquidFunding24h ?? 0) >= 0 ? "LONG" : "SHORT";
+    return {
+      ...signal,
+      side: rule === "hyperliquid-funding-carry" ? (fundingSide === "LONG" ? "SHORT" : "LONG") : fundingSide,
+    };
+  }
   return signal;
 }
 
@@ -431,7 +446,8 @@ async function maybeMirrorTestnetOrder(run: CombinedShadowRun, position: Combine
       && runConfig.modelVersion === metrics.modelVersion
       && runConfig.signalRule === strategy.signalRule
       && runConfig.minimumSignalZ === strategy.minimumSignalZ
-      && runConfig.minimumTrendZ === strategy.minimumTrendZ;
+      && runConfig.minimumTrendZ === strategy.minimumTrendZ
+      && runConfig.minimumFunding24h === strategy.minimumFunding24h;
     if (!qualified) return;
   }
   const existing = await prisma.combinedExecutionOrder.findFirst({ where: { positionId: position.id, environment: "TESTNET", action } });
@@ -537,6 +553,7 @@ function normalizeConfig(override: Partial<CombinedShadowConfig>) {
     initialEquity: positive(override.initialEquity, defaultConfig.initialEquity),
     minimumSignalZ: clamp(override.minimumSignalZ ?? defaultConfig.minimumSignalZ, 0.1, 3),
     minimumTrendZ: clamp(override.minimumTrendZ ?? defaultConfig.minimumTrendZ, 0, 3),
+    minimumFunding24h: clamp(override.minimumFunding24h ?? defaultConfig.minimumFunding24h, 0, 0.01),
     signalRule: isExecutableSignalRule(override.signalRule) ? override.signalRule : "polymarket-only",
     modelVersion: typeof override.modelVersion === "string" && override.modelVersion.trim() ? override.modelVersion.trim() : null,
     positionPct: clamp(override.positionPct ?? defaultConfig.positionPct, 0.01, 0.2),
@@ -554,11 +571,17 @@ function isExecutableSignalRule(rule: unknown): rule is CombinedShadowConfig["si
   return rule === "polymarket-only"
     || rule === "contrarian"
     || rule === "hyperliquid-momentum"
-    || rule === "hyperliquid-reversion";
+    || rule === "hyperliquid-reversion"
+    || rule === "hyperliquid-funding-carry"
+    || rule === "hyperliquid-funding-momentum";
 }
 
 function isHyperliquidSignalRule(rule: CombinedShadowConfig["signalRule"]) {
   return rule === "hyperliquid-momentum" || rule === "hyperliquid-reversion";
+}
+
+function isFundingSignalRule(rule: CombinedShadowConfig["signalRule"]) {
+  return rule === "hyperliquid-funding-carry" || rule === "hyperliquid-funding-momentum";
 }
 
 function isReferenceAsset(asset: string): asset is CombinedLiveSignal["asset"] {

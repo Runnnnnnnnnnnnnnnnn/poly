@@ -4,7 +4,7 @@ import { evaluateCombinedTrading } from "@/src/lib/model-evaluation/combined-tra
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
 import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
-export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v13";
+export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v14";
 export const HORIZON_HOURS = 24;
 export const MIN_TRAIN_EVENTS = 20;
 export const MIN_HOLDOUT_EVENTS = 15;
@@ -75,6 +75,14 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
   const executionFeatureCoverage = samples.length ? executionFeatureMarkets / samples.length : 0;
   const testExecutionFeatureMarkets = test.filter(hasExecutionData).length;
   const testExecutionFeatureCoverage = test.length ? testExecutionFeatureMarkets / test.length : 0;
+  const fundingFeatureMarkets = samples.filter(hasFundingFeature).length;
+  const fundingFeatureCoverage = samples.length ? fundingFeatureMarkets / samples.length : 0;
+  const testFundingFeatureMarkets = test.filter(hasFundingFeature).length;
+  const testFundingFeatureCoverage = test.length ? testFundingFeatureMarkets / test.length : 0;
+  const fundingCostMarkets = samples.filter(hasFundingCost).length;
+  const fundingCostCoverage = samples.length ? fundingCostMarkets / samples.length : 0;
+  const testFundingCostMarkets = test.filter(hasFundingCost).length;
+  const testFundingCostCoverage = test.length ? testFundingCostMarkets / test.length : 0;
   const observationLags = samples.flatMap((sample) => typeof sample.observationLagMinutes === "number" ? [sample.observationLagMinutes] : []);
   const entryLags = samples.flatMap((sample) => typeof sample.hyperliquidEntryLagMinutes === "number" ? [sample.hyperliquidEntryLagMinutes] : []);
   const exitLeads = samples.flatMap((sample) => typeof sample.hyperliquidExitLeadMinutes === "number" ? [sample.hyperliquidExitLeadMinutes] : []);
@@ -94,6 +102,7 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
     { id: "timing", label: "売買時刻の誤差を65分以内に制限", passed: maximumExecutionTimingErrorMinutes !== null && maximumExecutionTimingErrorMinutes <= 65 },
     { id: "ladder", label: "価格帯の確率矛盾を単調補正", passed: ladder.events > 0 },
     { id: "costs", label: "手数料・滑り・資金調達を控除", passed: true },
+    { id: "funding", label: "最終テストの資金調達率を90%以上取得", passed: testFundingFeatureCoverage >= 0.9 && testFundingCostCoverage >= 0.9 },
     { id: "sample", label: `売買可能な最終テスト${MIN_HOLDOUT_EVENTS}イベント以上`, passed: combinedTrading.eligibleSignals >= MIN_HOLDOUT_EVENTS },
     { id: "trades", label: `最終テスト${minimumCombinedTrades}取引以上`, passed: combinedTrading.trades >= minimumCombinedTrades },
     { id: "benchmark", label: "3つの単純戦略で最良の成績を上回る", passed: combinedTrading.excessReturnPct > 0 },
@@ -109,6 +118,8 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
       ? "underperforming"
       : testEvents.length >= MIN_HOLDOUT_EVENTS
         && combinedTrading.trades >= minimumCombinedTrades
+        && testFundingFeatureCoverage >= 0.9
+        && testFundingCostCoverage >= 0.9
         && combinedTrading.statisticallyPositive
         && (combinedTrading.deflatedSharpeProbability ?? 0) >= 0.95
       ? "promising"
@@ -138,6 +149,14 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
       executionFeatureCoverage,
       testExecutionFeatureMarkets,
       testExecutionFeatureCoverage,
+      fundingFeatureMarkets,
+      fundingFeatureCoverage,
+      testFundingFeatureMarkets,
+      testFundingFeatureCoverage,
+      fundingCostMarkets,
+      fundingCostCoverage,
+      testFundingCostMarkets,
+      testFundingCostCoverage,
       medianObservationLagMinutes: median(observationLags),
       medianEntryLagMinutes: median(entryLags),
       medianExitLeadMinutes: median(exitLeads),
@@ -305,7 +324,7 @@ function feePerShare(price: number) {
 
 function createDatasetHash(samples: EvaluationSample[]) {
   return createHash("sha256")
-    .update(samples.map((sample) => `${sample.marketId}:${sample.observedAt}:${sample.marketProbability}:${sample.structuralProbability ?? "none"}:${sample.hyperliquidEntryPrice ?? "none"}:${sample.hyperliquidExitPrice ?? "none"}:${sample.hyperliquidMomentum6h ?? "none"}:${sample.hyperliquidMomentum24h ?? "none"}:${sample.outcome}`).join("|"))
+    .update(samples.map((sample) => `${sample.marketId}:${sample.observedAt}:${sample.marketProbability}:${sample.structuralProbability ?? "none"}:${sample.hyperliquidEntryPrice ?? "none"}:${sample.hyperliquidExitPrice ?? "none"}:${sample.hyperliquidMomentum6h ?? "none"}:${sample.hyperliquidMomentum24h ?? "none"}:${sample.hyperliquidFunding24h ?? "none"}:${sample.hyperliquidFundingDuringTrade ?? "none"}:${sample.outcome}`).join("|"))
     .digest("hex")
     .slice(0, 16);
 }
@@ -358,6 +377,14 @@ function hasExecutionData(sample: EvaluationSample) {
     && Number.isFinite(sample.hyperliquidEntryPrice)
     && typeof sample.hyperliquidExitPrice === "number"
     && Number.isFinite(sample.hyperliquidExitPrice);
+}
+
+function hasFundingFeature(sample: EvaluationSample) {
+  return typeof sample.hyperliquidFunding24h === "number" && Number.isFinite(sample.hyperliquidFunding24h);
+}
+
+function hasFundingCost(sample: EvaluationSample) {
+  return typeof sample.hyperliquidFundingDuringTrade === "number" && Number.isFinite(sample.hyperliquidFundingDuringTrade);
 }
 
 function probabilityLadderStats(samples: EvaluationSample[]) {

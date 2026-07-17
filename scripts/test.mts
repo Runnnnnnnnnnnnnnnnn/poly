@@ -10,7 +10,7 @@ import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/probability-ladder";
-import { parseTerminalPriceCondition, probabilityForCondition } from "../src/lib/model-evaluation/price-structure";
+import { parseTerminalPriceCondition, probabilityForCondition, summarizeFundingAt } from "../src/lib/model-evaluation/price-structure";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 
 const metrics = calculateBacktestMetrics(
@@ -37,6 +37,11 @@ assert.deepEqual(parseTerminalPriceCondition("Will Bitcoin be between $90,000 an
 assert.equal(parseTerminalPriceCondition("Will ETH dip below $3,000 in June?"), null);
 assert.ok(Math.abs(probabilityForCondition(100, 0.1, { kind: "above", lower: 100, upper: null }) - 0.5) < 1e-6);
 assert.ok(probabilityForCondition(100, 0.1, { kind: "above", lower: 90, upper: null }) > 0.5);
+const fundingHour = 60 * 60 * 1_000;
+const fundingPoints = Array.from({ length: 31 }, (_, hour) => ({ time: hour * fundingHour, rate: 0.00001 }));
+const fundingSummary = summarizeFundingAt(fundingPoints, 24 * fundingHour, 24 * fundingHour, 30 * fundingHour);
+assert.ok(Math.abs((fundingSummary.prior24h ?? 0) - 0.00024) < 1e-12);
+assert.ok(Math.abs((fundingSummary.duringTrade ?? 0) - 0.00006) < 1e-12);
 
 console.log("price structure tests passed");
 
@@ -101,6 +106,7 @@ const syntheticLiveSignal = {
   realizedVolatility24h: 0.02,
   hyperliquidMomentum6h: 0.01,
   trendZ6h: 1,
+  hyperliquidFunding24h: 0.0007,
   signalZ: 1,
   side: "LONG" as const,
   sourceMarkets: 3,
@@ -111,6 +117,8 @@ assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "polymarket-only").sid
 assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "contrarian").side, "SHORT");
 assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, side: "SHORT", trendZ6h: 1 }, "hyperliquid-momentum").side, "LONG");
 assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, side: "LONG", trendZ6h: -1 }, "hyperliquid-reversion").side, "LONG");
+assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "hyperliquid-funding-carry").side, "SHORT");
+assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, hyperliquidFunding24h: -0.0007 }, "hyperliquid-funding-momentum").side, "SHORT");
 
 console.log("combined shadow signal-rule tests passed");
 
@@ -189,10 +197,10 @@ assert.ok(combined.netReturnPct > 0);
 assert.ok(combined.excessReturnPct > 0);
 assert.equal(combined.statisticallyPositive, true);
 assert.ok((combined.deflatedSharpeProbability ?? 0) > 0.95);
-assert.equal(combined.strategyTrials, 15);
+assert.equal(combined.strategyTrials, 19);
 assert.equal(combined.walkForwardFolds, 4);
 assert.equal(combined.selectedFromValidation, true);
-assert.equal(combined.candidateDiagnostics.length, 6);
+assert.equal(combined.candidateDiagnostics.length, 10);
 assert.equal(combined.candidateDiagnostics.some((candidate) => candidate.passed), true);
 assert.equal(
   combined.candidateDiagnostics
@@ -226,6 +234,22 @@ assert.equal(reversionCombined.selectedStrategy.signalRule, "hyperliquid-reversi
 assert.equal(reversionCombined.trades, 24);
 assert.ok(reversionCombined.netReturnPct > 0);
 assert.ok(reversionCombined.excessReturnPct > 0);
+
+const fundingCombined = evaluateCombinedTrading(combinedSamples.map((sample, index) => {
+  const positiveFunding = index % 4 < 2;
+  const carryLong = !positiveFunding;
+  return {
+    ...sample,
+    hyperliquidExitPrice: carryLong ? 102 : 98,
+    hyperliquidMomentum6h: 0,
+    hyperliquidFunding24h: positiveFunding ? 0.0007 : -0.0007,
+    hyperliquidFundingDuringTrade: positiveFunding ? 0.0007 : -0.0007,
+  };
+}));
+assert.equal(fundingCombined.selectedStrategy.signalRule, "hyperliquid-funding-carry");
+assert.equal(fundingCombined.trades, 24);
+assert.ok(fundingCombined.netReturnPct > 0);
+assert.ok(fundingCombined.excessReturnPct > 0);
 
 const guarded = evaluateCombinedTrading(combinedSamples.map((sample, index) => index < 36 ? ({
   ...sample,

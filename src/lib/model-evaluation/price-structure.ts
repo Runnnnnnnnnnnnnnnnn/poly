@@ -11,6 +11,7 @@ const minimumReturnCount = 72;
 const volatilityLookbackCandles = 24 * 45;
 const volatilityHalfLifeCandles = 24 * 7;
 const candleChunkMs = 120 * 24 * 60 * 60 * 1_000;
+const fundingChunkMs = 14 * 24 * 60 * 60 * 1_000;
 
 const candleSchema = z.array(z.object({
   t: z.number(),
@@ -21,11 +22,21 @@ const candleSchema = z.array(z.object({
   c: z.string(),
 }));
 
+const fundingHistorySchema = z.array(z.object({
+  fundingRate: z.union([z.string(), z.number()]),
+  time: z.number(),
+}));
+
 type Candle = {
   openedAt: number;
   closedAt: number;
   open: number;
   close: number;
+};
+
+export type FundingPoint = {
+  time: number;
+  rate: number;
 };
 
 export type TerminalPriceCondition = {
@@ -64,6 +75,29 @@ export async function addPriceStructureFeatures(samples: EvaluationSample[]): Pr
     asset,
     await fetchCandles(asset, startTime, lastEndAt),
   ] as const)));
+  const fundingBounds = new Map(assets.flatMap((asset) => {
+    const candles = candlesByAsset.get(asset) ?? [];
+    const relevant = samples.filter((sample) => {
+      if (sample.asset !== asset || !parseTerminalPriceCondition(sample.title)) return false;
+      const observedAt = new Date(sample.observedAt).getTime();
+      const endAt = new Date(sample.endAt).getTime();
+      const currentIndex = findLatestClosedCandle(candles, observedAt);
+      const entry = candles.find((candle) => candle.openedAt >= observedAt && candle.openedAt < endAt);
+      const exitIndex = findLatestClosedCandle(candles, endAt);
+      return currentIndex >= minimumReturnCount && Boolean(entry) && exitIndex >= 0;
+    });
+    if (!relevant.length) return [];
+    return [[asset, {
+      startTime: Math.min(...relevant.map((sample) => new Date(sample.observedAt).getTime())) - 24 * 60 * 60 * 1_000,
+      endTime: Math.max(...relevant.map((sample) => new Date(sample.endAt).getTime())),
+    }] as const];
+  }));
+  const fundingByAsset = new Map<CryptoAsset, FundingPoint[]>();
+  for (const asset of assets) {
+    const bounds = fundingBounds.get(asset);
+    fundingByAsset.set(asset, bounds ? await fetchFundingHistory(asset, bounds.startTime, bounds.endTime).catch(() => []) : []);
+    await sleep(250);
+  }
 
   return samples.map((sample) => {
     const condition = parseTerminalPriceCondition(sample.title);
@@ -78,6 +112,7 @@ export async function addPriceStructureFeatures(samples: EvaluationSample[]): Pr
     const entry = candles.find((candle) => candle.openedAt >= observedAt && candle.openedAt < endAt);
     const exitIndex = findLatestClosedCandle(candles, endAt);
     const exit = exitIndex >= 0 ? candles[exitIndex] : null;
+    const funding = summarizeFundingAt(fundingByAsset.get(sample.asset) ?? [], observedAt, entry?.openedAt ?? null, exit?.closedAt ?? null);
     const priceWindow = candles.slice(Math.max(0, currentIndex - volatilityLookbackCandles), currentIndex + 1);
     const returns = priceWindow
       .slice(1)
@@ -104,11 +139,27 @@ export async function addPriceStructureFeatures(samples: EvaluationSample[]): Pr
       hyperliquidExitLeadMinutes: exit ? Math.max(0, endAt - exit.closedAt) / (60 * 1_000) : null,
       hyperliquidMomentum6h: trailingLogReturn(candles, currentIndex, 6),
       hyperliquidMomentum24h: trailingLogReturn(candles, currentIndex, 24),
+      hyperliquidFunding24h: funding.prior24h,
+      hyperliquidFundingDuringTrade: funding.duringTrade,
       thresholdKind: condition.kind,
       thresholdLower: condition.lower,
       thresholdUpper: condition.upper,
     };
   });
+}
+
+export function summarizeFundingAt(
+  points: FundingPoint[],
+  observedAt: number,
+  entryAt: number | null,
+  exitAt: number | null,
+) {
+  return {
+    prior24h: sumFundingWindow(points, observedAt - 24 * 60 * 60 * 1_000, observedAt),
+    duringTrade: entryAt !== null && exitAt !== null && exitAt > entryAt
+      ? sumFundingWindow(points, entryAt, exitAt)
+      : null,
+  };
 }
 
 function trailingLogReturn(candles: Candle[], currentIndex: number, hours: number) {
@@ -162,6 +213,44 @@ async function fetchCandleChunk(asset: CryptoAsset, startTime: number, endTime: 
     .sort((a, b) => a.closedAt - b.closedAt);
 }
 
+async function fetchFundingHistory(asset: CryptoAsset, startTime: number, endTime: number): Promise<FundingPoint[]> {
+  const rows: FundingPoint[] = [];
+  for (let chunkStart = startTime; chunkStart <= endTime; chunkStart += fundingChunkMs) {
+    const chunkEnd = Math.min(endTime, chunkStart + fundingChunkMs - 1);
+    rows.push(...await fetchFundingChunk(asset, chunkStart, chunkEnd));
+    await sleep(150);
+  }
+  return Array.from(new Map(rows.map((point) => [point.time, point])).values())
+    .sort((left, right) => left.time - right.time);
+}
+
+async function fetchFundingChunk(asset: CryptoAsset, startTime: number, endTime: number) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const response = await fetchWithTimeout(HYPERLIQUID_INFO_API, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "fundingHistory", coin: asset, startTime, endTime }),
+    }, 30_000);
+    if (response.ok) {
+      return fundingHistorySchema.parse(await response.json())
+        .map((point) => ({ time: point.time, rate: Number(point.fundingRate) }))
+        .filter((point) => Number.isFinite(point.rate) && Number.isFinite(point.time))
+        .sort((left, right) => left.time - right.time);
+    }
+    if (response.status !== 429 || attempt === 3) throw new Error(`Hyperliquid funding history ${asset}: ${response.status}`);
+    await sleep(1_000 * (attempt + 1));
+  }
+  return [];
+}
+
+function sumFundingWindow(points: FundingPoint[], startExclusive: number, endInclusive: number) {
+  const expectedHours = Math.max(1, (endInclusive - startExclusive) / (60 * 60 * 1_000));
+  const values = points.filter((point) => point.time > startExclusive && point.time <= endInclusive);
+  if (values.length < Math.max(1, Math.ceil(expectedHours * 0.75))) return null;
+  return values.reduce((sum, point) => sum + point.rate, 0);
+}
+
 function findLatestClosedCandle(candles: Candle[], observedAt: number) {
   let low = 0;
   let high = candles.length - 1;
@@ -206,4 +295,8 @@ function isSupportedAsset(asset: CryptoAsset): asset is "BTC" | "ETH" | "SOL" | 
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

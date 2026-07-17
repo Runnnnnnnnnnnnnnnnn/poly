@@ -130,7 +130,8 @@ type MonitoringSnapshot = {
     riskStatus: string;
     emergencyStopped: boolean;
     minimumSignalZ: number | null;
-    signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
+    minimumFunding24h: number | null;
+    signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
     modelVersion: string | null;
     settlementBasis: {
       status: "collecting" | "healthy" | "attention";
@@ -203,16 +204,18 @@ type MonitoringSnapshot = {
     closestValidationCandidate: {
       id: string;
       minimumSignalZ: number;
-      signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
+      signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
       minimumTrendZ: number;
+      minimumFunding24h: number;
       positionPct: number;
     } | null;
     candidateDiagnostics: Array<{
       strategy: {
         id: string;
         minimumSignalZ: number;
-        signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion";
+        signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
         minimumTrendZ: number;
+        minimumFunding24h: number;
         positionPct: number;
       };
       validationSignals: number;
@@ -227,6 +230,7 @@ type MonitoringSnapshot = {
       gates: Array<{ id: string; label: string; passed: boolean }>;
     }>;
     structuralFeatureCoverage: number | null;
+    fundingFeatureCoverage: number | null;
     evaluationStatus: "promising" | "inconclusive" | "underperforming" | "building";
     latestAsset: string | null;
     latestBrierScore: number | null;
@@ -970,7 +974,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           ))}
           {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
         </div>
-        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Polymarketの乖離とHyperliquidの短期値動きを比較し、Hyperliquidの価格で損益を計測。売買価格取得率 {formatPct(modelFeatureCoverage(snapshot))}</p>
+        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Polymarketの乖離とHyperliquidの値動き・資金調達率を比較し、実際の価格とコストで損益を計測。価格 {formatPct(modelFeatureCoverage(snapshot))} / 資金調達 {formatPct(snapshot?.model.fundingFeatureCoverage)}</p>
       </div>
       </div>
     </details>
@@ -1008,8 +1012,11 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
   const DecisionIcon = decision.icon;
   const hasTrades = (model?.trades ?? 0) > 0;
   const sampleReady = (model?.trades ?? 0) >= 50;
-  const edgeConfidence = model?.deflatedSharpeProbability;
-  const edgeReady = (edgeConfidence ?? 0) >= 0.95 && model?.statisticallyPositive === true;
+  const leadingCandidate = selectLeadingCandidate(model?.candidateDiagnostics);
+  const leadingPassedGates = leadingCandidate?.gates.filter((gate) => gate.passed).length ?? 0;
+  const edgeConfidence = model?.deflatedSharpeProbability ?? leadingCandidate?.deflatedSharpeProbability;
+  const edgeReady = (edgeConfidence ?? 0) >= 0.95
+    && (model?.statisticallyPositive === true || leadingCandidate?.gates.some((gate) => gate.id === "significance" && gate.passed) === true);
 
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="組み合わせ戦略の検証結果">
@@ -1029,6 +1036,19 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
           </div>
         </div>
       </div>
+      {leadingCandidate && model?.combinedStrategy === "no-trade guard" ? (
+        <div className="flex flex-col gap-3 border-b bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold text-slate-500">現在の最有力候補</p>
+            <p className="mt-1 text-sm font-bold text-slate-950">{formatCombinedStrategy(leadingCandidate.strategy.id)}</p>
+          </div>
+          <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
+            <span className="rounded-sm bg-white px-2 py-1 text-slate-700">{leadingPassedGates}/{leadingCandidate.gates.length} 条件</span>
+            <span className="rounded-sm bg-white px-2 py-1 text-emerald-700">損益 {formatSignedPct(leadingCandidate.netReturnPct)}</span>
+            <span className="rounded-sm bg-white px-2 py-1 text-amber-800">確信度 {formatPct(leadingCandidate.deflatedSharpeProbability)}</span>
+          </div>
+        </div>
+      ) : null}
       <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
         <ResultMetric
           icon={Database}
@@ -1118,18 +1138,15 @@ function ModelSampleFlow({ model }: { model: MonitoringSnapshot["model"] | undef
 }
 
 function CandidateDiagnosis({ diagnostics }: { diagnostics: MonitoringSnapshot["model"]["candidateDiagnostics"] | undefined }) {
-  const best = diagnostics?.length ? [...diagnostics].sort((left, right) =>
-    Number(right.passed) - Number(left.passed)
-    || right.gates.filter((gate) => gate.passed).length - left.gates.filter((gate) => gate.passed).length
-    || right.netReturnPct - left.netReturnPct
-    || right.excessReturnPct - left.excessReturnPct,
-  )[0] : null;
+  const best = selectLeadingCandidate(diagnostics);
   if (!best) return null;
   const passed = best.gates.filter((gate) => gate.passed).length;
   const families = [
     { rule: "polymarket-only" as const, label: "Poly方向" },
     { rule: "hyperliquid-momentum" as const, label: "HL順張り" },
     { rule: "hyperliquid-reversion" as const, label: "HL反転" },
+    { rule: "hyperliquid-funding-carry" as const, label: "資金受取" },
+    { rule: "hyperliquid-funding-momentum" as const, label: "資金方向" },
   ].flatMap(({ rule, label }) => {
     const candidate = [...(diagnostics ?? [])]
       .filter((item) => item.strategy.signalRule === rule)
@@ -1161,7 +1178,7 @@ function CandidateDiagnosis({ diagnostics }: { diagnostics: MonitoringSnapshot["
       <p className="mt-3 text-xs font-semibold text-slate-600">
         検証 {best.trades}取引 / 損益 {formatSignedPct(best.netReturnPct)} / 単純戦略との差 {formatSignedPct(best.excessReturnPct)} / 確信度 {formatPct(best.deflatedSharpeProbability)}
       </p>
-      <div className="mt-3 grid grid-cols-3 divide-x rounded-md bg-slate-50 py-2 text-center">
+      <div className="mt-3 grid grid-cols-2 gap-y-2 divide-x rounded-md bg-slate-50 py-2 text-center sm:grid-cols-5">
         {families.map(({ label, candidate }) => (
           <div className="min-w-0 px-2" key={label}>
             <p className="text-[10px] font-bold text-slate-500">{label}</p>
@@ -1171,6 +1188,15 @@ function CandidateDiagnosis({ diagnostics }: { diagnostics: MonitoringSnapshot["
       </div>
     </div>
   );
+}
+
+function selectLeadingCandidate(diagnostics: MonitoringSnapshot["model"]["candidateDiagnostics"] | undefined) {
+  return diagnostics?.length ? [...diagnostics].sort((left, right) =>
+    Number(right.passed) - Number(left.passed)
+    || right.gates.filter((gate) => gate.passed).length - left.gates.filter((gate) => gate.passed).length
+    || right.netReturnPct - left.netReturnPct
+    || right.excessReturnPct - left.excessReturnPct,
+  )[0] : null;
 }
 
 function HorizonComparison({ studies }: { studies: MonitoringSnapshot["model"]["horizonStudies"] | undefined }) {
@@ -1634,6 +1660,8 @@ function formatNumber(value: number | null | undefined, digits = 2) {
 function formatCombinedStrategy(strategy: string | null | undefined) {
   if (!strategy) return "選定中";
   if (strategy === "no-trade guard") return "取引見送り";
+  if (strategy.startsWith("hl funding carry")) return `資金調達を受け取る方向 / 24時間 ${strategy.split(" ").at(-1)}以上`;
+  if (strategy.startsWith("hl funding momentum")) return `資金調達と同じ方向 / 24時間 ${strategy.split(" ").at(-1)}以上`;
   const threshold = strategy.match(/[0-9.]+$/)?.[0];
   if (!threshold) return strategy;
   if (strategy.startsWith("contrarian")) return `予測乖離へ逆張り / 強度 ${threshold}以上`;
@@ -1661,6 +1689,8 @@ function formatShadowRule(rule: MonitoringSnapshot["combinedShadow"]["signalRule
   if (rule === "contrarian") return "予測乖離へ逆張り";
   if (rule === "hyperliquid-momentum") return "6時間値動きへ順張り";
   if (rule === "hyperliquid-reversion") return "6時間値動きへ反転";
+  if (rule === "hyperliquid-funding-carry") return "資金調達を受け取る方向";
+  if (rule === "hyperliquid-funding-momentum") return "資金調達と同じ方向";
   return "予測方向に追随";
 }
 

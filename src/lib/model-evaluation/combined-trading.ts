@@ -11,16 +11,20 @@ const minimumProfitableFolds = 3;
 const minimumDeflatedSharpeProbability = 0.95;
 const randomBenchmarkTrials = 200;
 // Includes unique rule and threshold combinations explored in earlier model versions.
-const cumulativeStrategyTrials = 15;
+const cumulativeStrategyTrials = 19;
 
 const strategyCandidates: CombinedStrategyCandidate[] = [
-  { id: "no-trade guard", minimumSignalZ: 0, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
-  { id: "signal z 0.25", minimumSignalZ: 0.25, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
-  { id: "signal z 0.50", minimumSignalZ: 0.5, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
-  { id: "hl momentum z 0.25", minimumSignalZ: 0.25, signalRule: "hyperliquid-momentum", minimumTrendZ: 0.1, positionPct: 0.05 },
-  { id: "hl momentum z 0.50", minimumSignalZ: 0.5, signalRule: "hyperliquid-momentum", minimumTrendZ: 0.1, positionPct: 0.05 },
-  { id: "hl reversion z 0.25", minimumSignalZ: 0.25, signalRule: "hyperliquid-reversion", minimumTrendZ: 0.1, positionPct: 0.05 },
-  { id: "hl reversion z 0.50", minimumSignalZ: 0.5, signalRule: "hyperliquid-reversion", minimumTrendZ: 0.1, positionPct: 0.05 },
+  { id: "no-trade guard", minimumSignalZ: 0, signalRule: "polymarket-only", minimumTrendZ: 0, minimumFunding24h: 0, positionPct: 0.05 },
+  { id: "signal z 0.25", minimumSignalZ: 0.25, signalRule: "polymarket-only", minimumTrendZ: 0, minimumFunding24h: 0, positionPct: 0.05 },
+  { id: "signal z 0.50", minimumSignalZ: 0.5, signalRule: "polymarket-only", minimumTrendZ: 0, minimumFunding24h: 0, positionPct: 0.05 },
+  { id: "hl momentum z 0.25", minimumSignalZ: 0.25, signalRule: "hyperliquid-momentum", minimumTrendZ: 0.1, minimumFunding24h: 0, positionPct: 0.05 },
+  { id: "hl momentum z 0.50", minimumSignalZ: 0.5, signalRule: "hyperliquid-momentum", minimumTrendZ: 0.1, minimumFunding24h: 0, positionPct: 0.05 },
+  { id: "hl reversion z 0.25", minimumSignalZ: 0.25, signalRule: "hyperliquid-reversion", minimumTrendZ: 0.1, minimumFunding24h: 0, positionPct: 0.05 },
+  { id: "hl reversion z 0.50", minimumSignalZ: 0.5, signalRule: "hyperliquid-reversion", minimumTrendZ: 0.1, minimumFunding24h: 0, positionPct: 0.05 },
+  { id: "hl funding carry 0.03%", minimumSignalZ: 0.25, signalRule: "hyperliquid-funding-carry", minimumTrendZ: 0, minimumFunding24h: 0.0003, positionPct: 0.05 },
+  { id: "hl funding carry 0.06%", minimumSignalZ: 0.25, signalRule: "hyperliquid-funding-carry", minimumTrendZ: 0, minimumFunding24h: 0.0006, positionPct: 0.05 },
+  { id: "hl funding momentum 0.03%", minimumSignalZ: 0.25, signalRule: "hyperliquid-funding-momentum", minimumTrendZ: 0, minimumFunding24h: 0.0003, positionPct: 0.05 },
+  { id: "hl funding momentum 0.06%", minimumSignalZ: 0.25, signalRule: "hyperliquid-funding-momentum", minimumTrendZ: 0, minimumFunding24h: 0.0006, positionPct: 0.05 },
 ];
 
 type TradeSignal = {
@@ -33,6 +37,8 @@ type TradeSignal = {
   impliedTarget: number;
   signalZ: number;
   trendZ6h: number | null;
+  funding24h: number | null;
+  realizedFunding: number | null;
   side: 1 | -1;
 };
 
@@ -221,6 +227,12 @@ function buildSignals(samples: EvaluationSample[]) {
       impliedTarget,
       signalZ,
       trendZ6h,
+      funding24h: typeof base.hyperliquidFunding24h === "number" && Number.isFinite(base.hyperliquidFunding24h)
+        ? base.hyperliquidFunding24h
+        : null,
+      realizedFunding: typeof base.hyperliquidFundingDuringTrade === "number" && Number.isFinite(base.hyperliquidFundingDuringTrade)
+        ? base.hyperliquidFundingDuringTrade
+        : null,
       side: signalZ >= 0 ? 1 as const : -1 as const,
     }];
   });
@@ -235,7 +247,9 @@ function selectSignalsForCandidate(signals: TradeSignal[], candidate: CombinedSt
     ? signals.filter((signal) => signal.trendZ6h !== null && signal.side * signal.trendZ6h >= candidate.minimumTrendZ)
     : candidate.signalRule === "hyperliquid-momentum" || candidate.signalRule === "hyperliquid-reversion"
       ? signals.filter((signal) => signal.trendZ6h !== null && Math.abs(signal.trendZ6h) >= candidate.minimumTrendZ)
-    : signals;
+    : isFundingSignalRule(candidate.signalRule)
+      ? signals.filter((signal) => signal.funding24h !== null && Math.abs(signal.funding24h) >= candidate.minimumFunding24h)
+      : signals;
   return selectNonOverlappingSignals(ruleEligible, candidate.minimumSignalZ);
 }
 
@@ -334,7 +348,9 @@ function simulate(
     const grossReturn = side * (signal.exitPrice / signal.entryPrice - 1);
     const feeRate = takerFeePerSide * 2;
     const slippageRate = slippagePerSide * 2;
-    const fundingRate = fundingPer24h * holdingDays;
+    const fundingRate = signal.realizedFunding === null
+      ? fundingPer24h * holdingDays
+      : side * signal.realizedFunding;
     const netTradeReturn = grossReturn - feeRate - slippageRate - fundingRate;
     const notional = capital * candidate.positionPct;
 
@@ -381,7 +397,15 @@ function resolveStrategySide(signal: TradeSignal, rule: CombinedStrategyCandidat
     const trendSide = (signal.trendZ6h ?? 0) >= 0 ? 1 as const : -1 as const;
     return rule === "hyperliquid-reversion" ? -trendSide as 1 | -1 : trendSide;
   }
+  if (isFundingSignalRule(rule)) {
+    const fundingSide = (signal.funding24h ?? 0) >= 0 ? 1 as const : -1 as const;
+    return rule === "hyperliquid-funding-carry" ? -fundingSide as 1 | -1 : fundingSide;
+  }
   return signal.side;
+}
+
+function isFundingSignalRule(rule: CombinedStrategyCandidate["signalRule"]) {
+  return rule === "hyperliquid-funding-carry" || rule === "hyperliquid-funding-momentum";
 }
 
 function impliedTerminalMedian(sample: EvaluationSample, volatility: number, probability = sample.marketProbability) {

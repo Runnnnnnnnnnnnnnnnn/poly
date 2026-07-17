@@ -41,6 +41,7 @@ export type CombinedLiveSignal = {
   realizedVolatility24h: number;
   hyperliquidMomentum6h: number;
   trendZ6h: number;
+  hyperliquidFunding24h: number | null;
   signalZ: number;
   side: "LONG" | "SHORT";
   sourceMarkets: number;
@@ -177,6 +178,7 @@ export async function scanCombinedLiveSignal(now = new Date()): Promise<Combined
       realizedVolatility24h: priceState.volatility24h,
       hyperliquidMomentum6h: priceState.momentum6h,
       trendZ6h,
+      hyperliquidFunding24h: priceState.funding24h,
       signalZ,
       side: signalZ >= 0 ? "LONG" as const : "SHORT" as const,
       sourceMarkets: estimates.length,
@@ -310,7 +312,7 @@ async function loadPriceStates(now: Date) {
     await fetchRecentHourlyPrices(asset, now).catch(() => []),
   ] as const)));
 
-  const states = new Map<CombinedLiveSignal["asset"], { spotPrice: number; volatility24h: number; momentum6h: number }>();
+  const states = new Map<CombinedLiveSignal["asset"], { spotPrice: number; volatility24h: number; momentum6h: number; funding24h: number | null }>();
   for (const asset of supportedAssets) {
     const assetRows = grouped.get(asset) ?? [];
     const hourly = new Map<number, (typeof assetRows)[number]>();
@@ -322,7 +324,13 @@ async function loadPriceStates(now: Date) {
     const volatility24h = clamp(Math.sqrt(returns.reduce((sum, value) => sum + value ** 2, 0)), 0.005, 0.25);
     const momentum6h = Math.log((prices.at(-1) as number) / prices[prices.length - 7]);
     if (!Number.isFinite(momentum6h)) continue;
-    states.set(asset, { spotPrice: prices.at(-1) as number, volatility24h, momentum6h });
+    const currentHour = Math.floor(now.getTime() / (60 * 60 * 1_000));
+    const fundingRows = Array.from(hourly.entries())
+      .filter(([hour]) => hour >= currentHour - 24 && hour < currentHour)
+      .map(([, row]) => row.fundingRate)
+      .filter(Number.isFinite);
+    const funding24h = fundingRows.length >= 18 ? fundingRows.reduce((sum, rate) => sum + rate, 0) : null;
+    states.set(asset, { spotPrice: prices.at(-1) as number, volatility24h, momentum6h, funding24h });
   }
   return states;
 }
