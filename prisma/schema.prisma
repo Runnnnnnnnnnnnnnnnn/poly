@@ -98,6 +98,7 @@ model ModelEvaluationRun {
 
 model PredictionMarket {
   id          String    @id
+  eventId     String?
   asset       String
   tokenId     String
   title       String
@@ -109,6 +110,7 @@ model PredictionMarket {
   lastSeenAt  DateTime  @default(now())
 
   @@index([asset, endDate])
+  @@index([eventId, endDate])
   @@index([resolved, endDate])
 }
 

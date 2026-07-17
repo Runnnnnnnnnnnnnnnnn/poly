@@ -13,6 +13,7 @@ import {
 import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
 import { getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
+import { loadProspectiveSynchronizedData } from "@/src/lib/model-evaluation/prospective-synchronized";
 import { prisma } from "@/src/lib/server/prisma";
 import { evaluateSynchronizedPriceQuality } from "@/src/lib/monitoring/synchronized-quality";
 
@@ -156,6 +157,7 @@ export async function getMonitoringSnapshot() {
     startedAt: synchronizedCompleteAggregate._min.capturedAt,
     latestAt: synchronizedCompleteAggregate._max.capturedAt,
   });
+  const prospectiveSynchronized = (await loadProspectiveSynchronizedData({ now })).report;
   const evaluation = parseJson<ModelEvaluationMetrics>(latestEvaluation?.metricsJson ?? null);
   const combinedRunConfigs = new Map(combinedRuns.map((run) => [run.id, parseJson<Partial<CombinedShadowConfig>>(run.configJson)]));
   const forwardStrategyRuns = forwardObservationHorizons.flatMap((horizonHours) => {
@@ -349,6 +351,7 @@ export async function getMonitoringSnapshot() {
         maximumSkewMs: synchronizedAggregate._max.captureSkewMs ?? null,
         targetCadenceMinutes: 1,
         quality: synchronizedQuality,
+        prospective: prospectiveSynchronized,
       },
     },
     tradeReadiness: {

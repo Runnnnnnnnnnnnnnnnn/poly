@@ -2,7 +2,7 @@ import type { BacktestPoint, BacktestRun } from "@prisma/client";
 
 import { prisma } from "@/src/lib/server/prisma";
 import { calculateBacktestMetrics } from "@/src/lib/backtest/metrics";
-import { discoverCryptoMarkets, fetchCurrentBooks, fetchHistoricalProbability } from "@/src/lib/backtest/polymarket";
+import { discoverActiveCryptoPriceMarkets, discoverCryptoMarkets, fetchCryptoMarketById, fetchCurrentBooks, fetchHistoricalProbability } from "@/src/lib/backtest/polymarket";
 import type { BacktestMetrics, BacktestResult, CryptoAsset, CryptoForecast, CryptoMarket } from "@/src/lib/backtest/types";
 import {
   calculatePriceBasisPct,
@@ -16,7 +16,12 @@ const DEFAULT_INITIAL_CAPITAL = 1_000;
 const DEFAULT_THRESHOLD = 0.55;
 
 export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; limit?: number; hyperliquidStates?: HyperliquidMarketState[] } = {}) {
-  const markets = await discoverCryptoMarkets({ includeResolved: false, limit: options.limit ?? 80 });
+  const limit = options.limit ?? 80;
+  const [discovered, activeEvents] = await Promise.all([
+    discoverCryptoMarkets({ includeResolved: false, limit }),
+    discoverActiveCryptoPriceMarkets(Math.max(180, limit)).catch(() => []),
+  ]);
+  const markets = Array.from(new Map([...discovered, ...activeEvents].map((market) => [market.id, market])).values()).slice(0, limit);
   const assets = options.assets?.length ? new Set(options.assets) : null;
   const selected = markets.filter((market) => !assets || assets.has(market.asset));
   const referenceAssets = Array.from(new Set(selected.map((market) => market.asset).filter(isSupportedReferenceAsset)));
@@ -51,6 +56,7 @@ export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; 
       where: { id: market.id },
       create: toMarketCreate(market, capturedAt),
       update: {
+        eventId: market.eventId ?? undefined,
         tokenId: market.tokenId,
         title: market.title,
         slug: market.slug,
@@ -112,6 +118,38 @@ export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; 
     saved,
     synchronized,
     synchronizationCoverage: saved ? synchronized / saved : 0,
+  };
+}
+
+export async function refreshPredictionMarketOutcomes(options: { now?: Date; limit?: number } = {}) {
+  const now = options.now ?? new Date();
+  const pending = await prisma.predictionMarket.findMany({
+    where: { resolved: false, endDate: { lte: now } },
+    orderBy: { endDate: "asc" },
+    take: Math.min(200, Math.max(1, options.limit ?? 80)),
+  });
+  const refreshed = await mapWithConcurrency(pending, 8, async (registered) => {
+    const market = await fetchCryptoMarketById(registered.id);
+    if (!market) return { checked: true, resolved: false };
+    await prisma.predictionMarket.update({
+      where: { id: registered.id },
+      data: {
+        eventId: market.eventId ?? registered.eventId,
+        tokenId: market.tokenId,
+        title: market.title,
+        slug: market.slug,
+        endDate: toDate(market.endDate),
+        resolved: market.resolved,
+        result: market.result,
+        lastSeenAt: now,
+      },
+    });
+    return { checked: true, resolved: market.resolved && market.result !== null };
+  });
+  return {
+    checked: refreshed.filter(Boolean).length,
+    resolved: refreshed.filter((result) => result?.resolved).length,
+    pending: pending.length,
   };
 }
 
@@ -282,6 +320,7 @@ export async function getCryptoForecast(asset: CryptoAsset, targetDate?: string)
 function toMarketCreate(market: CryptoMarket, seenAt: Date) {
   return {
     id: market.id,
+    eventId: market.eventId,
     asset: market.asset,
     tokenId: market.tokenId,
     title: market.title,
@@ -292,6 +331,20 @@ function toMarketCreate(market: CryptoMarket, seenAt: Date) {
     firstSeenAt: seenAt,
     lastSeenAt: seenAt,
   };
+}
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>) {
+  const results = new Array<R | null>(items.length).fill(null);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try { results[index] = await mapper(items[index]); } catch { results[index] = null; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+  return results;
 }
 
 function toResult(run: BacktestRun, markets: BacktestResult["markets"], metrics: BacktestMetrics | null): BacktestResult {

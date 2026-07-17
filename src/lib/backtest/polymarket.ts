@@ -87,6 +87,12 @@ export async function discoverCryptoMarkets(options: { includeResolved?: boolean
   return Array.from(new Map(all.map((market) => [market.id, market])).values()).slice(0, limit);
 }
 
+export async function fetchCryptoMarketById(id: string) {
+  const response = await fetchWithTimeout(`${GAMMA_API}/markets/${encodeURIComponent(id)}`, { cache: "no-store" }, 15_000);
+  if (!response.ok) throw new Error(`market ${id}: ${response.status}`);
+  return toCryptoMarket(marketSchema.parse(await response.json()));
+}
+
 export async function discoverActiveCryptoPriceMarkets(limit = 300) {
   const now = new Date();
   const url = new URL(`${GAMMA_API}/events`);

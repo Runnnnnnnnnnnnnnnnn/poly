@@ -24,6 +24,7 @@ import { calculateDirectionalBookReturn, deflatedSharpeProbability, evaluateComb
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/probability-ladder";
 import { parseTerminalPriceCondition, probabilityForCondition, summarizeFundingAt } from "../src/lib/model-evaluation/price-structure";
+import { selectProspectiveExecutionTriplet } from "../src/lib/model-evaluation/prospective-synchronized";
 import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
@@ -212,6 +213,37 @@ assert.equal(synchronizedOverlay.executionSynchronizationSkewMs, 2_400);
 assert.ok((synchronizedOverlay.structuralProbability ?? 0) > 0.5);
 
 console.log("synchronized execution overlay tests passed");
+
+const prospectiveSnapshot = (capturedAt: number) => ({
+  marketId: "market-sync",
+  capturedAt: new Date(capturedAt),
+  probability: 0.6,
+  bestBid: 0.59,
+  bestAsk: 0.61,
+  spread: 0.02,
+  hyperliquidMidPrice: 100_000,
+  hyperliquidBestBid: 99_995,
+  hyperliquidBestAsk: 100_005,
+  hyperliquidSpread: 10,
+  priceBasisPct: 0.0001,
+  captureSkewMs: 1_000,
+});
+const prospectiveTriplet = selectProspectiveExecutionTriplet([
+  prospectiveSnapshot(synchronizedTargetAt - 4 * 60_000),
+  prospectiveSnapshot(synchronizedTargetAt - 30_000),
+  prospectiveSnapshot(synchronizedTargetAt + 30_000),
+  prospectiveSnapshot(synchronizedTargetAt + 60_000),
+  prospectiveSnapshot(synchronizedEndAt - 4 * 60_000),
+  prospectiveSnapshot(synchronizedEndAt - 30_000),
+], synchronizedTargetAt, synchronizedEndAt);
+assert.equal(prospectiveTriplet.signal?.capturedAt.getTime(), synchronizedTargetAt - 30_000);
+assert.equal(prospectiveTriplet.entry?.capturedAt.getTime(), synchronizedTargetAt + 30_000);
+assert.equal(prospectiveTriplet.exit?.capturedAt.getTime(), synchronizedEndAt - 30_000);
+assert.equal(selectProspectiveExecutionTriplet([
+  prospectiveSnapshot(synchronizedTargetAt - 6 * 60_000),
+], synchronizedTargetAt, synchronizedEndAt).signal, null);
+
+console.log("prospective synchronized selection tests passed");
 
 const bullishTarget = impliedTerminalMedianForCondition("above", 100, null, 0.8, 0.05);
 const bearishTarget = impliedTerminalMedianForCondition("below", null, 100, 0.8, 0.05);

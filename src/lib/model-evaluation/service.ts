@@ -3,6 +3,7 @@ import type { ModelEvaluationRun } from "@prisma/client";
 import { discoverHistoricalCryptoEvents, fetchHistoricalProbability, type HistoricalCryptoEvent } from "@/src/lib/backtest/polymarket";
 import { evaluateChronologicalModel, HORIZON_HOURS, MODEL_VERSION } from "@/src/lib/model-evaluation/engine";
 import { addPriceStructureFeatures } from "@/src/lib/model-evaluation/price-structure";
+import { attachProspectiveModelEvaluation, loadProspectiveSynchronizedData, prospectiveMinimumEvaluationEvents } from "@/src/lib/model-evaluation/prospective-synchronized";
 import { overlaySynchronizedExecution } from "@/src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample, ModelEvaluationMetrics, ModelEvaluationResult } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
@@ -41,7 +42,10 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
   });
 
   try {
-    const datasets = await loadEvaluationSamplesByHorizon([...PREDECLARED_HORIZONS]);
+    const [datasets, prospective] = await Promise.all([
+      loadEvaluationSamplesByHorizon([...PREDECLARED_HORIZONS]),
+      loadProspectiveSynchronizedData({ enrich: true }),
+    ]);
     const evaluations = new Map<number, ModelEvaluationMetrics>();
     const horizonStudies: NonNullable<ModelEvaluationMetrics["horizonStudies"]> = [];
 
@@ -71,9 +75,21 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
       }
     }
 
+    for (const horizonHours of PREDECLARED_HORIZONS) {
+      const horizon = prospective.report.horizons.find((item) => item.horizonHours === horizonHours);
+      if (!horizon || horizon.completedEvents < prospectiveMinimumEvaluationEvents) continue;
+      try {
+        const prospectiveMetrics = evaluateChronologicalModel(prospective.samplesByHorizon.get(horizonHours) ?? [], { horizonHours });
+        attachProspectiveModelEvaluation(prospective.report, horizonHours, prospectiveMetrics);
+      } catch {
+        // Collection progress remains visible until a full chronological split is available.
+      }
+    }
+
     const metrics = evaluations.get(HORIZON_HOURS);
     if (!metrics) throw new Error(`primary ${HORIZON_HOURS}h evaluation is unavailable`);
     metrics.horizonStudies = horizonStudies;
+    metrics.prospectiveSynchronized = prospective.report;
     const completed = await prisma.modelEvaluationRun.update({
       where: { id },
       data: {

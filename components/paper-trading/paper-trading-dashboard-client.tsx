@@ -135,6 +135,34 @@ type MonitoringSnapshot = {
           passed: boolean;
         }>;
       };
+      prospective?: {
+        methodology: "prospective-1m-orderbook-holdout";
+        collectionStartedAt: string | null;
+        latestSnapshotAt: string | null;
+        generatedAt: string;
+        completedEvents: number;
+        targetEvents: number;
+        horizons: Array<{
+          horizonHours: number;
+          scheduledMarkets: number;
+          upcomingMarkets: number;
+          observedMarkets: number;
+          missedMarkets: number;
+          awaitingExitMarkets: number;
+          awaitingResolutionMarkets: number;
+          completedMarkets: number;
+          completedEvents: number;
+          holdoutEvents: number;
+          eventGroupingCoverage: number;
+          observationCoverage: number;
+          targetEvents: number;
+          status: "collecting" | "inconclusive" | "underperforming" | "promising";
+          modelStatus: "inconclusive" | "underperforming" | "promising" | null;
+          trades: number;
+          netReturnPct: number | null;
+          excessReturnPct: number | null;
+        }>;
+      };
     };
   };
   tradeReadiness: {
@@ -1088,6 +1116,9 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
   const healthyPipelines = snapshot?.pipelines.filter((pipeline) => pipeline.status === "healthy").length ?? 0;
   const synchronizedPrices = snapshot?.collection.synchronizedPrices;
   const synchronizedQuality = synchronizedPrices?.quality;
+  const prospective = synchronizedPrices?.prospective;
+  const observedProspective = Math.max(0, ...(prospective?.horizons.map((horizon) => horizon.observedMarkets) ?? [0]));
+  const awaitingProspective = Math.max(0, ...(prospective?.horizons.map((horizon) => horizon.awaitingExitMarkets + horizon.awaitingResolutionMarkets) ?? [0]));
   const operationRows = [
     {
       label: "異常通知",
@@ -1123,7 +1154,11 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
             ? `同期 ${Math.round(synchronizedQuality.coverage * 100)}%・ずれ ${formatMilliseconds(synchronizedQuality.p95SkewMs)}`
             : synchronizedPrices?.records ? `最大ずれ ${formatMilliseconds(synchronizedPrices.maximumSkewMs)}` : "新しい記録を収集中"}
         />
-        <MonitorMetric label="最終テスト" value={`${snapshot?.model.testedEvents ?? 0}件`} note="未使用期間で評価" />
+        <MonitorMetric
+          label="1分板の答え合わせ"
+          value={`${prospective?.completedEvents ?? 0}/${prospective?.targetEvents ?? 50}件`}
+          note={`観測 ${observedProspective}・決着待ち ${awaitingProspective}`}
+        />
         <MonitorMetric
           label={synchronizedQuality ? "同期継続" : "連続蓄積"}
           value={synchronizedQuality ? formatDurationHours(synchronizedQuality.durationHours) : formatElapsed(snapshot?.collection.startedAt)}
@@ -1166,6 +1201,7 @@ function MonitorMetric({ label, value, note }: { label: string; value: string; n
 function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
   const model = snapshot?.model;
   const synchronizedQuality = snapshot?.collection.synchronizedPrices?.quality;
+  const prospective = snapshot?.collection.synchronizedPrices?.prospective;
   const holdoutAudit = model?.closestHoldoutAudit;
   const auditedReturn = holdoutAudit?.netReturnPct ?? model?.latestReturnPct;
   const auditedBenchmark = holdoutAudit?.benchmarkReturnPct ?? model?.benchmarkReturnPct;
@@ -1224,14 +1260,22 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
         </div>
         <div className="mt-4 rounded-md border border-border bg-slate-50 px-3 py-3">
           <div className="flex items-center justify-between gap-3 text-xs font-bold">
-            <span className="text-slate-700">最終テストを1分板価格で再現</span>
-            <span className="tabular-nums text-slate-950">{formatPct(model?.testSynchronizedExecutionCoverage)}</span>
+            <span className="text-slate-700">1分板で観測後に答え合わせ</span>
+            <span className="tabular-nums text-slate-950">{prospective?.completedEvents ?? 0}/{prospective?.targetEvents ?? 50}件</span>
           </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
-            <span
-              className={`block h-full rounded-full ${(model?.testSynchronizedExecutionCoverage ?? 0) >= 0.9 ? "bg-emerald-500" : "bg-amber-400"}`}
-              style={{ width: `${Math.max(0, Math.min(100, (model?.testSynchronizedExecutionCoverage ?? 0) * 100))}%` }}
-            />
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {(prospective?.horizons ?? [6, 12, 24, 48].map((horizonHours) => ({ horizonHours, completedEvents: 0, observedMarkets: 0, awaitingExitMarkets: 0, awaitingResolutionMarkets: 0, missedMarkets: 0, targetEvents: 50 }))).map((horizon) => (
+              <div key={horizon.horizonHours} className="rounded-sm border border-border bg-white px-2.5 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold text-muted-foreground">{horizon.horizonHours}時間</span>
+                  <span className="text-xs font-bold tabular-nums text-slate-950">{horizon.completedEvents}/{horizon.targetEvents}</span>
+                </div>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-200">
+                  <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, horizon.completedEvents / Math.max(1, horizon.targetEvents) * 100)}%` }} />
+                </div>
+                <p className="mt-1.5 truncate text-[9px] font-semibold text-muted-foreground">観測 {horizon.observedMarkets}・待ち {horizon.awaitingExitMarkets + horizon.awaitingResolutionMarkets}・欠測 {horizon.missedMarkets}</p>
+              </div>
+            ))}
           </div>
         </div>
         <div className="mt-5 flex flex-wrap gap-2 border-t pt-4">
@@ -1256,7 +1300,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
         </div>
         <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
-          CLOB板・判定参照価格・Hyperliquid板を1分ごとに同時保存し、{formatCompact(snapshot?.collection.synchronizedPrices?.records)}件を検査中です。収集済み期間は実際の買値・売値で再現し、未収集期間の1時間足は参考値としてのみ残します。
+          CLOB板・判定参照価格・Hyperliquid板を1分ごとに同時保存しています。収集開始後に実際に観測できた市場だけを対象にし、決着後に未使用期間として評価します。収集前の価格は1分板の実績には含めません。
         </p>
       </div>
       </div>

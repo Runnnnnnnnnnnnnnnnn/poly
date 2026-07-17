@@ -1,4 +1,4 @@
-import { collectCryptoSnapshots } from "../src/lib/backtest/service";
+import { collectCryptoSnapshots, refreshPredictionMarketOutcomes } from "../src/lib/backtest/service";
 import { getHyperliquidExecutionReadiness, reconcileHyperliquidTestnetOrders } from "../src/lib/combined-trading/hyperliquid-execution";
 import { runModelEvaluation } from "../src/lib/model-evaluation/service";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
@@ -9,6 +9,7 @@ const collectIntervalMs = Math.max(60_000, Number(process.env.COLLECT_INTERVAL_M
 const backtestIntervalMs = Math.max(60 * 60 * 1_000, Number(process.env.BACKTEST_INTERVAL_MS ?? 6 * 60 * 60 * 1_000));
 let collecting = false;
 let backtesting = false;
+let lastOutcomeRefreshAt = 0;
 
 async function collectCycle() {
   if (collecting) return;
@@ -42,6 +43,15 @@ async function collectCycle() {
       console.log(JSON.stringify({ type: "hyperliquid-snapshot", ...hyperliquid.value }));
     } else {
       console.error(hyperliquid.reason);
+    }
+    if (Date.now() - lastOutcomeRefreshAt >= 5 * 60 * 1_000) {
+      lastOutcomeRefreshAt = Date.now();
+      try {
+        const outcomes = await refreshPredictionMarketOutcomes({ limit: 80 });
+        console.log(JSON.stringify({ type: "polymarket-outcomes", ...outcomes }));
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : error);
+      }
     }
     const execution = getHyperliquidExecutionReadiness();
     if (execution.accountConfigured && execution.installed) {

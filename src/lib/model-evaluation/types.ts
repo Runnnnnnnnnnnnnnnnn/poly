@@ -246,6 +246,34 @@ export type ModelEvaluationMetrics = {
     maximumExecutionTimingErrorMinutes: number | null;
     error?: string;
   }>;
+  prospectiveSynchronized?: {
+    methodology: "prospective-1m-orderbook-holdout";
+    collectionStartedAt: string | null;
+    latestSnapshotAt: string | null;
+    generatedAt: string;
+    completedEvents: number;
+    targetEvents: number;
+    horizons: Array<{
+      horizonHours: number;
+      scheduledMarkets: number;
+      upcomingMarkets: number;
+      observedMarkets: number;
+      missedMarkets: number;
+      awaitingExitMarkets: number;
+      awaitingResolutionMarkets: number;
+      completedMarkets: number;
+      completedEvents: number;
+      holdoutEvents: number;
+      eventGroupingCoverage: number;
+      observationCoverage: number;
+      targetEvents: number;
+      status: "collecting" | "inconclusive" | "underperforming" | "promising";
+      modelStatus: "inconclusive" | "underperforming" | "promising" | null;
+      trades: number;
+      netReturnPct: number | null;
+      excessReturnPct: number | null;
+    }>;
+  };
 };
 
 export type ModelEvaluationResult = {

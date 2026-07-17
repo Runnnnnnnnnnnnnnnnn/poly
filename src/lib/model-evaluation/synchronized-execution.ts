@@ -7,7 +7,7 @@ import { prisma } from "@/src/lib/server/prisma";
 const maximumSignalAgeMs = 5 * 60 * 1_000;
 const maximumEntryLagMs = 5 * 60 * 1_000;
 const maximumExitLeadMs = 5 * 60 * 1_000;
-const synchronizedSnapshotWhere = {
+export const synchronizedSnapshotWhere = {
   synchronizationVersion: "fetch-time-v3-orderbook",
   bestBid: { not: null },
   bestAsk: { not: null },
