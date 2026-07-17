@@ -418,6 +418,8 @@ export async function getMonitoringSnapshot() {
       candidateDiagnostics: evaluation?.combinedTrading?.candidateDiagnostics ?? [],
       structuralFeatureCoverage: evaluation?.dataset.testExecutionFeatureCoverage ?? evaluation?.dataset.executionFeatureCoverage ?? evaluation?.dataset.structuralFeatureCoverage ?? null,
       fundingFeatureCoverage: evaluation?.dataset.testFundingFeatureCoverage ?? evaluation?.dataset.fundingFeatureCoverage ?? null,
+      synchronizedExecutionCoverage: evaluation?.dataset.synchronizedExecutionCoverage ?? 0,
+      testSynchronizedExecutionCoverage: evaluation?.dataset.testSynchronizedExecutionCoverage ?? 0,
       evaluationStatus: evaluation?.quality.status ?? "building",
       latestAsset: evaluation ? Object.keys(evaluation.dataset.assets).join("・") : null,
       latestBrierScore: evaluation?.probability.modelBrierScore ?? null,

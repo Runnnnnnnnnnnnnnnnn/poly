@@ -15,6 +15,7 @@ import { deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedi
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/probability-ladder";
 import { parseTerminalPriceCondition, probabilityForCondition, summarizeFundingAt } from "../src/lib/model-evaluation/price-structure";
+import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 
 const metrics = calculateBacktestMetrics(
@@ -76,6 +77,73 @@ assert.ok(Math.abs((fundingSummary.prior24h ?? 0) - 0.00024) < 1e-12);
 assert.ok(Math.abs((fundingSummary.duringTrade ?? 0) - 0.00006) < 1e-12);
 
 console.log("price structure tests passed");
+
+const synchronizedTargetAt = Date.parse("2026-01-01T00:00:00.000Z");
+const synchronizedEndAt = Date.parse("2026-01-02T00:00:00.000Z");
+const synchronizedSample: EvaluationSample = {
+  eventId: "event-sync",
+  marketId: "market-sync",
+  asset: "BTC",
+  title: "Will Bitcoin be above $100,000 on January 2?",
+  endAt: new Date(synchronizedEndAt).toISOString(),
+  observedAt: new Date(synchronizedTargetAt - 60 * 60 * 1_000).toISOString(),
+  marketProbability: 0.4,
+  horizonHours: 24,
+  realizedVolatility24h: 0.05,
+  hyperliquidEntryPrice: 98_000,
+  hyperliquidExitPrice: 99_000,
+  executionPriceSource: "hyperliquid-1h",
+  outcome: 1,
+};
+const synchronizedOverlay = applySynchronizedExecutionOverlay(synchronizedSample, {
+  targetAt: synchronizedTargetAt,
+  endAt: synchronizedEndAt,
+  signal: {
+    capturedAt: new Date(synchronizedTargetAt - 30_000),
+    probability: 0.62,
+    bestBid: 0.61,
+    bestAsk: 0.63,
+    spread: 0.02,
+    hyperliquidMidPrice: 101_000,
+    priceBasisPct: 0.0004,
+    captureSkewMs: 1_200,
+  },
+  entry: {
+    capturedAt: new Date(synchronizedTargetAt + 30_000),
+    probability: 0.63,
+    bestBid: 0.62,
+    bestAsk: 0.64,
+    spread: 0.02,
+    hyperliquidMidPrice: 101_100,
+    priceBasisPct: 0.0005,
+    captureSkewMs: 2_400,
+  },
+  exit: {
+    capturedAt: new Date(synchronizedEndAt - 45_000),
+    probability: 0.98,
+    bestBid: 0.97,
+    bestAsk: 0.99,
+    spread: 0.02,
+    hyperliquidMidPrice: 104_500,
+    priceBasisPct: 0.0003,
+    captureSkewMs: 1_800,
+  },
+});
+assert.equal(synchronizedOverlay.executionPriceSource, "synchronized-1m");
+assert.equal(synchronizedOverlay.marketProbability, 0.62);
+assert.equal(synchronizedOverlay.hyperliquidEntryPrice, 101_100);
+assert.equal(synchronizedOverlay.hyperliquidExitPrice, 104_500);
+assert.equal(synchronizedOverlay.observationLagMinutes, 0.5);
+assert.equal(synchronizedOverlay.hyperliquidEntryLagMinutes, 0.5);
+assert.equal(synchronizedOverlay.hyperliquidExitLeadMinutes, 0.75);
+assert.equal(synchronizedOverlay.marketBestBid, 0.61);
+assert.equal(synchronizedOverlay.marketBestAsk, 0.63);
+assert.equal(synchronizedOverlay.marketSpread, 0.02);
+assert.equal(synchronizedOverlay.executionPriceBasisPct, 0.0004);
+assert.equal(synchronizedOverlay.executionSynchronizationSkewMs, 2_400);
+assert.ok((synchronizedOverlay.structuralProbability ?? 0) > 0.5);
+
+console.log("synchronized execution overlay tests passed");
 
 const bullishTarget = impliedTerminalMedianForCondition("above", 100, null, 0.8, 0.05);
 const bearishTarget = impliedTerminalMedianForCondition("below", null, 100, 0.8, 0.05);

@@ -106,10 +106,11 @@ export async function addPriceStructureFeatures(samples: EvaluationSample[]): Pr
     if (!candles?.length) return sample;
     const observedAt = new Date(sample.observedAt).getTime();
     const endAt = new Date(sample.endAt).getTime();
+    const targetAt = endAt - (sample.horizonHours ?? 24) * 60 * 60 * 1_000;
     const currentIndex = findLatestClosedCandle(candles, observedAt);
     if (currentIndex < minimumReturnCount) return sample;
     const current = candles[currentIndex];
-    const entry = candles.find((candle) => candle.openedAt >= observedAt && candle.openedAt < endAt);
+    const entry = candles.find((candle) => candle.openedAt >= targetAt && candle.openedAt < endAt);
     const exitIndex = findLatestClosedCandle(candles, endAt);
     const exit = exitIndex >= 0 ? candles[exitIndex] : null;
     const funding = summarizeFundingAt(fundingByAsset.get(sample.asset) ?? [], observedAt, entry?.openedAt ?? null, exit?.closedAt ?? null);
@@ -135,12 +136,13 @@ export async function addPriceStructureFeatures(samples: EvaluationSample[]): Pr
       hyperliquidEntryPrice: entry?.open ?? null,
       hyperliquidExitAt: exit ? new Date(exit.closedAt).toISOString() : null,
       hyperliquidExitPrice: exit?.close ?? null,
-      hyperliquidEntryLagMinutes: entry ? Math.max(0, entry.openedAt - observedAt) / (60 * 1_000) : null,
+      hyperliquidEntryLagMinutes: entry ? Math.max(0, entry.openedAt - targetAt) / (60 * 1_000) : null,
       hyperliquidExitLeadMinutes: exit ? Math.max(0, endAt - exit.closedAt) / (60 * 1_000) : null,
       hyperliquidMomentum6h: trailingLogReturn(candles, currentIndex, 6),
       hyperliquidMomentum24h: trailingLogReturn(candles, currentIndex, 24),
       hyperliquidFunding24h: funding.prior24h,
       hyperliquidFundingDuringTrade: funding.duringTrade,
+      executionPriceSource: "hyperliquid-1h" as const,
       thresholdKind: condition.kind,
       thresholdLower: condition.lower,
       thresholdUpper: condition.upper,

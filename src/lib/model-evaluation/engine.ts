@@ -4,7 +4,7 @@ import { evaluateCombinedTrading } from "@/src/lib/model-evaluation/combined-tra
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
 import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
-export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v15";
+export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v16";
 export const HORIZON_HOURS = 24;
 export const MIN_TRAIN_EVENTS = 20;
 export const MIN_HOLDOUT_EVENTS = 15;
@@ -75,6 +75,10 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
   const executionFeatureCoverage = samples.length ? executionFeatureMarkets / samples.length : 0;
   const testExecutionFeatureMarkets = test.filter(hasExecutionData).length;
   const testExecutionFeatureCoverage = test.length ? testExecutionFeatureMarkets / test.length : 0;
+  const synchronizedExecutionMarkets = samples.filter(hasSynchronizedExecutionData).length;
+  const synchronizedExecutionCoverage = samples.length ? synchronizedExecutionMarkets / samples.length : 0;
+  const testSynchronizedExecutionMarkets = test.filter(hasSynchronizedExecutionData).length;
+  const testSynchronizedExecutionCoverage = test.length ? testSynchronizedExecutionMarkets / test.length : 0;
   const fundingFeatureMarkets = samples.filter(hasFundingFeature).length;
   const fundingFeatureCoverage = samples.length ? fundingFeatureMarkets / samples.length : 0;
   const testFundingFeatureMarkets = test.filter(hasFundingFeature).length;
@@ -99,6 +103,7 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
     { id: "horizon", label: `全市場を決着${horizonHours}時間前で統一`, passed: true },
     { id: "same-holdout", label: "未使用期間のHyperliquid価格で売買検証", passed: true },
     { id: "features", label: "最終テストの売買価格を90%以上取得", passed: testExecutionFeatureCoverage >= 0.9 },
+    { id: "synchronized-prices", label: "最終テストの1分同期価格を90%以上取得", passed: testSynchronizedExecutionCoverage >= 0.9 },
     { id: "timing", label: "売買時刻の誤差を65分以内に制限", passed: maximumExecutionTimingErrorMinutes !== null && maximumExecutionTimingErrorMinutes <= 65 },
     { id: "ladder", label: "価格帯の確率矛盾を単調補正", passed: ladder.events > 0 },
     { id: "costs", label: "手数料・滑り・資金調達を控除", passed: true },
@@ -140,6 +145,7 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
       ? "underperforming"
       : testEvents.length >= MIN_HOLDOUT_EVENTS
         && combinedTrading.trades >= minimumCombinedTrades
+        && testSynchronizedExecutionCoverage >= 0.9
         && testFundingFeatureCoverage >= 0.9
         && testFundingCostCoverage >= 0.9
         && combinedTrading.statisticallyPositive
@@ -171,6 +177,10 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
       executionFeatureCoverage,
       testExecutionFeatureMarkets,
       testExecutionFeatureCoverage,
+      synchronizedExecutionMarkets,
+      synchronizedExecutionCoverage,
+      testSynchronizedExecutionMarkets,
+      testSynchronizedExecutionCoverage,
       fundingFeatureMarkets,
       fundingFeatureCoverage,
       testFundingFeatureMarkets,
@@ -399,6 +409,10 @@ function hasExecutionData(sample: EvaluationSample) {
     && Number.isFinite(sample.hyperliquidEntryPrice)
     && typeof sample.hyperliquidExitPrice === "number"
     && Number.isFinite(sample.hyperliquidExitPrice);
+}
+
+function hasSynchronizedExecutionData(sample: EvaluationSample) {
+  return sample.executionPriceSource === "synchronized-1m" && hasExecutionData(sample);
 }
 
 function hasFundingFeature(sample: EvaluationSample) {

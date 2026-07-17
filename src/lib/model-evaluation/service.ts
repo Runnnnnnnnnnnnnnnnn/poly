@@ -3,6 +3,7 @@ import type { ModelEvaluationRun } from "@prisma/client";
 import { discoverHistoricalCryptoEvents, fetchHistoricalProbability, type HistoricalCryptoEvent } from "@/src/lib/backtest/polymarket";
 import { evaluateChronologicalModel, HORIZON_HOURS, MODEL_VERSION } from "@/src/lib/model-evaluation/engine";
 import { addPriceStructureFeatures } from "@/src/lib/model-evaluation/price-structure";
+import { overlaySynchronizedExecution } from "@/src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample, ModelEvaluationMetrics, ModelEvaluationResult } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
 
@@ -28,7 +29,7 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
         split: "probability 60/20/20; execution-eligible signals 60/40 chronological with a holding-period embargo and four validation folds",
         eventWeighting: "equal",
         signal: "Polymarket-implied terminal median with predeclared price-momentum, mean-reversion, funding-carry, and funding-momentum rules, evaluated independently by horizon",
-        execution: "Hyperliquid 1h next-open to last-close, one non-overlapping position per asset, up to four concurrent assets",
+        execution: "synchronized 1m signal/next-snapshot entry/pre-settlement exit when available; otherwise Hyperliquid 1h is retained as non-promotable reference data",
         candidateSelection: "ten predeclared candidates, block-bootstrap interval, deflated Sharpe, four-period stability, and same-period best-of-four benchmark excess",
         benchmarks: "always long, always short, raw Polymarket direction, and the median of 200 deterministic random-direction trials",
         costs: "0.045% taker and 0.02% slippage per side, plus realized hourly Hyperliquid funding with a conservative 0.03% per 24h fallback",
@@ -63,6 +64,7 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
           excessReturnPct: null,
           deflatedSharpeProbability: null,
           testExecutionFeatureCoverage: null,
+          testSynchronizedExecutionCoverage: null,
           maximumExecutionTimingErrorMinutes: null,
           error: error instanceof Error ? error.message : "horizon evaluation failed",
         });
@@ -154,7 +156,8 @@ export async function loadEvaluationSamplesByHorizon(horizons: number[]) {
   });
 
   const rawSamples = rows.flatMap((row) => row ?? []);
-  const enriched = await addPriceStructureFeatures(rawSamples);
+  const hourlyEnriched = await addPriceStructureFeatures(rawSamples);
+  const enriched = await overlaySynchronizedExecution(hourlyEnriched);
   return new Map(normalizedHorizons.map((horizonHours) => [
     horizonHours,
     enriched.filter((sample) => sample.horizonHours === horizonHours),
@@ -181,6 +184,7 @@ function toHorizonStudy(metrics: ModelEvaluationMetrics): NonNullable<ModelEvalu
     excessReturnPct: metrics.combinedTrading.trades ? metrics.combinedTrading.excessReturnPct : null,
     deflatedSharpeProbability: metrics.combinedTrading.deflatedSharpeProbability,
     testExecutionFeatureCoverage: metrics.dataset.testExecutionFeatureCoverage,
+    testSynchronizedExecutionCoverage: metrics.dataset.testSynchronizedExecutionCoverage,
     maximumExecutionTimingErrorMinutes: metrics.dataset.maximumExecutionTimingErrorMinutes,
   };
 }

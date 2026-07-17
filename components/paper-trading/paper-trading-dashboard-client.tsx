@@ -354,6 +354,8 @@ type MonitoringSnapshot = {
     }>;
     structuralFeatureCoverage: number | null;
     fundingFeatureCoverage: number | null;
+    synchronizedExecutionCoverage: number;
+    testSynchronizedExecutionCoverage: number;
     evaluationStatus: "promising" | "inconclusive" | "underperforming" | "building";
     latestAsset: string | null;
     latestBrierScore: number | null;
@@ -381,6 +383,7 @@ type MonitoringSnapshot = {
       excessReturnPct: number | null;
       deflatedSharpeProbability: number | null;
       testExecutionFeatureCoverage: number | null;
+      testSynchronizedExecutionCoverage: number | null;
       maximumExecutionTimingErrorMinutes: number | null;
       error?: string;
     }>;
@@ -1158,6 +1161,18 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           <CompactMetric label="時刻ずれ 95%" value={formatMilliseconds(synchronizedQuality?.p95SkewMs)} />
           <CompactMetric label="価格差 95%" value={formatBasisBps(synchronizedQuality?.p95AbsoluteBasisPct)} />
         </div>
+        <div className="mt-4 rounded-md border border-border bg-slate-50 px-3 py-3">
+          <div className="flex items-center justify-between gap-3 text-xs font-bold">
+            <span className="text-slate-700">最終テストを1分価格で再現</span>
+            <span className="tabular-nums text-slate-950">{formatPct(model?.testSynchronizedExecutionCoverage)}</span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+            <span
+              className={`block h-full rounded-full ${(model?.testSynchronizedExecutionCoverage ?? 0) >= 0.9 ? "bg-emerald-500" : "bg-amber-400"}`}
+              style={{ width: `${Math.max(0, Math.min(100, (model?.testSynchronizedExecutionCoverage ?? 0) * 100))}%` }}
+            />
+          </div>
+        </div>
         <div className="mt-5 flex flex-wrap gap-2 border-t pt-4">
           {(synchronizedQuality?.gates ?? []).map((gate) => (
             <span key={gate.id} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold ${gate.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
@@ -1180,7 +1195,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
         </div>
         <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
-          過去検証はHyperliquidの1時間足を使用。CLOB板・判定参照価格・Hyperliquid価格を1分ごとに同時保存し、{formatCompact(snapshot?.collection.synchronizedPrices?.records)}件を48時間連続で検査しています。
+          CLOB板・判定参照価格・Hyperliquid価格を1分ごとに同時保存し、{formatCompact(snapshot?.collection.synchronizedPrices?.records)}件を検査中です。収集済み期間は1分価格で再現し、未収集期間の1時間足は参考値としてのみ残します。
         </p>
       </div>
       </div>
@@ -1464,6 +1479,7 @@ function HorizonComparison({ studies }: { studies: MonitoringSnapshot["model"]["
     excessReturnPct: null,
     deflatedSharpeProbability: null,
     testExecutionFeatureCoverage: null,
+    testSynchronizedExecutionCoverage: null,
     maximumExecutionTimingErrorMinutes: null,
   }));
 

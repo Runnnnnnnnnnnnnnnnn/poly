@@ -23,6 +23,12 @@ export type EvaluationSample = {
   hyperliquidMomentum24h?: number | null;
   hyperliquidFunding24h?: number | null;
   hyperliquidFundingDuringTrade?: number | null;
+  executionPriceSource?: "hyperliquid-1h" | "synchronized-1m";
+  marketBestBid?: number | null;
+  marketBestAsk?: number | null;
+  marketSpread?: number | null;
+  executionPriceBasisPct?: number | null;
+  executionSynchronizationSkewMs?: number | null;
   thresholdKind?: "above" | "below" | "between" | null;
   thresholdLower?: number | null;
   thresholdUpper?: number | null;
@@ -118,6 +124,10 @@ export type ModelEvaluationMetrics = {
     executionFeatureCoverage: number;
     testExecutionFeatureMarkets: number;
     testExecutionFeatureCoverage: number;
+    synchronizedExecutionMarkets: number;
+    synchronizedExecutionCoverage: number;
+    testSynchronizedExecutionMarkets: number;
+    testSynchronizedExecutionCoverage: number;
     fundingFeatureMarkets: number;
     fundingFeatureCoverage: number;
     testFundingFeatureMarkets: number;
@@ -225,6 +235,7 @@ export type ModelEvaluationMetrics = {
     excessReturnPct: number | null;
     deflatedSharpeProbability: number | null;
     testExecutionFeatureCoverage: number | null;
+    testSynchronizedExecutionCoverage: number | null;
     maximumExecutionTimingErrorMinutes: number | null;
     error?: string;
   }>;
