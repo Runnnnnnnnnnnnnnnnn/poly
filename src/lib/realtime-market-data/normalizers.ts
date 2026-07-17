@@ -101,18 +101,16 @@ export function normalizeRtdsReferenceMessage(input: unknown): RealtimeReference
 }
 
 export function realtimeReferenceSubscriptions() {
-  const assets = Object.keys(referenceSymbols) as Array<keyof typeof referenceSymbols>;
   return [
     {
       topic: "crypto_prices",
       type: "update",
-      filters: assets.map((asset) => referenceSymbols[asset].binance).join(","),
     },
-    ...assets.map((asset) => ({
+    {
       topic: "crypto_prices_chainlink",
       type: "*",
-      filters: JSON.stringify({ symbol: referenceSymbols[asset].chainlink }),
-    })),
+      filters: "",
+    },
   ];
 }
 

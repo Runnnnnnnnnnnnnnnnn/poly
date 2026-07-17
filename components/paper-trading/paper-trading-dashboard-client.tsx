@@ -313,6 +313,28 @@ type MonitoringSnapshot = {
       latestReason: string;
       nextDecisionAt: string | null;
       observedAt: string | null;
+      executionAudit?: {
+        status: "collecting" | "healthy" | "attention";
+        minimumAuditedPositions: number;
+        eligiblePositions: number;
+        auditedPositions: number;
+        coverage: number;
+        resolvedPredictions: number;
+        predictionAccuracy: number | null;
+        polymarketAuditedPositions: number;
+        polymarketNetReturnPct: number | null;
+        hyperliquidNetReturnPct: number | null;
+        storedNetReturnPct: number | null;
+        returnDifferencePct: number | null;
+        medianTimingErrorMs: number | null;
+        maximumTimingErrorMs: number | null;
+        medianCloseDelayMs: number | null;
+        maximumCloseDelayMs: number | null;
+        allowedTimingErrorMs: number;
+        missingEntry: number;
+        missingExit: number;
+        missingResolution: number;
+      } | null;
       realTradingEnabled: false;
     };
     settlementBasis: {
@@ -1059,6 +1081,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
 
 function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
   const model = snapshot?.combinedShadow.shortTermDirection;
+  const audit = model?.executionAudit;
   const hasTrades = (model?.trades ?? 0) > 0;
   const tone: Tone = model?.status === "promising" ? "good" : model?.status === "underperforming" ? "bad" : "neutral";
   const remaining = Math.max(0, (model?.minimumTrades ?? 50) - (model?.trades ?? 0));
@@ -1101,6 +1124,11 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
               </div>
             ))}
           </div>
+          <div className="grid grid-cols-3 divide-x border-t px-3 py-3 sm:px-4">
+            <CompactMetric label="5秒板で再現" value={`${audit?.auditedPositions ?? 0}/${audit?.eligiblePositions ?? 0}件`} />
+            <CompactMetric label="HL実板損益" value={(audit?.auditedPositions ?? 0) > 0 ? formatSignedPct(audit?.hyperliquidNetReturnPct) : "収集中"} />
+            <CompactMetric label="最大時刻ずれ" value={(audit?.auditedPositions ?? 0) > 0 ? formatMilliseconds(audit?.maximumTimingErrorMs) : "収集中"} />
+          </div>
         </div>
       </div>
       <div className="grid gap-2 border-t px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
@@ -1117,7 +1145,9 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
-        <span>開始後のデータのみ・同一市場1回・手数料とスリッページ込み</span>
+        <span>{(audit?.resolvedPredictions ?? 0) > 0
+          ? `Polymarket方向一致 ${formatPct(audit?.predictionAccuracy)} / ${audit?.resolvedPredictions ?? 0}件判定`
+          : "売買時刻に最も近い5秒板で約定を再現中"}</span>
         <span className="font-bold text-rose-700">実取引 OFF</span>
       </div>
     </section>

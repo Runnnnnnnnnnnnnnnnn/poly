@@ -20,6 +20,7 @@ import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { loadProspectiveSynchronizedData } from "@/src/lib/model-evaluation/prospective-synchronized";
 import { prisma } from "@/src/lib/server/prisma";
 import { evaluateSynchronizedPriceQuality } from "@/src/lib/monitoring/synchronized-quality";
+import { evaluateExactExecutionAudit } from "@/src/lib/realtime-market-data/execution-audit";
 
 const monitoredAssets = ["BTC", "ETH", "SOL", "XRP", "HYPE"] as const;
 const freshnessMs = 12 * 60 * 1_000;
@@ -255,6 +256,33 @@ export async function getMonitoringSnapshot() {
           : Promise.resolve([]),
       ])
     : [null, null, [], []];
+  const exactAuditMarketIds = Array.from(new Set(shortTermPositions
+    .filter((position) => (
+      position.status === "CLOSED"
+      && position.closedAt
+      && realtimeAggregate._min.capturedAt
+      && position.openedAt >= realtimeAggregate._min.capturedAt
+    ))
+    .map((position) => position.marketId)));
+  const shortTermRealtimeTicks = exactAuditMarketIds.length
+    ? await prisma.realtimeMarketTick.findMany({
+        where: { marketId: { in: exactAuditMarketIds } },
+        select: {
+          marketId: true,
+          asset: true,
+          marketStartAt: true,
+          marketEndAt: true,
+          polymarketBestAsk: true,
+          negativeBestAsk: true,
+          hyperliquidBestBid: true,
+          hyperliquidBestAsk: true,
+          referencePrice: true,
+          referenceUpdatedAt: true,
+          capturedAt: true,
+        },
+        orderBy: { capturedAt: "asc" },
+      })
+    : [];
   const settlementBasis = summarizeSettlementBasis(combinedPositions);
   const combinedConfig = parseJson<Partial<CombinedShadowConfig>>(combinedRun?.configJson ?? null);
   const horizonEvaluations = forwardStrategyRuns.flatMap(({ horizonHours, run }) => {
@@ -340,6 +368,16 @@ export async function getMonitoringSnapshot() {
         maxDrawdownPct: shortTermStrategyRun.maxDrawdownPct,
         settlementBasisStatus: summarizeSettlementBasis(shortTermPositions).status,
         strategyTrials: 1,
+      })
+    : null;
+  const shortTermExecutionAudit = shortTermStrategyRun && shortTermConfig
+    ? evaluateExactExecutionAudit({
+        positions: shortTermPositions,
+        ticks: shortTermRealtimeTicks,
+        collectionStartedAt: realtimeAggregate._min.capturedAt,
+        takerFeePerSide: shortTermConfig.takerFeePerSide ?? 0.00045,
+        slippagePerSide: shortTermConfig.slippagePerSide ?? 0.0002,
+        fundingPer24h: shortTermConfig.fundingPer24h ?? 0.0003,
       })
     : null;
   const latestPaperMetrics = parseJson<Record<string, number | null>>(latestCompletedPaper?.metricsJson ?? null);
@@ -515,6 +553,7 @@ export async function getMonitoringSnapshot() {
         latestReason: shortTermDecision?.reason ?? "最初の15分市場を確認中",
         nextDecisionAt: shortTermDecision?.nextWindowAt?.toISOString() ?? null,
         observedAt: shortTermDecision?.observedAt.toISOString() ?? null,
+        executionAudit: shortTermExecutionAudit,
         realTradingEnabled: false,
       },
       settlementBasis: {

@@ -36,10 +36,12 @@ import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/s
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
 import { buildRealtimeMarketTick, isRealtimeCaptureWindow } from "../src/lib/realtime-market-data/collector";
+import { calculatePolymarketTakerFee, evaluateExactExecutionAudit } from "../src/lib/realtime-market-data/execution-audit";
 import {
   normalizeHyperliquidWebSocketMessage,
   normalizePolymarketWebSocketMessage,
   normalizeRtdsReferenceMessage,
+  realtimeReferenceSubscriptions,
 } from "../src/lib/realtime-market-data/normalizers";
 import type { ActiveCryptoDirectionMarket } from "../src/lib/backtest/polymarket";
 
@@ -174,6 +176,10 @@ const realtimeBinance = normalizeRtdsReferenceMessage({
 });
 assert.equal(realtimeBinance?.asset, "BTC");
 assert.equal(realtimeBinance?.source, "BINANCE");
+assert.deepEqual(realtimeReferenceSubscriptions(), [
+  { topic: "crypto_prices", type: "update" },
+  { topic: "crypto_prices_chainlink", type: "*", filters: "" },
+]);
 
 const realtimeMarket: ActiveCryptoDirectionMarket = {
   id: "market-15m",
@@ -240,6 +246,102 @@ assert.equal(buildRealtimeMarketTick({
 }), null);
 
 console.log("realtime market data tests passed");
+
+const auditStart = new Date("2026-01-01T00:00:00.000Z");
+const auditEnd = new Date("2026-01-01T00:15:00.000Z");
+const auditTick = (
+  marketId: string,
+  capturedAt: string,
+  referenceUpdatedAt: string,
+  referencePrice: number,
+  hyperliquidBestBid: number,
+  hyperliquidBestAsk: number,
+  polymarketBestAsk: number,
+  negativeBestAsk: number,
+) => ({
+  marketId,
+  asset: marketId === "audit-long" ? "BTC" : "ETH",
+  marketStartAt: auditStart,
+  marketEndAt: auditEnd,
+  polymarketBestAsk,
+  negativeBestAsk,
+  hyperliquidBestBid,
+  hyperliquidBestAsk,
+  referencePrice,
+  referenceUpdatedAt: new Date(referenceUpdatedAt),
+  capturedAt: new Date(capturedAt),
+});
+const auditPositions = [
+  {
+    marketId: "audit-long",
+    asset: "BTC",
+    side: "LONG",
+    quantity: 10,
+    entryPrice: 100.12,
+    entryFunding24h: 0.0001,
+    polymarketSide: "LONG",
+    realizedPnl: 5,
+    status: "CLOSED",
+    openedAt: new Date("2026-01-01T00:02:00.000Z"),
+    exitAt: auditEnd,
+    closedAt: new Date("2026-01-01T00:15:05.000Z"),
+  },
+  {
+    marketId: "audit-short",
+    asset: "ETH",
+    side: "SHORT",
+    quantity: 5,
+    entryPrice: 199.76,
+    entryFunding24h: -0.0002,
+    polymarketSide: "SHORT",
+    realizedPnl: -4,
+    status: "CLOSED",
+    openedAt: new Date("2026-01-01T00:02:00.000Z"),
+    exitAt: auditEnd,
+    closedAt: new Date("2026-01-01T00:15:05.000Z"),
+  },
+];
+const auditTicks = [
+  auditTick("audit-long", "2026-01-01T00:00:02Z", "2026-01-01T00:00:01Z", 100, 99.9, 100.1, 0.52, 0.5),
+  auditTick("audit-long", "2026-01-01T00:02:03Z", "2026-01-01T00:02:02Z", 100.5, 100, 100.1, 0.6, 0.42),
+  auditTick("audit-long", "2026-01-01T00:15:06Z", "2026-01-01T00:15:01Z", 101, 101, 101.1, 0.98, 0.03),
+  auditTick("audit-short", "2026-01-01T00:00:02Z", "2026-01-01T00:00:01Z", 200, 199.8, 200.2, 0.51, 0.51),
+  auditTick("audit-short", "2026-01-01T00:02:04Z", "2026-01-01T00:02:03Z", 200.1, 199.8, 200.2, 0.57, 0.45),
+  auditTick("audit-short", "2026-01-01T00:15:04Z", "2026-01-01T00:15:01Z", 201, 201, 201.2, 0.98, 0.03),
+];
+const auditConfig = {
+  positions: auditPositions,
+  ticks: auditTicks,
+  collectionStartedAt: auditStart,
+  takerFeePerSide: 0.00045,
+  slippagePerSide: 0.0002,
+  fundingPer24h: 0.0003,
+};
+const exactAudit = evaluateExactExecutionAudit(auditConfig);
+assert.equal(exactAudit.eligiblePositions, 2);
+assert.equal(exactAudit.auditedPositions, 2);
+assert.equal(exactAudit.coverage, 1);
+assert.equal(exactAudit.resolvedPredictions, 2);
+assert.equal(exactAudit.predictionAccuracy, 0.5);
+assert.equal(exactAudit.polymarketAuditedPositions, 2);
+assert.equal(exactAudit.maximumTimingErrorMs, 6_000);
+assert.equal(exactAudit.medianTimingErrorMs, 4_000);
+assert.equal(exactAudit.maximumCloseDelayMs, 5_000);
+assert.ok((exactAudit.hyperliquidNetReturnPct ?? 1) < 0);
+assert.ok(Math.abs((exactAudit.storedNetReturnPct ?? 0) - 1 / (10 * 100.12 + 5 * 199.76)) < 1e-12);
+assert.equal(calculatePolymarketTakerFee(100, 0.5), 1.75);
+const incompleteAudit = evaluateExactExecutionAudit({
+  ...auditConfig,
+  positions: [{ ...auditPositions[0], marketId: "missing-market" }],
+  ticks: [],
+});
+assert.equal(incompleteAudit.eligiblePositions, 1);
+assert.equal(incompleteAudit.auditedPositions, 0);
+assert.equal(incompleteAudit.missingEntry, 1);
+assert.equal(incompleteAudit.missingExit, 1);
+assert.equal(incompleteAudit.missingResolution, 1);
+
+console.log("exact 5-second execution audit tests passed");
 
 const longBookReturn = calculateDirectionalBookReturn({
   entryPrice: 100,
