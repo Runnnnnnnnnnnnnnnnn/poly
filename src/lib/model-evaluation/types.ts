@@ -40,10 +40,20 @@ export type ModelCandidate = {
 export type CombinedStrategyCandidate = {
   id: string;
   minimumSignalZ: number;
-  signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
+  signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum" | "polymarket-funding-consensus";
   minimumTrendZ: number;
   minimumFunding24h: number;
   positionPct: number;
+};
+
+export type CombinedHoldoutSlice = {
+  key: string;
+  label: string;
+  trades: number;
+  wins: number;
+  winRate: number | null;
+  netReturnPct: number;
+  averageNetTradeReturn: number | null;
 };
 
 export type CombinedCandidateDiagnostic = {
@@ -76,6 +86,12 @@ export type CombinedHoldoutAudit = {
   statisticallyPositive: boolean;
   deflatedSharpeProbability: number | null;
   maxDrawdownPct: number;
+  attribution: {
+    byAsset: CombinedHoldoutSlice[];
+    bySide: CombinedHoldoutSlice[];
+    byFundingStrength: CombinedHoldoutSlice[];
+    byConsensus: CombinedHoldoutSlice[];
+  };
 };
 
 export type ModelEvaluationMetrics = {

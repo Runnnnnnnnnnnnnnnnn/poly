@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 import type { BacktestMetrics } from "@/src/lib/backtest/types";
+import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
 import { getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
@@ -34,7 +35,7 @@ export async function getMonitoringSnapshot() {
     heartbeats,
     latestHyperliquid,
     latestEvaluation,
-    combinedRun,
+    combinedRuns,
     combinedDecisionCount,
     combinedSnapshotAggregate,
     combinedSnapshotsLast24Hours,
@@ -56,7 +57,7 @@ export async function getMonitoringSnapshot() {
     prisma.pipelineHeartbeat.findMany({ orderBy: { id: "asc" } }),
     Promise.all(monitoredAssets.map((asset) => prisma.hyperliquidSnapshot.findFirst({ where: { asset }, orderBy: { capturedAt: "desc" } }))),
     prisma.modelEvaluationRun.findFirst({ where: { status: "completed" }, orderBy: { completedAt: "desc" } }),
-    prisma.combinedShadowRun.findFirst({ orderBy: { startedAt: "desc" } }),
+    prisma.combinedShadowRun.findMany({ orderBy: { startedAt: "desc" }, take: 20 }),
     prisma.combinedShadowDecision.count(),
     prisma.combinedShadowEquitySnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
     prisma.combinedShadowEquitySnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
@@ -70,6 +71,9 @@ export async function getMonitoringSnapshot() {
     ?? usableBacktests[0]
     ?? null;
   const evaluation = parseJson<ModelEvaluationMetrics>(latestEvaluation?.metricsJson ?? null);
+  const combinedRun = combinedRuns.find((run) => (
+    parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.forwardOnly === true
+  )) ?? combinedRuns[0] ?? null;
 
   const resolvedAiRows = aiRows.filter((row) => row.resolvedOutcome !== null && row.brierScore !== null);
   const averageAiBrier = average(resolvedAiRows.map((row) => row.brierScore as number));
@@ -140,12 +144,7 @@ export async function getMonitoringSnapshot() {
   const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
-  const combinedConfig = parseJson<{
-    minimumSignalZ?: number;
-    minimumFunding24h?: number;
-    signalRule?: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
-    modelVersion?: string | null;
-  }>(combinedRun?.configJson ?? null);
+  const combinedConfig = parseJson<Partial<CombinedShadowConfig>>(combinedRun?.configJson ?? null);
   const executionReadiness = getHyperliquidExecutionReadiness();
   const testnetReconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
   const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
@@ -195,7 +194,7 @@ export async function getMonitoringSnapshot() {
       updatedAt: latestCombinedSnapshot?.capturedAt.toISOString() ?? null,
       initialEquity: combinedRun?.initialEquity ?? null,
       equity: latestCombinedSnapshot?.equity ?? combinedRun?.equity ?? null,
-      returnPct: combinedRun && combinedRun.initialEquity > 0 ? combinedRun.equity / combinedRun.initialEquity - 1 : null,
+      returnPct: combinedRun && combinedRun.initialEquity > 0 ? combinedRun.realizedPnl / combinedRun.initialEquity : null,
       cash: combinedRun?.cash ?? null,
       realizedPnl: combinedRun?.realizedPnl ?? null,
       openPositions: combinedOpenPositions.map((position) => ({
@@ -205,6 +204,9 @@ export async function getMonitoringSnapshot() {
         entryPrice: position.entryPrice,
         markPrice: position.markPrice,
         signalZ: position.signalZ,
+        polymarketSide: position.polymarketSide,
+        entryTrendZ6h: position.entryTrendZ6h,
+        entryFunding24h: position.entryFunding24h,
         horizonHours: position.horizonHours,
         priceBasisPct: position.priceBasisPct,
         openedAt: position.openedAt.toISOString(),
@@ -216,6 +218,9 @@ export async function getMonitoringSnapshot() {
       maxDrawdownPct: combinedRun?.maxDrawdownPct ?? null,
       riskStatus: combinedRun?.riskStatus ?? "NOT_STARTED",
       emergencyStopped: combinedRun?.emergencyStopped ?? false,
+      experimentKey: combinedConfig?.experimentKey ?? null,
+      experimentLabel: combinedConfig?.experimentLabel ?? null,
+      forwardOnly: combinedConfig?.forwardOnly === true,
       minimumSignalZ: combinedConfig?.minimumSignalZ ?? null,
       minimumFunding24h: combinedConfig?.minimumFunding24h ?? null,
       signalRule: combinedConfig?.signalRule ?? "polymarket-only",
@@ -247,6 +252,10 @@ export async function getMonitoringSnapshot() {
         signalZ: latestCombinedDecision.signalZ,
         spotPrice: latestCombinedDecision.spotPrice,
         targetPrice: latestCombinedDecision.targetPrice,
+        polymarketSide: latestCombinedDecision.polymarketSide,
+        strategySide: latestCombinedDecision.strategySide,
+        trendZ6h: latestCombinedDecision.trendZ6h,
+        hyperliquidFunding24h: latestCombinedDecision.hyperliquidFunding24h,
         horizonHours: latestCombinedDecision.horizonHours,
         marketBestBid: latestCombinedDecision.marketBestBid,
         marketBestAsk: latestCombinedDecision.marketBestAsk,
@@ -449,6 +458,7 @@ function pipelineStatuses(input: {
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("paper", "Poly仮想運用", "5分ごと", input.paperAt, heartbeatMap.get("paper"), input.now),
     pipeline("combined-shadow", "組み合わせ市場確認", "5分ごと", input.combinedAt, heartbeatMap.get("combined-shadow"), input.now),
+    pipeline("forward-experiment", "次期モデル検証", "5分ごと", input.combinedAt, heartbeatMap.get("forward-experiment"), input.now),
   ];
 }
 

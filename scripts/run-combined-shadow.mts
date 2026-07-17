@@ -9,9 +9,13 @@ const signalRule = configuredSignalRule === "contrarian"
   || configuredSignalRule === "hyperliquid-reversion"
   || configuredSignalRule === "hyperliquid-funding-carry"
   || configuredSignalRule === "hyperliquid-funding-momentum"
+  || configuredSignalRule === "polymarket-funding-consensus"
   ? configuredSignalRule
   : "polymarket-only";
 const config = {
+  experimentKey: "legacy-shadow-v1",
+  experimentLabel: "従来の組み合わせ検証",
+  forwardOnly: false,
   initialEquity: Number(process.env.COMBINED_INITIAL_EQUITY ?? 10_000),
   minimumSignalZ: Number(qualifiedModelConfig?.minimumSignalZ ?? process.env.COMBINED_MINIMUM_SIGNAL_Z ?? 0.5),
   minimumTrendZ: Number(qualifiedModelConfig?.minimumTrendZ ?? process.env.COMBINED_MINIMUM_TREND_Z ?? 0.1),
@@ -20,6 +24,7 @@ const config = {
   modelVersion: qualifiedModelConfig?.modelVersion ?? null,
   positionPct: Number(qualifiedModelConfig?.positionPct ?? process.env.COMBINED_POSITION_PCT ?? 0.1),
   maxPositionNotional: Number(process.env.COMBINED_MAX_NOTIONAL ?? 1_000),
+  maxConcurrentPositions: Number(process.env.COMBINED_MAX_CONCURRENT_POSITIONS ?? 1),
   maxDailyLossPct: Number(process.env.COMBINED_MAX_DAILY_LOSS_PCT ?? 0.02),
   maxDrawdownPct: Number(process.env.COMBINED_MAX_DRAWDOWN_PCT ?? 0.05),
 };

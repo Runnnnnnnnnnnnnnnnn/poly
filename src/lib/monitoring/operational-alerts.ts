@@ -20,6 +20,7 @@ const pipelineLimitsMs: Record<string, { label: string; maximumAgeMs: number }> 
   hyperliquid: { label: "相場データ収集", maximumAgeMs: 15 * 60 * 1_000 },
   paper: { label: "Polymarket仮想運用", maximumAgeMs: 15 * 60 * 1_000 },
   "combined-shadow": { label: "組み合わせ市場確認", maximumAgeMs: 15 * 60 * 1_000 },
+  "forward-experiment": { label: "次期モデル検証", maximumAgeMs: 15 * 60 * 1_000 },
   backtest: { label: "モデル再検証", maximumAgeMs: 30 * 60 * 60 * 1_000 },
 };
 

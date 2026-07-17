@@ -293,6 +293,10 @@ model CombinedShadowPosition {
   markPrice      Float
   impliedTarget  Float
   signalZ        Float
+  polymarketSide String?
+  entrySpotPrice Float?
+  entryTrendZ6h  Float?
+  entryFunding24h Float?
   horizonHours   Int?
   priceBasisPct  Float?
   entryReferencePrice      Float?
@@ -329,6 +333,10 @@ model CombinedShadowDecision {
   spotPrice   Float?
   targetPrice Float?
   signalZ     Float?
+  polymarketSide String?
+  strategySide String?
+  trendZ6h Float?
+  hyperliquidFunding24h Float?
   threshold   Float
   horizonHours            Int?
   scannedMarkets          Int       @default(0)

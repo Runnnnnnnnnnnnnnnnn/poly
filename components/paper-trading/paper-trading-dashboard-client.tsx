@@ -86,6 +86,18 @@ type BacktestRun = {
   error: string | null;
 };
 
+type CombinedSignalRule = "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum" | "polymarket-funding-consensus";
+
+type HoldoutSlice = {
+  key: string;
+  label: string;
+  trades: number;
+  wins: number;
+  winRate: number | null;
+  netReturnPct: number;
+  averageNetTradeReturn: number | null;
+};
+
 type MonitoringSnapshot = {
   status: "live" | "delayed" | "offline";
   generatedAt: string;
@@ -118,6 +130,9 @@ type MonitoringSnapshot = {
       entryPrice: number;
       markPrice: number;
       signalZ: number;
+      polymarketSide: string | null;
+      entryTrendZ6h: number | null;
+      entryFunding24h: number | null;
       horizonHours: number | null;
       priceBasisPct: number | null;
       openedAt: string;
@@ -129,9 +144,12 @@ type MonitoringSnapshot = {
     maxDrawdownPct: number | null;
     riskStatus: string;
     emergencyStopped: boolean;
+    experimentKey: string | null;
+    experimentLabel: string | null;
+    forwardOnly: boolean;
     minimumSignalZ: number | null;
     minimumFunding24h: number | null;
-    signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
+    signalRule: CombinedSignalRule;
     modelVersion: string | null;
     settlementBasis: {
       status: "collecting" | "healthy" | "attention";
@@ -158,6 +176,10 @@ type MonitoringSnapshot = {
       signalZ: number | null;
       spotPrice: number | null;
       targetPrice: number | null;
+      polymarketSide: string | null;
+      strategySide: string | null;
+      trendZ6h: number | null;
+      hyperliquidFunding24h: number | null;
       horizonHours: number | null;
       marketBestBid: number | null;
       marketBestAsk: number | null;
@@ -204,7 +226,7 @@ type MonitoringSnapshot = {
     closestValidationCandidate: {
       id: string;
       minimumSignalZ: number;
-      signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
+      signalRule: CombinedSignalRule;
       minimumTrendZ: number;
       minimumFunding24h: number;
       positionPct: number;
@@ -213,7 +235,7 @@ type MonitoringSnapshot = {
       strategy: {
         id: string;
         minimumSignalZ: number;
-        signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
+        signalRule: CombinedSignalRule;
         minimumTrendZ: number;
         minimumFunding24h: number;
         positionPct: number;
@@ -228,12 +250,18 @@ type MonitoringSnapshot = {
       statisticallyPositive: boolean;
       deflatedSharpeProbability: number | null;
       maxDrawdownPct: number;
+      attribution: {
+        byAsset: HoldoutSlice[];
+        bySide: HoldoutSlice[];
+        byFundingStrength: HoldoutSlice[];
+        byConsensus: HoldoutSlice[];
+      };
     } | null;
     candidateDiagnostics: Array<{
       strategy: {
         id: string;
         minimumSignalZ: number;
-        signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
+        signalRule: CombinedSignalRule;
         minimumTrendZ: number;
         minimumFunding24h: number;
         positionPct: number;
@@ -684,15 +712,17 @@ export function PaperTradingDashboardClient() {
 function TradingPurposePanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
   const gates = snapshot?.tradeReadiness?.gates ?? fallbackReadinessGates;
   const shadowRunning = snapshot?.tradeReadiness.currentStage === "shadow";
+  const edgeReady = gates.find((gate) => gate.id === "edge")?.status === "ready";
+  const improving = shadowRunning && !edgeReady;
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="取引モデルの仕組みと現在地">
       <div className={`grid gap-3 border-b px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5 ${shadowRunning ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
         <div className="flex min-w-0 items-start gap-3">
           <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${shadowRunning ? "bg-sky-100 text-sky-700" : "bg-amber-100 text-amber-800"}`}>{shadowRunning ? <Activity className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}</span>
           <div>
-            <p className={`text-xs font-bold ${shadowRunning ? "text-sky-700" : "text-amber-800"}`}>現在地: {shadowRunning ? "3. シャドー検証" : "2. バックテスト"}</p>
-            <p className="mt-1 text-base font-bold text-slate-950">{shadowRunning ? "実資金なしで市場確認と判断を継続記録中" : "優位性が確認できるまで、実取引は行いません"}</p>
-            <p className="mt-1 text-xs leading-5 text-slate-600">{shadowRunning ? "2市場の情報を組み合わせた売買を仮想実行。採用条件を満たすまでは実注文を止めます。" : "未使用期間のテストで採用条件に届かず、Hyperliquidへの注文は停止しています。"}</p>
+            <p className={`text-xs font-bold ${shadowRunning ? "text-sky-700" : "text-amber-800"}`}>現在地: {improving ? "2. 次期モデル検証" : shadowRunning ? "3. シャドー検証" : "2. バックテスト"}</p>
+            <p className="mt-1 text-base font-bold text-slate-950">{improving ? "現行モデルは不採用。次期候補を実資金なしで検証中" : shadowRunning ? "実資金なしで市場確認と判断を継続記録中" : "優位性が確認できるまで、実取引は行いません"}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">{improving ? "開始後に発生した取引だけを採点し、過去データへの合わせ込みを防いでいます。" : shadowRunning ? "2市場の情報を組み合わせた売買を仮想実行。採用条件を満たすまでは実注文を止めます。" : "未使用期間のテストで採用条件に届かず、Hyperliquidへの注文は停止しています。"}</p>
           </div>
         </div>
         <span className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 text-xs font-bold text-white"><LockKeyhole className="h-4 w-4" />実取引 OFF</span>
@@ -747,14 +777,15 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
   const latest = shadow?.latestDecision;
   const decisionLabel = formatShadowAction(latest?.action);
   const hasClosedTrades = (shadow?.trades ?? 0) > 0;
+  const forwardOnly = shadow?.forwardOnly === true;
 
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="組み合わせ仮想売買の現在成績">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
         <div className="flex items-center gap-2">
           <DecisionIcon className={`h-4 w-4 ${running ? "text-emerald-600" : "text-amber-600"}`} />
-          <h2 className="text-sm font-bold text-slate-950">リアルタイム検証</h2>
-          <span className="rounded-sm bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">候補収集</span>
+          <h2 className="text-sm font-bold text-slate-950">{forwardOnly ? "次期モデルのフォワード検証" : "リアルタイム検証"}</h2>
+          <span className="rounded-sm bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">{forwardOnly ? "開始後のみ採点" : "候補収集"}</span>
         </div>
         <span className={`rounded-sm px-2 py-1 text-[11px] font-bold ${running ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{running ? "5分ごとに市場を確認" : shadow?.emergencyStopped ? "緊急停止中" : "開始待ち"}</span>
       </div>
@@ -769,7 +800,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
           {hasClosedTrades ? <VisualMeter tone={pnlSignal.tone} value={profitMeter(shadow?.returnPct)} className="mt-4" /> : <p className="mt-4 text-xs font-semibold leading-5 text-slate-600">決済が完了すると、コスト控除後の損益を表示します。</p>}
         </div>
         <div className="grid min-w-0">
-          <div className="grid grid-cols-4 divide-x divide-border">
+          <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
             <CompactMetric label="決済完了" value={`${shadow?.trades ?? 0} / 50`} />
             <CompactMetric label="保有中" value={`${shadow?.openPositions.length ?? 0}件`} />
             <CompactMetric label="最大下落" value={formatPct(shadow?.maxDrawdownPct)} />
@@ -794,7 +825,8 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
       </div>
       <ScanFunnel funnel={shadow?.funnel} />
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-5">
-        <span>採用前の固定ルールで収集中 / 実取引判断には不使用</span>
+        <span>{forwardOnly ? `実験開始 ${shadow?.startedAt ? formatJapanDateTime(shadow.startedAt) : "準備中"} / 過去データの遡及なし` : "採用前の固定ルールで収集中"} / 実取引判断には不使用</span>
+        {shadow?.experimentLabel ? <span>{shadow.experimentLabel}</span> : null}
         <span>固定ルール: {formatShadowRule(shadow?.signalRule)} / 強度 {formatNumber(shadow?.minimumSignalZ, 2)}以上{shadow?.modelVersion ? ` / ${shadow.modelVersion}` : ""}</span>
         <span>決済時の参照価格差: {shadow?.settlementBasis.samples ?? 0}件 / 中央 {formatBasisBps(shadow?.settlementBasis.medianAbsolutePct)} / 取得ずれ {formatSeconds(shadow?.settlementBasis.medianReferenceCaptureLagSeconds)}</span>
         <span>{shadow?.testnet.ready ? shadow.testnet.autoMirrorEnabled ? "テストネット連動: 待機中" : "テストネット接続可" : "テストネット: 設定待ち"}</span>
@@ -1128,6 +1160,7 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
         <div className="border-t">
           {!hasTrades ? <p className="px-5 py-4 text-sm leading-6 text-slate-600">採用基準を通ったルールがないため、最終テストでは資金を動かしていません。単純戦略の成績は、見送り結果とは別に比較しています。</p> : null}
           <ModelSampleFlow model={model} />
+          <HoldoutAttribution audit={holdoutAudit} />
           <CandidateDiagnosis diagnostics={model?.candidateDiagnostics} />
           <HorizonComparison studies={model?.horizonStudies} />
           <ReturnComparison strategyReturn={hasTrades ? model?.latestReturnPct : null} benchmarks={model?.benchmarkReturns} />
@@ -1168,6 +1201,39 @@ function ModelSampleFlow({ model }: { model: MonitoringSnapshot["model"] | undef
         ))}
       </div>
       <p className="mt-3 text-center text-[11px] font-semibold text-slate-500">実売買価格の期間 {formatCompactPeriod(model.executionStartedAt, model.executionEndedAt)}</p>
+    </div>
+  );
+}
+
+function HoldoutAttribution({ audit }: { audit: MonitoringSnapshot["model"]["closestHoldoutAudit"] | undefined }) {
+  if (!audit?.attribution) return null;
+  const groups = [
+    { label: "資産別", items: audit.attribution.byAsset },
+    { label: "売買方向別", items: audit.attribution.bySide },
+    { label: "資金調達率別", items: audit.attribution.byFundingStrength },
+    { label: "Poly方向との関係", items: audit.attribution.byConsensus },
+  ];
+  return (
+    <div className="border-t px-5 py-4" aria-label="最終テストの損益内訳">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] font-bold text-muted-foreground">不採用候補が負けた場所</p>
+        <span className="rounded-sm bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">原因分析専用</span>
+      </div>
+      <div className="mt-3 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        {groups.map((group) => (
+          <div key={group.label} className="min-w-0">
+            <p className="border-b pb-1.5 text-[10px] font-bold text-slate-500">{group.label}</p>
+            {group.items.map((item) => (
+              <div key={item.key} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-b border-slate-100 py-2 text-xs">
+                <span className="truncate font-semibold text-slate-700">{item.label}</span>
+                <span className="tabular-nums text-slate-500">{item.trades}件</span>
+                <span className={`min-w-16 text-right font-bold tabular-nums ${(item.averageNetTradeReturn ?? 0) > 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.averageNetTradeReturn)}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[10px] font-semibold text-slate-500">右端は1取引あたりの平均損益。次期ルールの過去成績としては使用しません。</p>
     </div>
   );
 }
@@ -1726,6 +1792,7 @@ function formatShadowRule(rule: MonitoringSnapshot["combinedShadow"]["signalRule
   if (rule === "hyperliquid-reversion") return "6時間値動きへ反転";
   if (rule === "hyperliquid-funding-carry") return "資金調達を受け取る方向";
   if (rule === "hyperliquid-funding-momentum") return "資金調達と同じ方向";
+  if (rule === "polymarket-funding-consensus") return "Poly方向と資金受取方向が一致";
   return "予測方向に追随";
 }
 

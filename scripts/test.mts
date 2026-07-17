@@ -82,6 +82,11 @@ assert.ok(longClose.realizedPnl > 18);
 assert.ok(shortClose.realizedPnl > 18);
 assert.ok(longClose.realizedPnl < longClose.grossPnl);
 assert.ok(shortClose.realizedPnl < shortClose.grossPnl);
+const fundingPayingLong = calculateCombinedClose({ ...closeCost, side: "LONG", markPrice: 100, fundingRate24h: 0.0007 });
+const fundingReceivingShort = calculateCombinedClose({ ...closeCost, side: "SHORT", markPrice: 100, fundingRate24h: 0.0007 });
+assert.ok(fundingPayingLong.funding > 0);
+assert.ok(fundingReceivingShort.funding < 0);
+assert.ok(fundingReceivingShort.realizedPnl > fundingPayingLong.realizedPnl);
 
 console.log("combined shadow cost tests passed");
 
@@ -119,6 +124,7 @@ assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, side: "SHORT", tr
 assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, side: "LONG", trendZ6h: -1 }, "hyperliquid-reversion").side, "LONG");
 assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "hyperliquid-funding-carry").side, "SHORT");
 assert.equal(applyCombinedSignalRule({ ...syntheticLiveSignal, hyperliquidFunding24h: -0.0007 }, "hyperliquid-funding-momentum").side, "SHORT");
+assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "polymarket-funding-consensus").side, "SHORT");
 
 console.log("combined shadow signal-rule tests passed");
 
@@ -205,6 +211,10 @@ assert.equal(combined.walkForwardFolds, 4);
 assert.equal(combined.selectedFromValidation, true);
 assert.equal(combined.closestHoldoutAudit?.strategy.id, combined.closestValidationCandidate?.id);
 assert.equal(combined.closestHoldoutAudit?.trades, 24);
+assert.equal(combined.closestHoldoutAudit?.attribution.byAsset.reduce((sum, slice) => sum + slice.trades, 0), 24);
+assert.equal(combined.closestHoldoutAudit?.attribution.bySide.reduce((sum, slice) => sum + slice.trades, 0), 24);
+assert.equal(combined.closestHoldoutAudit?.attribution.byFundingStrength.reduce((sum, slice) => sum + slice.trades, 0), 24);
+assert.equal(combined.closestHoldoutAudit?.attribution.byConsensus.reduce((sum, slice) => sum + slice.trades, 0), 24);
 assert.equal(combined.candidateDiagnostics.length, 10);
 assert.equal(combined.candidateDiagnostics.some((candidate) => candidate.passed), true);
 assert.equal(
@@ -285,7 +295,7 @@ assert.deepEqual(compareTestnetPositions(
 ), [{ asset: "ETH", expectedSize: -0.1, actualSize: -0.2, kind: "quantity" }]);
 
 const alertNow = new Date("2026-01-01T01:00:00Z");
-const healthyHeartbeats = ["polymarket", "hyperliquid", "paper", "combined-shadow", "backtest"].map((id) => ({
+const healthyHeartbeats = ["polymarket", "hyperliquid", "paper", "combined-shadow", "forward-experiment", "backtest"].map((id) => ({
   id,
   status: "healthy",
   message: null,

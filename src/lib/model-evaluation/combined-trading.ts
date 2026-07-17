@@ -1,5 +1,5 @@
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
-import type { CombinedCandidateDiagnostic, CombinedStrategyCandidate, EvaluationSample, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
+import type { CombinedCandidateDiagnostic, CombinedHoldoutSlice, CombinedStrategyCandidate, EvaluationSample, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
 const initialCapital = 10_000;
 const takerFeePerSide = 0.00045;
@@ -136,7 +136,54 @@ function auditClosestCandidate(testSignals: TradeSignal[], candidate: CombinedSt
     statisticallyPositive: result.statisticallyPositive,
     deflatedSharpeProbability: result.deflatedSharpeProbability,
     maxDrawdownPct: result.maxDrawdownPct,
+    attribution: {
+      byAsset: summarizeHoldoutSlices(signals, candidate, (signal) => ({ key: signal.asset, label: signal.asset })),
+      bySide: summarizeHoldoutSlices(signals, candidate, (signal) => {
+        const side = resolveStrategySide(signal, candidate.signalRule);
+        return side === 1 ? { key: "long", label: "ロング" } : { key: "short", label: "ショート" };
+      }),
+      byFundingStrength: summarizeHoldoutSlices(signals, candidate, fundingStrengthSlice),
+      byConsensus: summarizeHoldoutSlices(signals, candidate, (signal) => (
+        resolveStrategySide(signal, candidate.signalRule) === signal.side
+          ? { key: "agree", label: "Poly方向と一致" }
+          : { key: "disagree", label: "Poly方向と不一致" }
+      )),
+    },
   };
+}
+
+function summarizeHoldoutSlices(
+  signals: TradeSignal[],
+  candidate: CombinedStrategyCandidate,
+  classify: (signal: TradeSignal) => { key: string; label: string },
+): CombinedHoldoutSlice[] {
+  const groups = new Map<string, { label: string; signals: TradeSignal[] }>();
+  for (const signal of signals) {
+    const { key, label } = classify(signal);
+    const group = groups.get(key) ?? { label, signals: [] };
+    group.signals.push(signal);
+    groups.set(key, group);
+  }
+  return Array.from(groups, ([key, group]) => {
+    const result = simulate(group.signals, candidate, "signal", { calculateStatistics: false });
+    return {
+      key,
+      label: group.label,
+      trades: result.trades,
+      wins: result.wins,
+      winRate: result.winRate,
+      netReturnPct: result.netReturnPct,
+      averageNetTradeReturn: result.averageNetTradeReturn,
+    };
+  }).sort((left, right) => right.trades - left.trades || left.label.localeCompare(right.label));
+}
+
+function fundingStrengthSlice(signal: TradeSignal) {
+  if (signal.funding24h === null) return { key: "missing", label: "資金調達率なし" };
+  const absoluteFunding = Math.abs(signal.funding24h);
+  if (absoluteFunding >= 0.0006) return { key: "gte-006", label: "0.06%以上" };
+  if (absoluteFunding >= 0.0003) return { key: "003-006", label: "0.03〜0.06%" };
+  return { key: "lt-003", label: "0.03%未満" };
 }
 
 function signalTime(signal: TradeSignal | undefined, field: "entryAt" | "exitAt") {
@@ -272,7 +319,11 @@ function selectSignalsForCandidate(signals: TradeSignal[], candidate: CombinedSt
     : candidate.signalRule === "hyperliquid-momentum" || candidate.signalRule === "hyperliquid-reversion"
       ? signals.filter((signal) => signal.trendZ6h !== null && Math.abs(signal.trendZ6h) >= candidate.minimumTrendZ)
     : isFundingSignalRule(candidate.signalRule)
-      ? signals.filter((signal) => signal.funding24h !== null && Math.abs(signal.funding24h) >= candidate.minimumFunding24h)
+      ? signals.filter((signal) => (
+          signal.funding24h !== null
+          && Math.abs(signal.funding24h) >= candidate.minimumFunding24h
+          && (candidate.signalRule !== "polymarket-funding-consensus" || resolveStrategySide(signal, candidate.signalRule) === signal.side)
+        ))
       : signals;
   return selectNonOverlappingSignals(ruleEligible, candidate.minimumSignalZ);
 }
@@ -423,13 +474,15 @@ function resolveStrategySide(signal: TradeSignal, rule: CombinedStrategyCandidat
   }
   if (isFundingSignalRule(rule)) {
     const fundingSide = (signal.funding24h ?? 0) >= 0 ? 1 as const : -1 as const;
-    return rule === "hyperliquid-funding-carry" ? -fundingSide as 1 | -1 : fundingSide;
+    return rule === "hyperliquid-funding-momentum" ? fundingSide : -fundingSide as 1 | -1;
   }
   return signal.side;
 }
 
 function isFundingSignalRule(rule: CombinedStrategyCandidate["signalRule"]) {
-  return rule === "hyperliquid-funding-carry" || rule === "hyperliquid-funding-momentum";
+  return rule === "hyperliquid-funding-carry"
+    || rule === "hyperliquid-funding-momentum"
+    || rule === "polymarket-funding-consensus";
 }
 
 function impliedTerminalMedian(sample: EvaluationSample, volatility: number, probability = sample.marketProbability) {

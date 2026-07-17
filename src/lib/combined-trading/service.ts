@@ -7,11 +7,14 @@ import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
 
 export type CombinedShadowConfig = {
+  experimentKey: string;
+  experimentLabel: string;
+  forwardOnly: boolean;
   initialEquity: number;
   minimumSignalZ: number;
   minimumTrendZ: number;
   minimumFunding24h: number;
-  signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum";
+  signalRule: "polymarket-only" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum" | "polymarket-funding-consensus";
   modelVersion: string | null;
   positionPct: number;
   maxPositionNotional: number;
@@ -24,6 +27,9 @@ export type CombinedShadowConfig = {
 };
 
 const defaultConfig: CombinedShadowConfig = {
+  experimentKey: "legacy-shadow-v1",
+  experimentLabel: "従来の組み合わせ検証",
+  forwardOnly: false,
   initialEquity: 10_000,
   minimumSignalZ: 0.5,
   minimumTrendZ: 0.1,
@@ -62,9 +68,12 @@ export async function getQualifiedModelShadowConfig(): Promise<Partial<CombinedS
 }
 
 export async function ensureCombinedShadowRun(configOverride: Partial<CombinedShadowConfig> = {}) {
-  const existing = await prisma.combinedShadowRun.findFirst({ where: { status: "running" }, orderBy: { startedAt: "desc" } });
-  if (existing) return existing;
   const config = normalizeConfig(configOverride);
+  const runningRuns = await prisma.combinedShadowRun.findMany({ where: { status: "running" }, orderBy: { startedAt: "desc" } });
+  const existing = runningRuns.find((run) => (
+    normalizeConfig(parseJson<Partial<CombinedShadowConfig>>(run.configJson) ?? {}).experimentKey === config.experimentKey
+  ));
+  if (existing) return existing;
   return prisma.combinedShadowRun.create({
     data: {
       id: crypto.randomUUID(),
@@ -149,6 +158,9 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
     reason = scan.signal.hyperliquidFunding24h === null
       ? "24時間の資金調達率を確認中"
       : `24時間資金調達率${formatPct(Math.abs(scan.signal.hyperliquidFunding24h))}が基準${formatPct(config.minimumFunding24h)}未満`;
+  } else if (config.signalRule === "polymarket-funding-consensus" && executableSignal?.side !== scan.signal.side) {
+    action = "WAIT";
+    reason = "Polymarketの方向と資金調達を受け取る方向が一致していません";
   } else if (Math.abs(scan.signal.signalZ) < config.minimumSignalZ) {
     action = "WAIT";
     reason = `シグナル強度${Math.abs(scan.signal.signalZ).toFixed(2)}が基準${config.minimumSignalZ.toFixed(2)}未満`;
@@ -202,6 +214,12 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
       spotPrice: scan.signal?.spotPrice ?? null,
       targetPrice: scan.signal?.impliedTarget ?? null,
       signalZ: scan.signal?.signalZ ?? null,
+      polymarketSide: scan.signal?.side ?? null,
+      strategySide: isFundingSignalRule(config.signalRule) && scan.signal?.hyperliquidFunding24h === null
+        ? null
+        : executableSignal?.side ?? null,
+      trendZ6h: scan.signal?.trendZ6h ?? null,
+      hyperliquidFunding24h: scan.signal?.hyperliquidFunding24h ?? null,
       threshold: config.minimumSignalZ,
       horizonHours: scan.signal?.horizonHours ?? null,
       scannedMarkets: scan.scannedMarkets,
@@ -296,6 +314,10 @@ async function openShadowPosition(run: CombinedShadowRun, signal: CombinedLiveSi
       markPrice: signal.spotPrice,
       impliedTarget: signal.impliedTarget,
       signalZ: signal.signalZ,
+      polymarketSide: config.signalRule === "polymarket-funding-consensus" ? signal.side : null,
+      entrySpotPrice: signal.spotPrice,
+      entryTrendZ6h: signal.trendZ6h,
+      entryFunding24h: signal.hyperliquidFunding24h,
       horizonHours: signal.horizonHours,
       priceBasisPct: signal.priceBasisPct,
       entryReferencePrice: signal.polymarketReferencePrice,
@@ -340,7 +362,7 @@ export function applyCombinedSignalRule(signal: CombinedLiveSignal, rule: Combin
     const fundingSide = (signal.hyperliquidFunding24h ?? 0) >= 0 ? "LONG" : "SHORT";
     return {
       ...signal,
-      side: rule === "hyperliquid-funding-carry" ? (fundingSide === "LONG" ? "SHORT" : "LONG") : fundingSide,
+      side: rule === "hyperliquid-funding-momentum" ? fundingSide : (fundingSide === "LONG" ? "SHORT" : "LONG"),
     };
   }
   return signal;
@@ -369,6 +391,7 @@ async function closeShadowPosition(
     takerFeePerSide: config.takerFeePerSide,
     slippagePerSide: config.slippagePerSide,
     fundingPer24h: config.fundingPer24h,
+    fundingRate24h: position.entryFunding24h,
   });
   await prisma.combinedShadowPosition.update({
     where: { id: position.id },
@@ -439,6 +462,7 @@ async function maybeMirrorTestnetOrder(run: CombinedShadowRun, position: Combine
     const metrics = parseJson<ModelEvaluationMetrics>(latestEvaluation?.metricsJson ?? null);
     const strategy = metrics?.combinedTrading?.selectedStrategy;
     const runConfig = normalizeConfig(parseJson<Partial<CombinedShadowConfig>>(run.configJson) ?? {});
+    if (runConfig.forwardOnly) return;
     const qualified = metrics?.quality.status === "promising"
       && strategy?.id !== "no-trade guard"
       && metrics.combinedTrading?.statisticallyPositive === true
@@ -516,6 +540,7 @@ function openPositionsPnl(positions: CombinedShadowPosition[], prices: Map<strin
       takerFeePerSide: config.takerFeePerSide,
       slippagePerSide: config.slippagePerSide,
       fundingPer24h: config.fundingPer24h,
+      fundingRate24h: position.entryFunding24h,
     });
     return sum + close.realizedPnl + position.entryFee;
   }, 0);
@@ -532,13 +557,17 @@ export function calculateCombinedClose(input: {
   takerFeePerSide: number;
   slippagePerSide: number;
   fundingPer24h: number;
+  fundingRate24h?: number | null;
 }) {
   const sideMultiplier = input.side === "LONG" ? 1 : -1;
   const exitPrice = input.markPrice * (1 - sideMultiplier * input.slippagePerSide);
   const grossPnl = sideMultiplier * input.quantity * (exitPrice - input.entryPrice);
   const exitFee = input.quantity * exitPrice * input.takerFeePerSide;
   const holdingDays = Math.max(0, input.now.getTime() - input.openedAt.getTime()) / (24 * 60 * 60 * 1_000);
-  const funding = input.quantity * input.entryPrice * input.fundingPer24h * holdingDays;
+  const fundingRate = typeof input.fundingRate24h === "number" && Number.isFinite(input.fundingRate24h)
+    ? sideMultiplier * input.fundingRate24h
+    : input.fundingPer24h;
+  const funding = input.quantity * input.entryPrice * fundingRate * holdingDays;
   return {
     exitPrice,
     grossPnl,
@@ -550,6 +579,9 @@ export function calculateCombinedClose(input: {
 
 function normalizeConfig(override: Partial<CombinedShadowConfig>) {
   return {
+    experimentKey: normalizedText(override.experimentKey, defaultConfig.experimentKey),
+    experimentLabel: normalizedText(override.experimentLabel, defaultConfig.experimentLabel),
+    forwardOnly: override.forwardOnly === true,
     initialEquity: positive(override.initialEquity, defaultConfig.initialEquity),
     minimumSignalZ: clamp(override.minimumSignalZ ?? defaultConfig.minimumSignalZ, 0.1, 3),
     minimumTrendZ: clamp(override.minimumTrendZ ?? defaultConfig.minimumTrendZ, 0, 3),
@@ -573,7 +605,8 @@ function isExecutableSignalRule(rule: unknown): rule is CombinedShadowConfig["si
     || rule === "hyperliquid-momentum"
     || rule === "hyperliquid-reversion"
     || rule === "hyperliquid-funding-carry"
-    || rule === "hyperliquid-funding-momentum";
+    || rule === "hyperliquid-funding-momentum"
+    || rule === "polymarket-funding-consensus";
 }
 
 function isHyperliquidSignalRule(rule: CombinedShadowConfig["signalRule"]) {
@@ -581,7 +614,9 @@ function isHyperliquidSignalRule(rule: CombinedShadowConfig["signalRule"]) {
 }
 
 function isFundingSignalRule(rule: CombinedShadowConfig["signalRule"]) {
-  return rule === "hyperliquid-funding-carry" || rule === "hyperliquid-funding-momentum";
+  return rule === "hyperliquid-funding-carry"
+    || rule === "hyperliquid-funding-momentum"
+    || rule === "polymarket-funding-consensus";
 }
 
 function isReferenceAsset(asset: string): asset is CombinedLiveSignal["asset"] {
@@ -603,6 +638,10 @@ function parseJson<T>(value: string | null) {
 
 function positive(value: number | undefined, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function normalizedText(value: string | undefined, fallback: string) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 function clamp(value: number, minimum: number, maximum: number) {
