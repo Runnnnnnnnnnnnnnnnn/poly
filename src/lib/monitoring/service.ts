@@ -433,19 +433,39 @@ function operationalStatus(heartbeat: PipelineHeartbeat | undefined, now: Date, 
 }
 
 function readTunnelStatus() {
-  const fallback = { mode: "unknown", status: "waiting", publicUrl: null, fixedUrl: false, fallback: false, publishedAt: null, updatedAt: null };
+  const fallback = {
+    mode: "unknown",
+    status: "waiting" as const,
+    publicUrl: null,
+    fixedUrl: false,
+    fallback: false,
+    publishedAt: null,
+    lastCheckedAt: null,
+    consecutiveFailures: 0,
+    updatedAt: null,
+  };
   try {
     const path = resolve(homedir(), ".polymarket-watch/tunnel-status.json");
     if (!existsSync(path)) return fallback;
-    const value = JSON.parse(readFileSync(path, "utf8")) as Partial<typeof fallback>;
+    const value = JSON.parse(readFileSync(path, "utf8")) as Omit<Partial<typeof fallback>, "status"> & { status?: string };
+    const updatedAt = typeof value.updatedAt === "string" ? value.updatedAt : null;
+    const updatedAtMs = updatedAt ? new Date(updatedAt).getTime() : Number.NaN;
+    const fresh = Number.isFinite(updatedAtMs) && Date.now() - updatedAtMs <= 3 * 60 * 1_000;
+    const recordedStatus = value.status === "healthy" || value.status === "waiting" || value.status === "starting"
+      ? value.status
+      : value.status === "restarting" ? "starting" as const : fallback.status;
     return {
       mode: typeof value.mode === "string" ? value.mode : fallback.mode,
-      status: value.status === "healthy" || value.status === "waiting" || value.status === "starting" ? value.status : fallback.status,
+      status: recordedStatus === "healthy" && !fresh ? "waiting" as const : recordedStatus,
       publicUrl: typeof value.publicUrl === "string" ? value.publicUrl : null,
       fixedUrl: value.fixedUrl === true,
       fallback: value.fallback === true,
       publishedAt: typeof value.publishedAt === "string" ? value.publishedAt : null,
-      updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : null,
+      lastCheckedAt: typeof value.lastCheckedAt === "string" ? value.lastCheckedAt : null,
+      consecutiveFailures: typeof value.consecutiveFailures === "number" && Number.isFinite(value.consecutiveFailures)
+        ? Math.max(0, Math.floor(value.consecutiveFailures))
+        : 0,
+      updatedAt,
     };
   } catch {
     return fallback;

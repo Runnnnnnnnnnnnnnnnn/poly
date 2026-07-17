@@ -8,6 +8,7 @@ import { evaluateForwardExperiment, type ForwardEvaluationPosition } from "../sr
 import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
 import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts } from "../src/lib/monitoring/operational-alerts";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
+import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
 import { deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/probability-ladder";
@@ -420,5 +421,9 @@ assert.equal(namedTunnel.mode, "named-token");
 assert.equal(namedTunnel.publicUrl, "https://api.example.com");
 assert.equal(namedTunnel.allowQuickFallback, true);
 assert.throws(() => resolveTunnelConfig({ CLOUDFLARED_TUNNEL_TOKEN: "test-token" }, "3001"));
+assert.equal(decideTunnelRecovery({ mode: "quick", allowQuickFallback: false }, 2, 3), "retry");
+assert.equal(decideTunnelRecovery({ mode: "quick", allowQuickFallback: false }, 3, 3), "restart-quick");
+assert.equal(decideTunnelRecovery({ mode: "named-token", allowQuickFallback: true }, 3, 3), "fallback-quick");
+assert.equal(decideTunnelRecovery({ mode: "named-token", allowQuickFallback: false }, 3, 3), "retry");
 
-console.log("tunnel configuration tests passed");
+console.log("tunnel configuration and recovery tests passed");
