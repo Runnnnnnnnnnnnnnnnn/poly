@@ -216,8 +216,8 @@ function toCryptoMarket(market: z.infer<typeof marketSchema>, explicitEventId?: 
 
 function isFixedTerminalPriceQuestion(question: string) {
   const text = question.toLowerCase();
-  const terminalPrice = /\b(above|below|between|higher than|lower than|greater than|less than|over|under)\b/.test(text);
-  const pathDependent = /\b(hit|reach|touch|before|during|all[- ]time high)\b|\bby\s/.test(text);
+  const terminalPrice = /\$\s*[0-9]/.test(text) && /\b(above|below|between|higher than|lower than|greater than|less than|over|under)\b/.test(text);
+  const pathDependent = /\b(dip|hit|reach|touch|before|during|all[- ]time high)\b|\bby\s/.test(text);
   return terminalPrice && !pathDependent;
 }
 

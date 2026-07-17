@@ -8,21 +8,28 @@ export type EvaluationSample = {
   endAt: string;
   observedAt: string;
   marketProbability: number;
+  structuralProbability?: number | null;
+  spotPrice?: number | null;
+  realizedVolatility24h?: number | null;
+  thresholdKind?: "above" | "below" | "between" | null;
+  thresholdLower?: number | null;
+  thresholdUpper?: number | null;
   outcome: 0 | 1;
 };
 
-export type CalibrationCandidate = {
+export type ModelCandidate = {
   id: string;
-  bins: number;
-  priorStrength: number;
-  blendWeight: number;
+  kind: "market" | "logit-pool" | "ridge-logit-pool";
+  structuralWeight: number;
+  regularization: number;
+  coefficients?: [number, number, number];
 };
 
 export type ModelEvaluationMetrics = {
   methodology: "chronological-holdout";
   horizonHours: number;
   modelVersion: string;
-  selectedCandidate: CalibrationCandidate;
+  selectedCandidate: ModelCandidate;
   dataset: {
     hash: string;
     totalEvents: number;
@@ -36,6 +43,8 @@ export type ModelEvaluationMetrics = {
     firstEndAt: string;
     lastEndAt: string;
     assets: Record<string, number>;
+    structuralFeatureMarkets: number;
+    structuralFeatureCoverage: number;
   };
   probability: {
     modelBrierScore: number;

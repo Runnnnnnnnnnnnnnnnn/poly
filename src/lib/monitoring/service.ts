@@ -98,7 +98,10 @@ export async function getMonitoringSnapshot() {
       backtestPoints: backtestPointCount,
     },
     model: {
-      name: latestEvaluation?.modelVersion ?? "Reliability Guard v4",
+      name: latestEvaluation?.modelVersion ?? "Market Structure Ensemble v5",
+      selectedCandidate: evaluation?.selectedCandidate.id ?? null,
+      selectedCandidateKind: evaluation?.selectedCandidate.kind ?? null,
+      structuralFeatureCoverage: evaluation?.dataset.structuralFeatureCoverage ?? null,
       evaluationStatus: evaluation?.quality.status ?? "building",
       latestAsset: evaluation ? Object.keys(evaluation.dataset.assets).join("・") : null,
       latestBrierScore: evaluation?.probability.modelBrierScore ?? null,

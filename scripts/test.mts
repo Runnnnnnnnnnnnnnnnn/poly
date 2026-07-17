@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
+import { parseTerminalPriceCondition, probabilityForCondition } from "../src/lib/model-evaluation/price-structure";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 
 const metrics = calculateBacktestMetrics(
@@ -22,6 +23,14 @@ assert.equal(metrics.calibration.reduce((sum, bucket) => sum + bucket.count, 0),
 assert.ok(Math.abs((metrics.brierScore ?? 0) - 0.1366666667) < 1e-9);
 
 console.log("backtest metric tests passed");
+
+assert.deepEqual(parseTerminalPriceCondition("Will Bitcoin be less than $100K on May 23?"), { kind: "below", lower: null, upper: 100_000 });
+assert.deepEqual(parseTerminalPriceCondition("Will Bitcoin be between $90,000 and $88,000 on April 4?"), { kind: "between", lower: 88_000, upper: 90_000 });
+assert.equal(parseTerminalPriceCondition("Will ETH dip below $3,000 in June?"), null);
+assert.ok(Math.abs(probabilityForCondition(100, 0.1, { kind: "above", lower: 100, upper: null }) - 0.5) < 1e-6);
+assert.ok(probabilityForCondition(100, 0.1, { kind: "above", lower: 90, upper: null }) > 0.5);
+
+console.log("price structure tests passed");
 
 const evaluationSamples: EvaluationSample[] = [];
 for (let eventIndex = 0; eventIndex < 80; eventIndex += 1) {

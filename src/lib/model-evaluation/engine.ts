@@ -1,18 +1,20 @@
 import { createHash } from "node:crypto";
 
-import type { CalibrationCandidate, EvaluationSample, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
+import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
-export const MODEL_VERSION = "Reliability Guard v4";
+export const MODEL_VERSION = "Market Structure Ensemble v5";
 export const HORIZON_HOURS = 24;
 export const MIN_TRAIN_EVENTS = 20;
 export const MIN_HOLDOUT_EVENTS = 15;
 
-const candidates: CalibrationCandidate[] = [
-  { id: "market guard", bins: 5, priorStrength: 8, blendWeight: 0 },
-  { id: "conservative calibration", bins: 5, priorStrength: 8, blendWeight: 0.25 },
-  { id: "balanced calibration", bins: 5, priorStrength: 8, blendWeight: 0.5 },
-  { id: "adaptive calibration", bins: 10, priorStrength: 5, blendWeight: 0.5 },
-  { id: "full calibration", bins: 10, priorStrength: 5, blendWeight: 1 },
+const candidates: ModelCandidate[] = [
+  { id: "market guard", kind: "market", structuralWeight: 0, regularization: 0 },
+  { id: "price structure 10%", kind: "logit-pool", structuralWeight: 0.1, regularization: 0 },
+  { id: "price structure 25%", kind: "logit-pool", structuralWeight: 0.25, regularization: 0 },
+  { id: "price structure 40%", kind: "logit-pool", structuralWeight: 0.4, regularization: 0 },
+  { id: "ridge pool 0.01", kind: "ridge-logit-pool", structuralWeight: 0, regularization: 0.01 },
+  { id: "ridge pool 0.05", kind: "ridge-logit-pool", structuralWeight: 0, regularization: 0.05 },
+  { id: "ridge pool 0.20", kind: "ridge-logit-pool", structuralWeight: 0, regularization: 0.2 },
 ];
 
 const initialCapital = 10_000;
@@ -38,14 +40,15 @@ export function evaluateChronologicalModel(input: EvaluationSample[]): ModelEval
   const test = testEvents.flatMap((event) => event.samples);
 
   const candidateEvaluations = candidates.map((candidate) => evaluateCandidate(candidate, train, validationEvents));
-  const selectedCandidate = candidateEvaluations
-    .filter(({ candidate, confidenceInterval95 }) => candidate.blendWeight === 0 || confidenceInterval95[0] > 0)
+  const selectedDefinition = candidateEvaluations
+    .filter(({ candidate, confidenceInterval95 }) => candidate.kind === "market" || confidenceInterval95[0] > 0)
     .sort((a, b) => a.score - b.score || a.candidate.id.localeCompare(b.candidate.id))[0].candidate;
 
   const prior = [...train, ...validation];
+  const selectedCandidate = fitCandidate(selectedDefinition, prior);
   const predictions = test.map((sample) => ({
     sample,
-    modelProbability: calibrate(sample.marketProbability, prior, selectedCandidate),
+    modelProbability: predictProbability(sample, selectedCandidate),
   }));
   const eventScores = testEvents.map((event) => {
     const eventPredictions = predictions.filter(({ sample }) => sample.eventId === event.id);
@@ -61,11 +64,14 @@ export function evaluateChronologicalModel(input: EvaluationSample[]): ModelEval
   const confidenceInterval95 = meanConfidenceInterval(improvements);
   const trading = simulateTrading(eventScores.map((event) => event.predictions));
   const assets = samples.reduce<Record<string, number>>((counts, sample) => ({ ...counts, [sample.asset]: (counts[sample.asset] ?? 0) + 1 }), {});
+  const structuralFeatureMarkets = samples.filter(hasStructuralProbability).length;
+  const structuralFeatureCoverage = samples.length ? structuralFeatureMarkets / samples.length : 0;
   const statisticallyPositive = confidenceInterval95[0] > 0;
   const gates = [
     { id: "chronology", label: "時系列で訓練とテストを分離", passed: true },
     { id: "horizon", label: "全市場を決着24時間前で統一", passed: true },
     { id: "same-holdout", label: "同一テスト市場でPolymarketと比較", passed: true },
+    { id: "features", label: "価格構造データを90%以上取得", passed: structuralFeatureCoverage >= 0.9 },
     { id: "costs", label: "スプレッド・滑り・手数料を反映", passed: true },
     { id: "sample", label: `最終テスト${MIN_HOLDOUT_EVENTS}イベント以上`, passed: testEvents.length >= MIN_HOLDOUT_EVENTS },
     { id: "significance", label: "誤差改善の95%区間がプラス", passed: statisticallyPositive },
@@ -94,6 +100,8 @@ export function evaluateChronologicalModel(input: EvaluationSample[]): ModelEval
       firstEndAt: samples[0].endAt,
       lastEndAt: samples.at(-1)?.endAt ?? samples[0].endAt,
       assets,
+      structuralFeatureMarkets,
+      structuralFeatureCoverage,
     },
     probability: {
       modelBrierScore,
@@ -112,30 +120,93 @@ export function evaluateChronologicalModel(input: EvaluationSample[]): ModelEval
   };
 }
 
-export function calibrate(probability: number, training: EvaluationSample[], candidate: CalibrationCandidate) {
-  const marketProbability = clamp(probability, 0, 1);
-  if (candidate.blendWeight === 0) return marketProbability;
-  const bounded = clamp(probability, 0.001, 0.999);
-  const bin = Math.min(candidate.bins - 1, Math.floor(bounded * candidate.bins));
-  const matches = training.filter((sample) => Math.min(candidate.bins - 1, Math.floor(clamp(sample.marketProbability, 0, 0.999999) * candidate.bins)) === bin);
-  if (!matches.length) return bounded;
-  const successes = matches.reduce((sum, sample) => sum + sample.outcome, 0);
-  const calibrated = clamp((successes + candidate.priorStrength * bounded) / (matches.length + candidate.priorStrength), 0.01, 0.99);
-  return clamp(bounded + candidate.blendWeight * (calibrated - bounded), 0.01, 0.99);
-}
-
-function evaluateCandidate(candidate: CalibrationCandidate, train: EvaluationSample[], validationEvents: EventGroup[]) {
+function evaluateCandidate(candidate: ModelCandidate, train: EvaluationSample[], validationEvents: EventGroup[]) {
   const history = [...train];
   const losses: number[] = [];
   const improvements: number[] = [];
   for (const event of validationEvents) {
-    const modelLoss = average(event.samples.map((sample) => (calibrate(sample.marketProbability, history, candidate) - sample.outcome) ** 2));
+    const fitted = fitCandidate(candidate, history);
+    const modelLoss = average(event.samples.map((sample) => (predictProbability(sample, fitted) - sample.outcome) ** 2));
     const marketLoss = average(event.samples.map((sample) => (sample.marketProbability - sample.outcome) ** 2));
     losses.push(modelLoss);
     improvements.push(marketLoss - modelLoss);
     history.push(...event.samples);
   }
   return { candidate, score: average(losses), confidenceInterval95: meanConfidenceInterval(improvements) };
+}
+
+function fitCandidate(candidate: ModelCandidate, training: EvaluationSample[]): ModelCandidate {
+  if (candidate.kind !== "ridge-logit-pool") return { ...candidate };
+  return { ...candidate, coefficients: fitRidgeLogitPool(training, candidate.regularization) };
+}
+
+function predictProbability(sample: EvaluationSample, candidate: ModelCandidate) {
+  const rawMarket = clamp(sample.marketProbability, 0, 1);
+  if (candidate.kind === "market" || !hasStructuralProbability(sample)) return rawMarket;
+  const market = clamp(rawMarket, 0.001, 0.999);
+  const structural = clamp(sample.structuralProbability, 0.001, 0.999);
+  if (candidate.kind === "logit-pool") {
+    return sigmoid((1 - candidate.structuralWeight) * logit(market) + candidate.structuralWeight * logit(structural));
+  }
+  const [intercept, marketCoefficient, structuralCoefficient] = candidate.coefficients ?? [0, 1, 0];
+  return clamp(sigmoid(intercept + marketCoefficient * logit(market) + structuralCoefficient * logit(structural)), 0.001, 0.999);
+}
+
+function fitRidgeLogitPool(samples: EvaluationSample[], regularization: number): [number, number, number] {
+  const usable = samples.filter(hasStructuralProbability);
+  if (!usable.length) return [0, 1, 0];
+  const counts = usable.reduce<Map<string, number>>((result, sample) => result.set(sample.eventId, (result.get(sample.eventId) ?? 0) + 1), new Map());
+  const eventCount = counts.size;
+  const prior: [number, number, number] = [0, 1, 0];
+  const coefficients: [number, number, number] = [...prior];
+
+  for (let iteration = 0; iteration < 25; iteration += 1) {
+    const gradient = [0, 0, 0];
+    const hessian = Array.from({ length: 3 }, () => [0, 0, 0]);
+    for (const sample of usable) {
+      const features = [1, logit(clamp(sample.marketProbability, 0.001, 0.999)), logit(clamp(sample.structuralProbability, 0.001, 0.999))];
+      const probability = sigmoid(dot(coefficients, features));
+      const weight = 1 / eventCount / (counts.get(sample.eventId) ?? 1);
+      for (let row = 0; row < 3; row += 1) {
+        gradient[row] += weight * (probability - sample.outcome) * features[row];
+        for (let column = 0; column < 3; column += 1) {
+          hessian[row][column] += weight * probability * (1 - probability) * features[row] * features[column];
+        }
+      }
+    }
+    for (let index = 0; index < 3; index += 1) {
+      gradient[index] += regularization * (coefficients[index] - prior[index]);
+      hessian[index][index] += regularization;
+    }
+    const step = solveThreeByThree(hessian, gradient);
+    if (!step) return [...prior];
+    for (let index = 0; index < 3; index += 1) coefficients[index] -= step[index];
+    coefficients[0] = clamp(coefficients[0], -4, 4);
+    coefficients[1] = clamp(coefficients[1], -2, 4);
+    coefficients[2] = clamp(coefficients[2], -2, 4);
+    if (Math.max(...step.map(Math.abs)) < 1e-7) break;
+  }
+  return coefficients;
+}
+
+function solveThreeByThree(matrix: number[][], vector: number[]): [number, number, number] | null {
+  const rows = matrix.map((row, index) => [...row, vector[index]]);
+  for (let column = 0; column < 3; column += 1) {
+    let pivot = column;
+    for (let row = column + 1; row < 3; row += 1) {
+      if (Math.abs(rows[row][column]) > Math.abs(rows[pivot][column])) pivot = row;
+    }
+    if (Math.abs(rows[pivot][column]) < 1e-12) return null;
+    [rows[column], rows[pivot]] = [rows[pivot], rows[column]];
+    const divisor = rows[column][column];
+    for (let index = column; index < 4; index += 1) rows[column][index] /= divisor;
+    for (let row = 0; row < 3; row += 1) {
+      if (row === column) continue;
+      const factor = rows[row][column];
+      for (let index = column; index < 4; index += 1) rows[row][index] -= factor * rows[column][index];
+    }
+  }
+  return [rows[0][3], rows[1][3], rows[2][3]];
 }
 
 function simulateTrading(events: Array<Array<{ sample: EvaluationSample; modelProbability: number }>>) {
@@ -191,7 +262,7 @@ function feePerShare(price: number) {
 
 function createDatasetHash(samples: EvaluationSample[]) {
   return createHash("sha256")
-    .update(samples.map((sample) => `${sample.marketId}:${sample.observedAt}:${sample.marketProbability}:${sample.outcome}`).join("|"))
+    .update(samples.map((sample) => `${sample.marketId}:${sample.observedAt}:${sample.marketProbability}:${sample.structuralProbability ?? "none"}:${sample.outcome}`).join("|"))
     .digest("hex")
     .slice(0, 16);
 }
@@ -233,6 +304,24 @@ function criticalValue95(degreesOfFreedom: number) {
 function logLoss(probability: number, outcome: 0 | 1) {
   const bounded = clamp(probability, 0.0001, 0.9999);
   return -(outcome * Math.log(bounded) + (1 - outcome) * Math.log(1 - bounded));
+}
+
+function hasStructuralProbability(sample: EvaluationSample): sample is EvaluationSample & { structuralProbability: number } {
+  return typeof sample.structuralProbability === "number" && Number.isFinite(sample.structuralProbability);
+}
+
+function logit(probability: number) {
+  return Math.log(probability / (1 - probability));
+}
+
+function sigmoid(value: number) {
+  if (value >= 0) return 1 / (1 + Math.exp(-value));
+  const exponential = Math.exp(value);
+  return exponential / (1 + exponential);
+}
+
+function dot(left: number[], right: number[]) {
+  return left.reduce((sum, value, index) => sum + value * right[index], 0);
 }
 
 function average(values: number[]) {

@@ -2,10 +2,11 @@ import type { ModelEvaluationRun } from "@prisma/client";
 
 import { discoverHistoricalCryptoEvents, fetchHistoricalProbability } from "@/src/lib/backtest/polymarket";
 import { evaluateChronologicalModel, HORIZON_HOURS, MODEL_VERSION } from "@/src/lib/model-evaluation/engine";
+import { addPriceStructureFeatures } from "@/src/lib/model-evaluation/price-structure";
 import type { EvaluationSample, ModelEvaluationMetrics, ModelEvaluationResult } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
 
-const maximumEvents = 180;
+const maximumEvents = 260;
 const maximumObservationAgeHours = 72;
 
 export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
@@ -21,6 +22,8 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
         maximumObservationAgeHours,
         split: "60/20/20 chronological events",
         eventWeighting: "equal",
+        independentFeatures: "Hyperliquid 8h price and EWMA realized volatility",
+        candidateSelection: "walk-forward validation with positive 95% improvement interval",
         maximumTradesPerEvent: 1,
       }),
       startedAt,
@@ -92,7 +95,7 @@ export async function loadEvaluationSamples() {
     };
   });
 
-  return rows.filter((row): row is EvaluationSample => Boolean(row));
+  return addPriceStructureFeatures(rows.filter((row): row is EvaluationSample => Boolean(row)));
 }
 
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>) {

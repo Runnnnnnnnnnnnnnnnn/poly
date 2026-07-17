@@ -90,6 +90,9 @@ type MonitoringSnapshot = {
   polymarket: { snapshots: number; markets: number; latestAt: string | null; backtestRuns: number; backtestPoints: number };
   model: {
     name: string;
+    selectedCandidate: string | null;
+    selectedCandidateKind: "market" | "logit-pool" | "ridge-logit-pool" | null;
+    structuralFeatureCoverage: number | null;
     evaluationStatus: "promising" | "inconclusive" | "underperforming" | "building";
     latestAsset: string | null;
     latestBrierScore: number | null;
@@ -513,7 +516,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
             <Layers3 className="h-5 w-5 text-primary" />
             <h2 className="text-base font-bold text-slate-950">相場環境データ</h2>
           </div>
-          <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">モデル入力候補</span>
+          <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">モデル入力済み</span>
         </div>
         <div className="mt-4 divide-y divide-border">
           {(snapshot?.hyperliquid.assets ?? []).map((item) => (
@@ -528,7 +531,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           ))}
           {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
         </div>
-        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Hyperliquidの価格・出来高・建玉・資金調達率を補助データとして5分ごとに保存</p>
+        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Hyperliquidの価格と実現変動率を独立確率の計算に使用。特徴量取得率 {formatPct(modelFeatureCoverage(snapshot))}</p>
       </div>
     </section>
   );
@@ -552,7 +555,7 @@ const fallbackPipelines = [
 
 function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | null }) {
   const model = monitoring?.model;
-  const decision = getEvaluationSignal(model?.evaluationStatus);
+  const decision = getEvaluationSignal(model?.evaluationStatus, model?.selectedCandidateKind);
   const DecisionIcon = decision.icon;
   const comparisonTone: Tone = (model?.brierImprovement ?? 0) > 0 ? "good" : (model?.brierImprovement ?? 0) < 0 ? "bad" : "neutral";
   const profitSignal = getProfitSignal(model?.latestReturnPct);
@@ -599,7 +602,7 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
       </div>
       <BrierComparison modelScore={model?.latestBrierScore} marketScore={model?.previousBrierScore} />
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3 text-xs text-muted-foreground">
-        <span>{model?.name ?? "モデル検証準備中"}</span>
+        <span>{model?.name ?? "モデル検証準備中"} / 採用: {formatCandidate(model?.selectedCandidate, model?.selectedCandidateKind)}</span>
         <span>{formatEvaluationPeriod(model?.datasetStartedAt, model?.datasetEndedAt)}</span>
       </div>
     </section>
@@ -819,7 +822,10 @@ function scoreBacktest(run: BacktestRun) {
   return run.metrics?.brierScore ?? Number.POSITIVE_INFINITY;
 }
 
-function getEvaluationSignal(status: MonitoringSnapshot["model"]["evaluationStatus"] | undefined): Signal {
+function getEvaluationSignal(
+  status: MonitoringSnapshot["model"]["evaluationStatus"] | undefined,
+  selectedCandidateKind?: MonitoringSnapshot["model"]["selectedCandidateKind"],
+): Signal {
   if (status === "promising") {
     return { label: "改善を確認", description: "未使用期間でも市場価格より誤差が小さく、コスト控除後もプラスです。", tone: "good", icon: CheckCircle2 };
   }
@@ -827,6 +833,9 @@ function getEvaluationSignal(status: MonitoringSnapshot["model"]["evaluationStat
     return { label: "改善が必要", description: "市場価格を下回ったため、現在のモデルは本番利用せず改良を続けます。", tone: "bad", icon: TrendingDown };
   }
   if (status === "inconclusive") {
+    if (selectedCandidateKind === "market") {
+      return { label: "優位性は未確認", description: "独立モデルは採用基準に届かず、市場価格を基準として維持しています。", tone: "watch", icon: AlertCircle };
+    }
     return { label: "検証継続", description: "優位性を判断できるだけの差がまだ確認できていません。", tone: "watch", icon: AlertCircle };
   }
   return { label: "検証準備中", description: "過去データを整え、最初の未使用期間テストを実行しています。", tone: "neutral", icon: Gauge };
@@ -990,6 +999,19 @@ function formatImprovement(value: number | null | undefined) {
   if (value > 0) return `${(value * 100).toFixed(1)}%改善`;
   if (value < 0) return `${Math.abs(value * 100).toFixed(1)}%悪化`;
   return "差なし";
+}
+
+function formatCandidate(
+  candidate: string | null | undefined,
+  kind: MonitoringSnapshot["model"]["selectedCandidateKind"] | undefined,
+) {
+  if (!candidate || !kind) return "選定中";
+  if (kind === "market") return "市場基準";
+  return kind === "ridge-logit-pool" ? "価格構造リッジ統合" : "価格構造統合";
+}
+
+function modelFeatureCoverage(snapshot: MonitoringSnapshot | null) {
+  return snapshot?.model.structuralFeatureCoverage ?? null;
 }
 
 function formatEvaluationPeriod(start: string | null | undefined, end: string | null | undefined) {
