@@ -8,17 +8,23 @@ const maximumSignalAgeMs = 5 * 60 * 1_000;
 const maximumEntryLagMs = 5 * 60 * 1_000;
 const maximumExitLeadMs = 5 * 60 * 1_000;
 const synchronizedSnapshotWhere = {
-  synchronizationVersion: "fetch-time-v2",
+  synchronizationVersion: "fetch-time-v3-orderbook",
   bestBid: { not: null },
   bestAsk: { not: null },
   spread: { not: null },
   hyperliquidMidPrice: { not: null },
+  hyperliquidBestBid: { not: null },
+  hyperliquidBestAsk: { not: null },
+  hyperliquidSpread: { not: null },
+  referencePrice: { not: null },
+  priceBasisPct: { not: null },
   captureSkewMs: { lte: 60_000 },
 } satisfies Prisma.MarketSnapshotWhereInput;
 
 type ExactSnapshot = Pick<
   MarketSnapshot,
-  "capturedAt" | "probability" | "bestBid" | "bestAsk" | "spread" | "hyperliquidMidPrice" | "priceBasisPct" | "captureSkewMs"
+  "capturedAt" | "probability" | "bestBid" | "bestAsk" | "spread" | "hyperliquidMidPrice" | "hyperliquidBestBid"
+  | "hyperliquidBestAsk" | "hyperliquidSpread" | "priceBasisPct" | "captureSkewMs"
 >;
 
 export async function overlaySynchronizedExecution(samples: EvaluationSample[]) {
@@ -110,8 +116,14 @@ export function applySynchronizedExecutionOverlay(
     spotPrice: signal.hyperliquidMidPrice,
     hyperliquidEntryAt: entry.capturedAt.toISOString(),
     hyperliquidEntryPrice: entry.hyperliquidMidPrice,
+    hyperliquidEntryBestBid: entry.hyperliquidBestBid,
+    hyperliquidEntryBestAsk: entry.hyperliquidBestAsk,
+    hyperliquidEntrySpread: entry.hyperliquidSpread,
     hyperliquidExitAt: exit.capturedAt.toISOString(),
     hyperliquidExitPrice: exit.hyperliquidMidPrice,
+    hyperliquidExitBestBid: exit.hyperliquidBestBid,
+    hyperliquidExitBestAsk: exit.hyperliquidBestAsk,
+    hyperliquidExitSpread: exit.hyperliquidSpread,
     hyperliquidEntryLagMinutes: Math.max(0, entry.capturedAt.getTime() - targetAt) / (60 * 1_000),
     hyperliquidExitLeadMinutes: Math.max(0, endAt - exit.capturedAt.getTime()) / (60 * 1_000),
     executionPriceSource: "synchronized-1m",
@@ -130,6 +142,9 @@ const exactSnapshotSelect = {
   bestAsk: true,
   spread: true,
   hyperliquidMidPrice: true,
+  hyperliquidBestBid: true,
+  hyperliquidBestAsk: true,
+  hyperliquidSpread: true,
   priceBasisPct: true,
   captureSkewMs: true,
 } satisfies Prisma.MarketSnapshotSelect;

@@ -11,12 +11,13 @@ import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts } from "../src/li
 import { evaluateSynchronizedPriceQuality } from "../src/lib/monitoring/synchronized-quality";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
-import { deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
+import { calculateDirectionalBookReturn, deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/probability-ladder";
 import { parseTerminalPriceCondition, probabilityForCondition, summarizeFundingAt } from "../src/lib/model-evaluation/price-structure";
 import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
+import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
 
 const metrics = calculateBacktestMetrics(
   [
@@ -76,6 +77,51 @@ const fundingSummary = summarizeFundingAt(fundingPoints, 24 * fundingHour, 24 * 
 assert.ok(Math.abs((fundingSummary.prior24h ?? 0) - 0.00024) < 1e-12);
 assert.ok(Math.abs((fundingSummary.duringTrade ?? 0) - 0.00006) < 1e-12);
 
+const hyperliquidBook = normalizeHyperliquidOrderBook({
+  coin: "BTC",
+  time: Date.parse("2026-01-01T00:00:00Z"),
+  levels: [
+    [{ px: "99.9", sz: "1", n: 1 }],
+    [{ px: "100.1", sz: "1", n: 1 }],
+  ],
+});
+assert.equal(hyperliquidBook?.bestBid, 99.9);
+assert.equal(hyperliquidBook?.bestAsk, 100.1);
+assert.ok(Math.abs((hyperliquidBook?.spread ?? 0) - 0.2) < 1e-12);
+assert.equal(normalizeHyperliquidOrderBook({
+  coin: "BTC",
+  time: Date.parse("2026-01-01T00:00:00Z"),
+  levels: [
+    [{ px: "100.2", sz: "1", n: 1 }],
+    [{ px: "100.1", sz: "1", n: 1 }],
+  ],
+}), null);
+
+const longBookReturn = calculateDirectionalBookReturn({
+  entryPrice: 100,
+  exitPrice: 102,
+  entryBestBid: 99.9,
+  entryBestAsk: 100.1,
+  exitBestBid: 101.9,
+  exitBestAsk: 102.1,
+}, 1);
+assert.equal(longBookReturn.usedOrderBook, true);
+assert.ok(Math.abs(longBookReturn.grossReturn - (101.9 / 100.1 - 1)) < 1e-12);
+assert.ok(longBookReturn.spreadRate > 0);
+const shortBookReturn = calculateDirectionalBookReturn({
+  entryPrice: 100,
+  exitPrice: 98,
+  entryBestBid: 99.9,
+  entryBestAsk: 100.1,
+  exitBestBid: 97.9,
+  exitBestAsk: 98.1,
+}, -1);
+assert.equal(shortBookReturn.usedOrderBook, true);
+assert.ok(Math.abs(shortBookReturn.grossReturn - -(98.1 / 99.9 - 1)) < 1e-12);
+const fallbackReturn = calculateDirectionalBookReturn({ entryPrice: 100, exitPrice: 102 }, 1);
+assert.equal(fallbackReturn.usedOrderBook, false);
+assert.ok(Math.abs(fallbackReturn.grossReturn - 0.02) < 1e-12);
+
 console.log("price structure tests passed");
 
 const synchronizedTargetAt = Date.parse("2026-01-01T00:00:00.000Z");
@@ -105,6 +151,9 @@ const synchronizedOverlay = applySynchronizedExecutionOverlay(synchronizedSample
     bestAsk: 0.63,
     spread: 0.02,
     hyperliquidMidPrice: 101_000,
+    hyperliquidBestBid: 100_995,
+    hyperliquidBestAsk: 101_005,
+    hyperliquidSpread: 10,
     priceBasisPct: 0.0004,
     captureSkewMs: 1_200,
   },
@@ -115,6 +164,9 @@ const synchronizedOverlay = applySynchronizedExecutionOverlay(synchronizedSample
     bestAsk: 0.64,
     spread: 0.02,
     hyperliquidMidPrice: 101_100,
+    hyperliquidBestBid: 101_095,
+    hyperliquidBestAsk: 101_105,
+    hyperliquidSpread: 10,
     priceBasisPct: 0.0005,
     captureSkewMs: 2_400,
   },
@@ -125,6 +177,9 @@ const synchronizedOverlay = applySynchronizedExecutionOverlay(synchronizedSample
     bestAsk: 0.99,
     spread: 0.02,
     hyperliquidMidPrice: 104_500,
+    hyperliquidBestBid: 104_495,
+    hyperliquidBestAsk: 104_505,
+    hyperliquidSpread: 10,
     priceBasisPct: 0.0003,
     captureSkewMs: 1_800,
   },
@@ -133,6 +188,10 @@ assert.equal(synchronizedOverlay.executionPriceSource, "synchronized-1m");
 assert.equal(synchronizedOverlay.marketProbability, 0.62);
 assert.equal(synchronizedOverlay.hyperliquidEntryPrice, 101_100);
 assert.equal(synchronizedOverlay.hyperliquidExitPrice, 104_500);
+assert.equal(synchronizedOverlay.hyperliquidEntryBestBid, 101_095);
+assert.equal(synchronizedOverlay.hyperliquidEntryBestAsk, 101_105);
+assert.equal(synchronizedOverlay.hyperliquidExitBestBid, 104_495);
+assert.equal(synchronizedOverlay.hyperliquidExitBestAsk, 104_505);
 assert.equal(synchronizedOverlay.observationLagMinutes, 0.5);
 assert.equal(synchronizedOverlay.hyperliquidEntryLagMinutes, 0.5);
 assert.equal(synchronizedOverlay.hyperliquidExitLeadMinutes, 0.75);

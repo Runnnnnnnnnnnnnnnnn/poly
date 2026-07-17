@@ -29,6 +29,12 @@ export type EvaluationSample = {
   marketSpread?: number | null;
   executionPriceBasisPct?: number | null;
   executionSynchronizationSkewMs?: number | null;
+  hyperliquidEntryBestBid?: number | null;
+  hyperliquidEntryBestAsk?: number | null;
+  hyperliquidEntrySpread?: number | null;
+  hyperliquidExitBestBid?: number | null;
+  hyperliquidExitBestAsk?: number | null;
+  hyperliquidExitSpread?: number | null;
   thresholdKind?: "above" | "below" | "between" | null;
   thresholdLower?: number | null;
   thresholdUpper?: number | null;
@@ -213,6 +219,7 @@ export type ModelEvaluationMetrics = {
     minimumRequiredTrades: number;
     maxDrawdownPct: number;
     totalFees: number;
+    totalSpread: number;
     totalSlippage: number;
     totalFunding: number;
     assumedTakerFeePerSide: number;

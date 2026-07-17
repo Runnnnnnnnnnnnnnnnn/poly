@@ -2,7 +2,7 @@ import { collectCryptoSnapshots } from "../src/lib/backtest/service";
 import { getHyperliquidExecutionReadiness, reconcileHyperliquidTestnetOrders } from "../src/lib/combined-trading/hyperliquid-execution";
 import { runModelEvaluation } from "../src/lib/model-evaluation/service";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
-import { collectHyperliquidSnapshots } from "../src/lib/monitoring/hyperliquid";
+import { collectHyperliquidSnapshots, fetchHyperliquidMarketStates } from "../src/lib/monitoring/hyperliquid";
 import { prisma } from "../src/lib/server/prisma";
 
 const collectIntervalMs = Math.max(60_000, Number(process.env.COLLECT_INTERVAL_MS ?? 60_000));
@@ -15,9 +15,10 @@ async function collectCycle() {
   collecting = true;
   try {
     await markPipelineAttempt("polymarket", "公開市場を取得中");
+    const sharedHyperliquidStates = await fetchHyperliquidMarketStates().catch(() => null);
     const [polymarket, hyperliquid] = await Promise.allSettled([
-      collectCryptoSnapshots(),
-      collectHyperliquidSnapshots(),
+      collectCryptoSnapshots({ hyperliquidStates: sharedHyperliquidStates ?? undefined }),
+      collectHyperliquidSnapshots(sharedHyperliquidStates ?? undefined),
     ]);
     if (polymarket.status === "fulfilled") {
       if (polymarket.value.saved > 0 && polymarket.value.synchronizationCoverage >= 0.5) {

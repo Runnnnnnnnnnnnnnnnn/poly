@@ -57,8 +57,11 @@ export async function getMonitoringSnapshot() {
         bestBid: { not: null },
         bestAsk: { not: null },
         spread: { not: null },
-        synchronizationVersion: "fetch-time-v2",
+        synchronizationVersion: "fetch-time-v3-orderbook",
         hyperliquidMidPrice: { not: null },
+        hyperliquidBestBid: { not: null },
+        hyperliquidBestAsk: { not: null },
+        hyperliquidSpread: { not: null },
         referencePrice: { not: null },
         priceBasisPct: { not: null },
         captureSkewMs: { lte: 60_000 },
@@ -72,8 +75,11 @@ export async function getMonitoringSnapshot() {
         bestBid: { not: null },
         bestAsk: { not: null },
         spread: { not: null },
-        synchronizationVersion: "fetch-time-v2",
+        synchronizationVersion: "fetch-time-v3-orderbook",
         hyperliquidMidPrice: { not: null },
+        hyperliquidBestBid: { not: null },
+        hyperliquidBestAsk: { not: null },
+        hyperliquidSpread: { not: null },
         referencePrice: { not: null },
         priceBasisPct: { not: null },
         captureSkewMs: { lte: 60_000 },
@@ -84,8 +90,11 @@ export async function getMonitoringSnapshot() {
         bestBid: { not: null },
         bestAsk: { not: null },
         spread: { not: null },
-        synchronizationVersion: "fetch-time-v2",
+        synchronizationVersion: "fetch-time-v3-orderbook",
         hyperliquidMidPrice: { not: null },
+        hyperliquidBestBid: { not: null },
+        hyperliquidBestAsk: { not: null },
+        hyperliquidSpread: { not: null },
         referencePrice: { not: null },
         priceBasisPct: { not: null },
         captureSkewMs: { not: null },
@@ -100,8 +109,11 @@ export async function getMonitoringSnapshot() {
         bestBid: { not: null },
         bestAsk: { not: null },
         spread: { not: null },
-        synchronizationVersion: "fetch-time-v2",
+        synchronizationVersion: "fetch-time-v3-orderbook",
         hyperliquidMidPrice: { not: null },
+        hyperliquidBestBid: { not: null },
+        hyperliquidBestAsk: { not: null },
+        hyperliquidSpread: { not: null },
         referencePrice: { not: null },
         priceBasisPct: { not: null },
         captureSkewMs: { not: null },
@@ -667,11 +679,14 @@ async function loadSynchronizedPriceQuality(input: {
           ABS("priceBasisPct") AS "absoluteBasisPct"
         FROM "MarketSnapshot"
         WHERE "capturedAt" >= ${qualityStartedAt}
-          AND "synchronizationVersion" = 'fetch-time-v2'
+          AND "synchronizationVersion" = 'fetch-time-v3-orderbook'
           AND "bestBid" IS NOT NULL
           AND "bestAsk" IS NOT NULL
           AND "spread" IS NOT NULL
           AND "hyperliquidMidPrice" IS NOT NULL
+          AND "hyperliquidBestBid" IS NOT NULL
+          AND "hyperliquidBestAsk" IS NOT NULL
+          AND "hyperliquidSpread" IS NOT NULL
           AND "referencePrice" IS NOT NULL
           AND "priceBasisPct" IS NOT NULL
           AND "captureSkewMs" IS NOT NULL
@@ -698,11 +713,14 @@ async function loadSynchronizedPriceQuality(input: {
       FROM "MarketSnapshot" snapshot
       INNER JOIN "PredictionMarket" market ON market."id" = snapshot."marketId"
       WHERE snapshot."capturedAt" >= ${qualityStartedAt}
-        AND snapshot."synchronizationVersion" = 'fetch-time-v2'
+        AND snapshot."synchronizationVersion" = 'fetch-time-v3-orderbook'
         AND snapshot."bestBid" IS NOT NULL
         AND snapshot."bestAsk" IS NOT NULL
         AND snapshot."spread" IS NOT NULL
         AND snapshot."hyperliquidMidPrice" IS NOT NULL
+        AND snapshot."hyperliquidBestBid" IS NOT NULL
+        AND snapshot."hyperliquidBestAsk" IS NOT NULL
+        AND snapshot."hyperliquidSpread" IS NOT NULL
         AND snapshot."referencePrice" IS NOT NULL
         AND snapshot."priceBasisPct" IS NOT NULL
         AND snapshot."captureSkewMs" IS NOT NULL
@@ -714,11 +732,14 @@ async function loadSynchronizedPriceQuality(input: {
         SELECT DISTINCT "capturedAt"
         FROM "MarketSnapshot"
         WHERE "capturedAt" >= ${continuityStartedAt}
-          AND "synchronizationVersion" = 'fetch-time-v2'
+          AND "synchronizationVersion" = 'fetch-time-v3-orderbook'
           AND "bestBid" IS NOT NULL
           AND "bestAsk" IS NOT NULL
           AND "spread" IS NOT NULL
           AND "hyperliquidMidPrice" IS NOT NULL
+          AND "hyperliquidBestBid" IS NOT NULL
+          AND "hyperliquidBestAsk" IS NOT NULL
+          AND "hyperliquidSpread" IS NOT NULL
           AND "referencePrice" IS NOT NULL
           AND "priceBasisPct" IS NOT NULL
           AND "captureSkewMs" IS NOT NULL

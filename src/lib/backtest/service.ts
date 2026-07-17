@@ -10,12 +10,12 @@ import {
   selectReferencePrice,
   type SupportedReferenceAsset,
 } from "@/src/lib/combined-trading/polymarket-reference";
-import { fetchHyperliquidMarketStates } from "@/src/lib/monitoring/hyperliquid";
+import { fetchHyperliquidMarketStates, type HyperliquidMarketState } from "@/src/lib/monitoring/hyperliquid";
 
 const DEFAULT_INITIAL_CAPITAL = 1_000;
 const DEFAULT_THRESHOLD = 0.55;
 
-export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; limit?: number } = {}) {
+export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; limit?: number; hyperliquidStates?: HyperliquidMarketState[] } = {}) {
   const markets = await discoverCryptoMarkets({ includeResolved: false, limit: options.limit ?? 80 });
   const assets = options.assets?.length ? new Set(options.assets) : null;
   const selected = markets.filter((market) => !assets || assets.has(market.asset));
@@ -23,7 +23,7 @@ export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; 
   const [books, referencePrices, hyperliquidStates] = await Promise.all([
     fetchCurrentBooks(selected.map((market) => market.tokenId)).catch(() => new Map()),
     fetchPolymarketReferencePrices(referenceAssets).catch(() => []),
-    fetchHyperliquidMarketStates().catch(() => []),
+    options.hyperliquidStates ? Promise.resolve(options.hyperliquidStates) : fetchHyperliquidMarketStates().catch(() => []),
   ]);
   const hyperliquidByAsset = new Map(hyperliquidStates.map((state) => [state.asset, state]));
   const capturedAt = new Date();
@@ -44,7 +44,7 @@ export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; 
       : null;
     const captureSkewMs = calculateCaptureSkewMs([
       book?.capturedAt ?? null,
-      hyperliquid?.capturedAt ?? null,
+      hyperliquid?.bookUpdatedAt ?? hyperliquid?.capturedAt ?? null,
       reference?.capturedAt ? new Date(reference.capturedAt) : null,
     ]);
     await prisma.predictionMarket.upsert({
@@ -76,13 +76,17 @@ export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; 
         hyperliquidMarkPrice: hyperliquid?.markPrice ?? null,
         hyperliquidOraclePrice: hyperliquid?.oraclePrice ?? null,
         hyperliquidFundingRate: hyperliquid?.fundingRate ?? null,
+        hyperliquidBestBid: hyperliquid?.bestBid ?? null,
+        hyperliquidBestAsk: hyperliquid?.bestAsk ?? null,
+        hyperliquidSpread: hyperliquid?.spread ?? null,
+        hyperliquidBookUpdatedAt: hyperliquid?.bookUpdatedAt ?? null,
         hyperliquidCapturedAt: hyperliquid?.capturedAt ?? null,
         referencePrice: reference?.price ?? null,
         referenceSource: reference?.source ?? null,
         referenceCapturedAt: reference?.capturedAt ? new Date(reference.capturedAt) : null,
         priceBasisPct: hyperliquid && reference ? calculatePriceBasisPct(hyperliquid.midPrice, reference.price) : null,
         captureSkewMs,
-        synchronizationVersion: "fetch-time-v2",
+        synchronizationVersion: "fetch-time-v3-orderbook",
         capturedAt,
       },
     });
@@ -92,6 +96,10 @@ export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; 
       && bestAsk !== null
       && bestAsk >= bestBid
       && hyperliquid
+      && hyperliquid.bestBid !== null
+      && hyperliquid.bestAsk !== null
+      && hyperliquid.spread !== null
+      && hyperliquid.bestAsk >= hyperliquid.bestBid
       && reference
       && captureSkewMs !== null
       && captureSkewMs <= 60_000

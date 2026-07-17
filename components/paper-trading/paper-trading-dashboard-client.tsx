@@ -1056,7 +1056,7 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
       <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
         <MonitorMetric label="蓄積データ" value={formatCompact(snapshot?.collection.totalRecords)} note={`24時間 +${formatCompact(snapshot?.collection.last24Hours)}`} />
         <MonitorMetric
-          label="1分価格同期"
+          label="1分板価格同期"
           value={formatCompact(synchronizedPrices?.records)}
           note={synchronizedQuality
             ? `同期 ${Math.round(synchronizedQuality.coverage * 100)}%・ずれ ${formatMilliseconds(synchronizedQuality.p95SkewMs)}`
@@ -1163,7 +1163,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
         </div>
         <div className="mt-4 rounded-md border border-border bg-slate-50 px-3 py-3">
           <div className="flex items-center justify-between gap-3 text-xs font-bold">
-            <span className="text-slate-700">最終テストを1分価格で再現</span>
+            <span className="text-slate-700">最終テストを1分板価格で再現</span>
             <span className="tabular-nums text-slate-950">{formatPct(model?.testSynchronizedExecutionCoverage)}</span>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
@@ -1195,7 +1195,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
         </div>
         <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
-          CLOB板・判定参照価格・Hyperliquid価格を1分ごとに同時保存し、{formatCompact(snapshot?.collection.synchronizedPrices?.records)}件を検査中です。収集済み期間は1分価格で再現し、未収集期間の1時間足は参考値としてのみ残します。
+          CLOB板・判定参照価格・Hyperliquid板を1分ごとに同時保存し、{formatCompact(snapshot?.collection.synchronizedPrices?.records)}件を検査中です。収集済み期間は実際の買値・売値で再現し、未収集期間の1時間足は参考値としてのみ残します。
         </p>
       </div>
       </div>

@@ -34,6 +34,10 @@ type TradeSignal = {
   exitAt: number;
   entryPrice: number;
   exitPrice: number;
+  entryBestBid: number | null;
+  entryBestAsk: number | null;
+  exitBestBid: number | null;
+  exitBestAsk: number | null;
   impliedTarget: number;
   signalZ: number;
   trendZ6h: number | null;
@@ -295,6 +299,10 @@ function buildSignals(samples: EvaluationSample[]) {
       exitAt,
       entryPrice: base.hyperliquidEntryPrice as number,
       exitPrice: base.hyperliquidExitPrice as number,
+      entryBestBid: finitePositive(base.hyperliquidEntryBestBid),
+      entryBestAsk: finitePositive(base.hyperliquidEntryBestAsk),
+      exitBestBid: finitePositive(base.hyperliquidExitBestBid),
+      exitBestAsk: finitePositive(base.hyperliquidExitBestAsk),
       impliedTarget,
       signalZ,
       trendZ6h,
@@ -381,6 +389,7 @@ function simulate(
   let longTrades = 0;
   let shortTrades = 0;
   let totalFees = 0;
+  let totalSpread = 0;
   let totalSlippage = 0;
   let totalFunding = 0;
   const random = createSeededRandom(options.randomSeed ?? 1);
@@ -420,7 +429,8 @@ function simulate(
             ? random() < 0.5 ? -1 : 1
             : strategySide;
     const holdingDays = Math.max(0, signal.exitAt - signal.entryAt) / (24 * 60 * 60 * 1_000);
-    const grossReturn = side * (signal.exitPrice / signal.entryPrice - 1);
+    const bookReturn = calculateDirectionalBookReturn(signal, side);
+    const grossReturn = bookReturn.grossReturn;
     const feeRate = takerFeePerSide * 2;
     const slippageRate = slippagePerSide * 2;
     const fundingRate = signal.realizedFunding === null
@@ -430,6 +440,7 @@ function simulate(
     const notional = capital * candidate.positionPct;
 
     totalFees += notional * feeRate;
+    totalSpread += notional * bookReturn.spreadRate;
     totalSlippage += notional * slippageRate;
     totalFunding += notional * fundingRate;
     if (side === 1) longTrades += 1;
@@ -457,12 +468,39 @@ function simulate(
     deflatedSharpeProbability: deflatedSharpe,
     maxDrawdownPct,
     totalFees,
+    totalSpread,
     totalSlippage,
     totalFunding,
     assumedTakerFeePerSide: takerFeePerSide,
     assumedSlippagePerSide: slippagePerSide,
     assumedFundingPer24h: fundingPer24h,
     tradeReturns: netTradeReturns,
+  };
+}
+
+export function calculateDirectionalBookReturn(
+  prices: {
+    entryPrice: number;
+    exitPrice: number;
+    entryBestBid?: number | null;
+    entryBestAsk?: number | null;
+    exitBestBid?: number | null;
+    exitBestAsk?: number | null;
+  },
+  side: 1 | -1,
+) {
+  const midGrossReturn = side * (prices.exitPrice / prices.entryPrice - 1);
+  const entryPrice = side === 1 ? finitePositive(prices.entryBestAsk) : finitePositive(prices.entryBestBid);
+  const exitPrice = side === 1 ? finitePositive(prices.exitBestBid) : finitePositive(prices.exitBestAsk);
+  if (entryPrice === null || exitPrice === null) {
+    return { grossReturn: midGrossReturn, midGrossReturn, spreadRate: 0, usedOrderBook: false };
+  }
+  const grossReturn = side * (exitPrice / entryPrice - 1);
+  return {
+    grossReturn,
+    midGrossReturn,
+    spreadRate: Math.max(0, midGrossReturn - grossReturn),
+    usedOrderBook: true,
   };
 }
 
@@ -521,6 +559,10 @@ function hasExecutionData(sample: EvaluationSample) {
     && sample.hyperliquidExitPrice > 0
     && typeof sample.hyperliquidEntryAt === "string"
     && typeof sample.hyperliquidExitAt === "string";
+}
+
+function finitePositive(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 export function deflatedSharpeProbability(returns: number[], strategyTrials: number) {
