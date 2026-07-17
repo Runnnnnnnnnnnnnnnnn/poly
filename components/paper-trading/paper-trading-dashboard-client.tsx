@@ -1056,11 +1056,15 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
           label="1分価格同期"
           value={formatCompact(synchronizedPrices?.records)}
           note={synchronizedQuality
-            ? `同期率 ${formatPct(synchronizedQuality.coverage)} / 95%ずれ ${formatMilliseconds(synchronizedQuality.p95SkewMs)}`
+            ? `同期 ${Math.round(synchronizedQuality.coverage * 100)}%・ずれ ${formatMilliseconds(synchronizedQuality.p95SkewMs)}`
             : synchronizedPrices?.records ? `最大ずれ ${formatMilliseconds(synchronizedPrices.maximumSkewMs)}` : "新しい記録を収集中"}
         />
         <MonitorMetric label="最終テスト" value={`${snapshot?.model.testedEvents ?? 0}件`} note="未使用期間で評価" />
-        <MonitorMetric label="連続蓄積" value={formatElapsed(snapshot?.collection.startedAt)} note={relativeTime(snapshot?.collection.latestAt)} />
+        <MonitorMetric
+          label={synchronizedQuality ? "同期継続" : "連続蓄積"}
+          value={synchronizedQuality ? formatDurationHours(synchronizedQuality.durationHours) : formatElapsed(snapshot?.collection.startedAt)}
+          note={synchronizedQuality ? "48時間で品質判定" : relativeTime(snapshot?.collection.latestAt)}
+        />
       </div>
       <div className="grid grid-cols-2 border-t sm:grid-cols-5 sm:divide-x sm:divide-border">
         {(snapshot?.pipelines ?? fallbackPipelines).map((pipeline) => (
@@ -1973,6 +1977,13 @@ function formatMinutes(value: number | null | undefined) {
 function formatMilliseconds(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   return value < 1_000 ? `${Math.round(value)}ms` : `${(value / 1_000).toFixed(1)}秒`;
+}
+
+function formatDurationHours(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  if (value < 1) return `${Math.max(1, Math.round(value * 60))}分`;
+  if (value < 24) return `${value.toFixed(1)}時間`;
+  return `${Math.floor(value / 24)}日 ${Math.floor(value % 24)}時間`;
 }
 
 function formatBasisBps(value: number | null | undefined) {
