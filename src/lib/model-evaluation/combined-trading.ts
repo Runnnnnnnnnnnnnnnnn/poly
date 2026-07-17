@@ -39,6 +39,12 @@ type Simulation = Omit<CombinedMetrics,
   | "selectedFromValidation"
   | "totalEligibleSignals"
   | "validationEligibleSignals"
+  | "executionStartedAt"
+  | "executionEndedAt"
+  | "validationStartedAt"
+  | "validationEndedAt"
+  | "testStartedAt"
+  | "testEndedAt"
   | "closestValidationCandidate"
   | "candidateDiagnostics"
   | "eligibleSignals"
@@ -79,6 +85,12 @@ export function evaluateCombinedTrading(
     selectedFromValidation: selectedStrategy.id !== "no-trade guard",
     totalEligibleSignals: allSignals.length,
     validationEligibleSignals: selection.validationEligibleSignals,
+    executionStartedAt: signalTime(allSignals[0], "entryAt"),
+    executionEndedAt: signalTime(allSignals.at(-1), "exitAt"),
+    validationStartedAt: signalTime(validationSignals[0], "entryAt"),
+    validationEndedAt: signalTime(validationSignals.at(-1), "exitAt"),
+    testStartedAt: signalTime(testSignals[0], "entryAt"),
+    testEndedAt: signalTime(testSignals.at(-1), "exitAt"),
     closestValidationCandidate: selection.closestCandidate?.strategy ?? null,
     candidateDiagnostics: selection.diagnostics,
     eligibleSignals: testSignals.length,
@@ -90,6 +102,10 @@ export function evaluateCombinedTrading(
     profitableValidationFolds: selection.profitableFolds,
     minimumRequiredTrades: minimumValidationTrades,
   };
+}
+
+function signalTime(signal: TradeSignal | undefined, field: "entryAt" | "exitAt") {
+  return signal ? new Date(signal[field]).toISOString() : null;
 }
 
 function selectStrategy(validationSignals: TradeSignal[]) {

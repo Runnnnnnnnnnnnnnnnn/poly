@@ -122,6 +122,12 @@ export type ModelEvaluationMetrics = {
     selectedFromValidation: boolean;
     totalEligibleSignals: number;
     validationEligibleSignals: number;
+    executionStartedAt: string | null;
+    executionEndedAt: string | null;
+    validationStartedAt: string | null;
+    validationEndedAt: string | null;
+    testStartedAt: string | null;
+    testEndedAt: string | null;
     closestValidationCandidate: CombinedStrategyCandidate | null;
     candidateDiagnostics: CombinedCandidateDiagnostic[];
     eligibleSignals: number;

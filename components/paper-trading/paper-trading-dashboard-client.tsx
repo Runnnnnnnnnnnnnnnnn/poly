@@ -185,6 +185,12 @@ type MonitoringSnapshot = {
     selectedFromValidation: boolean;
     totalEligibleSignals: number;
     validationEligibleSignals: number;
+    executionStartedAt: string | null;
+    executionEndedAt: string | null;
+    validationStartedAt: string | null;
+    validationEndedAt: string | null;
+    testStartedAt: string | null;
+    testEndedAt: string | null;
     closestValidationCandidate: {
       id: string;
       minimumSignalZ: number;
@@ -1052,6 +1058,7 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
         <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">詳しい検証数値を見る</summary>
         <div className="border-t">
           {!hasTrades ? <p className="px-5 py-4 text-sm leading-6 text-slate-600">採用基準を通ったルールがないため、最終テストでは資金を動かしていません。単純戦略の成績は、見送り結果とは別に比較しています。</p> : null}
+          <ModelSampleFlow model={model} />
           <CandidateDiagnosis diagnostics={model?.candidateDiagnostics} />
           <HorizonComparison studies={model?.horizonStudies} />
           <ReturnComparison strategyReturn={hasTrades ? model?.latestReturnPct : null} benchmarks={model?.benchmarkReturns} />
@@ -1067,6 +1074,31 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
         </div>
       </details>
     </section>
+  );
+}
+
+function ModelSampleFlow({ model }: { model: MonitoringSnapshot["model"] | undefined }) {
+  if (!model?.totalEligibleSignals) return null;
+  const steps = [
+    { label: "売買可能", value: model.totalEligibleSignals },
+    { label: "ルール選定", value: model.validationEligibleSignals },
+    { label: "最終テスト", value: model.testedEvents },
+  ];
+  return (
+    <div className="border-t px-5 py-4" aria-label="モデル検証データの分割">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+        {steps.map((step, index) => (
+          <div className="contents" key={step.label}>
+            <div className="min-w-0 text-center">
+              <p className="text-xl font-bold tabular-nums text-slate-950">{step.value}</p>
+              <p className="mt-1 text-[10px] font-bold text-muted-foreground">{step.label}</p>
+            </div>
+            {index < steps.length - 1 ? <ArrowRight className="h-4 w-4 shrink-0 text-slate-300" /> : null}
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-center text-[11px] font-semibold text-slate-500">実売買価格の期間 {formatCompactPeriod(model.executionStartedAt, model.executionEndedAt)}</p>
+    </div>
   );
 }
 
@@ -1381,7 +1413,7 @@ function getEvaluationSignal(
     return { label: "優位性を確認", description: "Polymarketの予測を使ったHyperliquid取引が、未使用期間でもコスト控除後に基準を上回りました。", tone: "good", icon: CheckCircle2 };
   }
   if (status === "underperforming") {
-    return { label: "改善が必要", description: "組み合わせ戦略が損失、または常時ロングを下回ったため、本番利用せず改良を続けます。", tone: "bad", icon: TrendingDown };
+    return { label: "改善が必要", description: "十分な履歴で単純戦略を下回りました。本番利用せず、モデルを見直します。", tone: "bad", icon: TrendingDown };
   }
   if (status === "inconclusive") {
     if (combinedStrategy === "no-trade guard") {
@@ -1596,6 +1628,12 @@ function formatEvaluationPeriod(start: string | null | undefined, end: string | 
   if (!start || !end) return "検証期間を準備中";
   const formatter = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "2-digit" });
   return `検証期間 ${formatter.format(new Date(start))} - ${formatter.format(new Date(end))}`;
+}
+
+function formatCompactPeriod(start: string | null | undefined, end: string | null | undefined) {
+  if (!start || !end) return "準備中";
+  const formatter = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit" });
+  return `${formatter.format(new Date(start))} - ${formatter.format(new Date(end))}`;
 }
 
 function formatJapanDateTime(value: string) {

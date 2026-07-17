@@ -104,7 +104,7 @@ export async function discoverActiveCryptoPriceMarkets(limit = 300) {
 
 export async function discoverHistoricalCryptoEvents(options: { maxEvents?: number; horizonHours?: number; endDateMax?: Date } = {}) {
   const maxEvents = Math.min(300, Math.max(30, options.maxEvents ?? 180));
-  const recentTarget = Math.min(40, Math.floor(maxEvents / 4));
+  const recentTarget = Math.floor(maxEvents * 0.8);
   const historicalTarget = maxEvents - recentTarget;
   const horizonHours = Math.max(1, options.horizonHours ?? 24);
   const endDateMax = options.endDateMax ?? new Date();
@@ -138,22 +138,9 @@ export async function discoverHistoricalCryptoEvents(options: { maxEvents?: numb
   }
 
   const recentPerAsset = Math.ceil(recentTarget / RECENT_PRICE_SEARCHES.length);
-  const recentResults = await Promise.allSettled(RECENT_PRICE_SEARCHES.map(async (titleSearch) => {
-    const url = new URL(`${GAMMA_API}/events/keyset`);
-    url.searchParams.set("closed", "true");
-    url.searchParams.set("limit", "60");
-    url.searchParams.set("order", "endDate");
-    url.searchParams.set("ascending", "false");
-    url.searchParams.set("title_search", titleSearch);
-    url.searchParams.set("end_date_min", "2025-01-01T00:00:00Z");
-    url.searchParams.set("end_date_max", endDateMax.toISOString());
-    const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 30_000);
-    if (!response.ok) throw new Error(`recent historical events ${response.status}`);
-    return eventKeysetSchema.parse(await response.json()).events
-      .map((event) => toHistoricalEvent(event, horizonHours, endDateMax))
-      .filter((event): event is HistoricalCryptoEvent => Boolean(event))
-      .slice(0, recentPerAsset);
-  }));
+  const recentResults = await Promise.allSettled(RECENT_PRICE_SEARCHES.map((titleSearch) =>
+    fetchRecentHistoricalEvents(titleSearch, recentPerAsset, horizonHours, endDateMax),
+  ));
   for (const result of recentResults) {
     if (result.status === "fulfilled") events.push(...result.value);
   }
@@ -161,6 +148,35 @@ export async function discoverHistoricalCryptoEvents(options: { maxEvents?: numb
   return Array.from(new Map(events.map((event) => [event.id, event])).values())
     .sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime())
     .slice(-maxEvents);
+}
+
+async function fetchRecentHistoricalEvents(titleSearch: string, target: number, horizonHours: number, endDateMax: Date) {
+  const events: HistoricalCryptoEvent[] = [];
+  let cursor: string | undefined;
+
+  for (let page = 0; page < 10 && events.length < target; page += 1) {
+    const url = new URL(`${GAMMA_API}/events/keyset`);
+    url.searchParams.set("closed", "true");
+    url.searchParams.set("limit", "100");
+    url.searchParams.set("order", "endDate");
+    url.searchParams.set("ascending", "false");
+    url.searchParams.set("title_search", titleSearch);
+    url.searchParams.set("end_date_min", "2025-01-01T00:00:00Z");
+    url.searchParams.set("end_date_max", endDateMax.toISOString());
+    if (cursor) url.searchParams.set("after_cursor", cursor);
+    const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 30_000);
+    if (!response.ok) throw new Error(`recent historical events ${titleSearch}: ${response.status}`);
+    const parsed = eventKeysetSchema.parse(await response.json());
+    for (const event of parsed.events) {
+      const historicalEvent = toHistoricalEvent(event, horizonHours, endDateMax);
+      if (historicalEvent) events.push(historicalEvent);
+      if (events.length >= target) break;
+    }
+    cursor = parsed.next_cursor;
+    if (!cursor || !parsed.events.length) break;
+  }
+
+  return Array.from(new Map(events.map((event) => [event.id, event])).values()).slice(0, target);
 }
 
 export async function fetchHistoricalProbability(tokenId: string, options: { fidelity?: number; startTs?: number; endTs?: number } = {}) {

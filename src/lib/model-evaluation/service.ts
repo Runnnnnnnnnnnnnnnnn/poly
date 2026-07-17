@@ -24,6 +24,7 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
         primaryHorizonHours: HORIZON_HOURS,
         priceHistoryFidelityMinutes,
         maximumObservationAgeMinutes,
+        eventSampling: "80% latest asset-balanced terminal-price events and 20% long-history events",
         split: "probability 60/20/20; execution-eligible signals 60/40 chronological with a holding-period embargo and four validation folds",
         eventWeighting: "equal",
         signal: "Polymarket-implied terminal median with predeclared raw and six-hour trend-confirmed rules, evaluated independently by horizon",

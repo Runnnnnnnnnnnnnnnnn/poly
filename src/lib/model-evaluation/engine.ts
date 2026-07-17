@@ -4,7 +4,7 @@ import { evaluateCombinedTrading } from "@/src/lib/model-evaluation/combined-tra
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
 import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
-export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v9";
+export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v10";
 export const HORIZON_HOURS = 24;
 export const MIN_TRAIN_EVENTS = 20;
 export const MIN_HOLDOUT_EVENTS = 15;
@@ -100,8 +100,11 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
     { id: "significance", label: "ブロック再標本化95%区間がプラス", passed: combinedTrading.statisticallyPositive },
     { id: "selection-bias", label: "試行回数補正後も95%以上", passed: (combinedTrading.deflatedSharpeProbability ?? 0) >= 0.95 },
   ];
+  const validationUnderperformed = combinedTrading.validationEligibleSignals >= 50
+    && combinedTrading.candidateDiagnostics.length > 0
+    && combinedTrading.candidateDiagnostics.every((candidate) => candidate.excessReturnPct <= 0);
   const qualityStatus = combinedTrading.selectedStrategy.id === "no-trade guard"
-    ? "inconclusive"
+    ? validationUnderperformed ? "underperforming" : "inconclusive"
     : combinedTrading.netReturnPct < 0 || combinedTrading.excessReturnPct <= 0
       ? "underperforming"
       : testEvents.length >= MIN_HOLDOUT_EVENTS
