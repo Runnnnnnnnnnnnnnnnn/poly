@@ -269,7 +269,7 @@ export async function getMonitoringSnapshot() {
       backtestPoints: backtestPointCount,
     },
     model: {
-      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v12",
+      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v13",
       selectedCandidate: evaluation?.selectedCandidate.id ?? null,
       selectedCandidateKind: evaluation?.selectedCandidate.kind ?? null,
       combinedStrategy: evaluation?.combinedTrading?.selectedStrategy.id ?? null,

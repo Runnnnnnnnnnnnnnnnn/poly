@@ -236,7 +236,9 @@ type MonitoringSnapshot = {
     benchmarkReturns: {
       alwaysLongReturnPct: number;
       alwaysShortReturnPct: number;
-      alternatingReturnPct: number;
+      polymarketDirectionReturnPct: number;
+      randomMedianReturnPct: number;
+      randomTrials: number;
       bestReturnPct: number;
       bestLabel: string;
     } | null;
@@ -1216,7 +1218,8 @@ function ReturnComparison({ strategyReturn, benchmarks }: { strategyReturn: numb
     { label: "組み合わせ", value: strategyReturn, className: (strategyReturn ?? 0) >= 0 ? "bg-emerald-500" : "bg-rose-500" },
     { label: "常時ロング", value: benchmarks?.alwaysLongReturnPct, className: "bg-slate-500" },
     { label: "常時ショート", value: benchmarks?.alwaysShortReturnPct, className: "bg-slate-400" },
-    { label: "交互売買", value: benchmarks?.alternatingReturnPct, className: "bg-slate-300" },
+    { label: "Poly方向", value: benchmarks?.polymarketDirectionReturnPct, className: "bg-sky-500" },
+    { label: `ランダム${benchmarks?.randomTrials ? ` ${benchmarks.randomTrials}回` : ""}`, value: benchmarks?.randomMedianReturnPct, className: "bg-slate-300" },
   ];
   const maximum = Math.max(...rows.map((row) => Math.abs(row.value ?? 0)), 0.01) * 1.12;
   return (

@@ -139,9 +139,11 @@ export type ModelEvaluationMetrics = {
     benchmarks: {
       alwaysLongReturnPct: number;
       alwaysShortReturnPct: number;
-      alternatingReturnPct: number;
+      polymarketDirectionReturnPct: number;
+      randomMedianReturnPct: number;
+      randomTrials: number;
       bestReturnPct: number;
-      bestLabel: "常時ロング" | "常時ショート" | "交互売買";
+      bestLabel: "常時ロング" | "常時ショート" | "Polymarket方向" | "ランダム中央値";
     };
     trades: number;
     longTrades: number;

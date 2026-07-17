@@ -155,6 +155,7 @@ console.log("chronological model evaluation tests passed");
 const combinedSamples: EvaluationSample[] = [];
 for (let eventIndex = 0; eventIndex < 60; eventIndex += 1) {
   const long = eventIndex % 5 === 0 || eventIndex % 5 === 1;
+  const polymarketLong = eventIndex % 2 === 0;
   const entryAt = new Date(Date.UTC(2024, 0, 1 + eventIndex * 2, 0));
   const exitAt = new Date(entryAt.getTime() + 24 * 60 * 60 * 1_000);
   combinedSamples.push({
@@ -164,7 +165,7 @@ for (let eventIndex = 0; eventIndex < 60; eventIndex += 1) {
     title: "Will Bitcoin be above $100 on the test date?",
     endAt: exitAt.toISOString(),
     observedAt: entryAt.toISOString(),
-    marketProbability: long ? 0.8 : 0.2,
+    marketProbability: polymarketLong ? 0.8 : 0.2,
     realizedVolatility24h: 0.02,
     hyperliquidEntryAt: entryAt.toISOString(),
     hyperliquidEntryPrice: 100,
@@ -193,6 +194,16 @@ assert.equal(combined.walkForwardFolds, 4);
 assert.equal(combined.selectedFromValidation, true);
 assert.equal(combined.candidateDiagnostics.length, 6);
 assert.equal(combined.candidateDiagnostics.some((candidate) => candidate.passed), true);
+assert.equal(
+  combined.candidateDiagnostics
+    .find((candidate) => candidate.strategy.signalRule === "polymarket-only")
+    ?.gates.find((gate) => gate.id === "benchmark")?.passed,
+  false,
+);
+assert.equal(combined.benchmarks.randomTrials, 200);
+assert.ok(Number.isFinite(combined.benchmarks.polymarketDirectionReturnPct));
+assert.ok(Number.isFinite(combined.benchmarks.randomMedianReturnPct));
+assert.deepEqual(combined.benchmarks, evaluateCombinedTrading(combinedSamples).benchmarks);
 
 const concurrentCombined = evaluateCombinedTrading([
   ...combinedSamples,

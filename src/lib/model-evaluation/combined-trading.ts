@@ -9,6 +9,7 @@ const minimumValidationTrades = 12;
 const walkForwardFolds = 4;
 const minimumProfitableFolds = 3;
 const minimumDeflatedSharpeProbability = 0.95;
+const randomBenchmarkTrials = 200;
 // Includes unique rule and threshold combinations explored in earlier model versions.
 const cumulativeStrategyTrials = 15;
 
@@ -255,16 +256,23 @@ function selectNonOverlappingSignals(signals: TradeSignal[], minimumSignalZ: num
 
 function evaluateBenchmarks(signals: TradeSignal[], candidate: CombinedStrategyCandidate): CombinedMetrics["benchmarks"] {
   const periods = selectNonOverlappingSignals(signals, 0);
+  const simulationOptions = { calculateStatistics: false } as const;
+  const randomReturns = Array.from({ length: randomBenchmarkTrials }, (_, index) => (
+    simulate(periods, candidate, "random", { ...simulationOptions, randomSeed: index + 1 }).netReturnPct
+  )).sort((left, right) => left - right);
   const results = [
-    { label: "常時ロング" as const, value: simulate(periods, candidate, "long").netReturnPct },
-    { label: "常時ショート" as const, value: simulate(periods, candidate, "short").netReturnPct },
-    { label: "交互売買" as const, value: simulate(periods, candidate, "alternating").netReturnPct },
+    { label: "常時ロング" as const, value: simulate(periods, candidate, "long", simulationOptions).netReturnPct },
+    { label: "常時ショート" as const, value: simulate(periods, candidate, "short", simulationOptions).netReturnPct },
+    { label: "Polymarket方向" as const, value: simulate(periods, candidate, "polymarket", simulationOptions).netReturnPct },
+    { label: "ランダム中央値" as const, value: median(randomReturns) },
   ];
   const best = [...results].sort((left, right) => right.value - left.value)[0];
   return {
     alwaysLongReturnPct: results[0].value,
     alwaysShortReturnPct: results[1].value,
-    alternatingReturnPct: results[2].value,
+    polymarketDirectionReturnPct: results[2].value,
+    randomMedianReturnPct: results[3].value,
+    randomTrials: randomBenchmarkTrials,
     bestReturnPct: best.value,
     bestLabel: best.label,
   };
@@ -273,7 +281,8 @@ function evaluateBenchmarks(signals: TradeSignal[], candidate: CombinedStrategyC
 function simulate(
   signals: TradeSignal[],
   candidate: CombinedStrategyCandidate,
-  direction: "signal" | "long" | "short" | "alternating",
+  direction: "signal" | "polymarket" | "long" | "short" | "random",
+  options: { calculateStatistics?: boolean; randomSeed?: number } = {},
 ): Simulation {
   let capital = initialCapital;
   let peak = initialCapital;
@@ -285,6 +294,7 @@ function simulate(
   let totalFees = 0;
   let totalSlippage = 0;
   let totalFunding = 0;
+  const random = createSeededRandom(options.randomSeed ?? 1);
   const netTradeReturns: number[] = [];
   const openTrades: Array<{ exitAt: number; notional: number; grossReturn: number; netTradeReturn: number }> = [];
   const settleThrough = (timestamp: number) => {
@@ -308,10 +318,18 @@ function simulate(
     }
   };
 
-  [...signals].sort((left, right) => left.entryAt - right.entryAt || left.exitAt - right.exitAt).forEach((signal, index) => {
+  [...signals].sort((left, right) => left.entryAt - right.entryAt || left.exitAt - right.exitAt).forEach((signal) => {
     settleThrough(signal.entryAt);
     const strategySide = resolveStrategySide(signal, candidate.signalRule);
-    const side = direction === "long" ? 1 : direction === "short" ? -1 : direction === "alternating" ? (index % 2 === 0 ? 1 : -1) : strategySide;
+    const side = direction === "long"
+      ? 1
+      : direction === "short"
+        ? -1
+        : direction === "polymarket"
+          ? signal.side
+          : direction === "random"
+            ? random() < 0.5 ? -1 : 1
+            : strategySide;
     const holdingDays = Math.max(0, signal.exitAt - signal.entryAt) / (24 * 60 * 60 * 1_000);
     const grossReturn = side * (signal.exitPrice / signal.entryPrice - 1);
     const feeRate = takerFeePerSide * 2;
@@ -329,8 +347,9 @@ function simulate(
   });
   settleThrough(Number.POSITIVE_INFINITY);
 
-  const returnConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(netTradeReturns);
-  const deflatedSharpe = deflatedSharpeProbability(netTradeReturns, cumulativeStrategyTrials);
+  const calculateStatistics = options.calculateStatistics !== false;
+  const returnConfidenceInterval95 = calculateStatistics ? blockBootstrapMeanConfidenceInterval(netTradeReturns) : null;
+  const deflatedSharpe = calculateStatistics ? deflatedSharpeProbability(netTradeReturns, cumulativeStrategyTrials) : null;
   return {
     initialCapital,
     endingCapital: capital,
@@ -510,6 +529,20 @@ function sampleStandardDeviation(values: number[]) {
 
 function average(values: number[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function median(values: number[]) {
+  if (!values.length) return 0;
+  const middle = Math.floor(values.length / 2);
+  return values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
+}
+
+function createSeededRandom(initialSeed: number) {
+  let seed = initialSeed >>> 0;
+  return () => {
+    seed = (seed * 1_664_525 + 1_013_904_223) >>> 0;
+    return seed / 4_294_967_296;
+  };
 }
 
 function clamp(value: number, min: number, max: number) {

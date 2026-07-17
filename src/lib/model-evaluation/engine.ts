@@ -4,7 +4,7 @@ import { evaluateCombinedTrading } from "@/src/lib/model-evaluation/combined-tra
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
 import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
-export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v12";
+export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v13";
 export const HORIZON_HOURS = 24;
 export const MIN_TRAIN_EVENTS = 20;
 export const MIN_HOLDOUT_EVENTS = 15;
