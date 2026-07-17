@@ -28,6 +28,8 @@ const maximumReferenceAgeMs = 15_000;
 const maximumContextAgeMs = 60_000;
 const connectionStaleMs = 30_000;
 
+export const realtimeSynchronizationVersion = "websocket-v3-self-healing";
+
 type ReferenceState = Record<"BINANCE" | "CHAINLINK", RealtimeReferenceUpdate | null>;
 
 export class RealtimeMarketDataCollector {
@@ -384,7 +386,7 @@ export function buildRealtimeMarketTick(input: {
     complementAskSum,
     arbitrageViolation: complementAskSum < 0.999 || complementBidSum > 1.001,
     captureSkewMs,
-    synchronizationVersion: "websocket-v2-rest-seeded",
+    synchronizationVersion: realtimeSynchronizationVersion,
     capturedAt: now,
   };
 }

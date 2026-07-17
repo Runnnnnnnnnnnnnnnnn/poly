@@ -261,7 +261,7 @@ assert.ok(Math.abs(realtimeTick.complementBidSum - 0.98) < 1e-12);
 assert.ok(Math.abs(realtimeTick.complementAskSum - 1.02) < 1e-12);
 assert.equal(realtimeTick.arbitrageViolation, false);
 assert.equal(realtimeTick.captureSkewMs, 2_000);
-assert.equal(realtimeTick.synchronizationVersion, "websocket-v2-rest-seeded");
+assert.equal(realtimeTick.synchronizationVersion, "websocket-v3-self-healing");
 assert.ok(Math.abs(realtimeTick.priceBasisPct - (100.05 / 99 - 1)) < 1e-12);
 const unchangedPolymarketTick = buildRealtimeMarketTick({
   market: realtimeMarket,
@@ -362,6 +362,10 @@ const auditTicks = [
 const auditConfig = {
   positions: auditPositions,
   ticks: auditTicks,
+  resolutions: [
+    { marketId: "audit-long", resolved: true, result: 1 },
+    { marketId: "audit-short", resolved: true, result: 1 },
+  ],
   collectionStartedAt: auditStart,
   takerFeePerSide: 0.00045,
   slippagePerSide: 0.0002,
@@ -371,6 +375,8 @@ const exactAudit = evaluateExactExecutionAudit(auditConfig);
 assert.equal(exactAudit.eligiblePositions, 2);
 assert.equal(exactAudit.auditedPositions, 2);
 assert.equal(exactAudit.coverage, 1);
+assert.equal(exactAudit.verifiedPositions, 2);
+assert.equal(exactAudit.verifiedCoverage, 1);
 assert.equal(exactAudit.resolvedPredictions, 2);
 assert.equal(exactAudit.predictionAccuracy, 0.5);
 assert.equal(exactAudit.polymarketAuditedPositions, 2);
@@ -384,6 +390,7 @@ const incompleteAudit = evaluateExactExecutionAudit({
   ...auditConfig,
   positions: [{ ...auditPositions[0], marketId: "missing-market" }],
   ticks: [],
+  resolutions: [],
 });
 assert.equal(incompleteAudit.eligiblePositions, 1);
 assert.equal(incompleteAudit.auditedPositions, 0);

@@ -35,9 +35,16 @@ export type ExactExecutionAuditTick = {
   capturedAt: Date;
 };
 
+export type ExactExecutionAuditResolution = {
+  marketId: string;
+  resolved: boolean;
+  result: number | null;
+};
+
 export type ExactExecutionAuditInput = {
   positions: ExactExecutionAuditPosition[];
   ticks: ExactExecutionAuditTick[];
+  resolutions: ExactExecutionAuditResolution[];
   collectionStartedAt: Date | null;
   takerFeePerSide: number;
   slippagePerSide: number;
@@ -62,6 +69,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     && position.openedAt >= input.collectionStartedAt
   ));
   const ticksByMarket = groupTicksByMarket(input.ticks);
+  const resolutionsByMarket = new Map(input.resolutions.map((resolution) => [resolution.marketId, resolution]));
   const timingErrors: number[] = [];
   const polymarketQuoteAges: number[] = [];
   const closeDelays: number[] = [];
@@ -70,6 +78,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   let missingEntry = 0;
   let missingExit = 0;
   let missingResolution = 0;
+  let verifiedPositions = 0;
 
   for (const position of eligiblePositions) {
     const ticks = ticksByMarket.get(position.marketId) ?? [];
@@ -78,6 +87,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     if (!entry) missingEntry += 1;
     if (!exit) missingExit += 1;
 
+    let hasExactExecution = false;
     if (entry && exit) {
       timingErrors.push(entry.errorMs, exit.errorMs);
       closeDelays.push(Math.max(0, (position.closedAt as Date).getTime() - position.exitAt.getTime()));
@@ -90,6 +100,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
         fundingPer24h: input.fundingPer24h,
       });
       if (exact) {
+        hasExactExecution = true;
         exactResults.push({
           exactPnl: exact.realizedPnl,
           storedPnl: position.realizedPnl as number,
@@ -98,22 +109,15 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
       }
     }
 
-    const marketStartAt = ticks[0]?.marketStartAt;
-    const marketEndAt = ticks[0]?.marketEndAt;
-    const start = marketStartAt
-      ? nearestTick(ticks, marketStartAt, (tick) => tick.referenceUpdatedAt, maximumTimingErrorMs)
-      : null;
-    const end = marketEndAt
-      ? nearestTick(ticks, marketEndAt, (tick) => tick.referenceUpdatedAt, maximumTimingErrorMs)
-      : null;
-    if (!start || !end || start.tick.referencePrice === end.tick.referencePrice) {
+    const resolution = resolutionsByMarket.get(position.marketId);
+    if (!resolution?.resolved || (resolution.result !== 0 && resolution.result !== 1)) {
       missingResolution += 1;
       continue;
     }
     const predictedSide = position.polymarketSide === "LONG" || position.polymarketSide === "SHORT"
       ? position.polymarketSide
       : position.side;
-    const actualSide = end.tick.referencePrice > start.tick.referencePrice ? "LONG" : "SHORT";
+    const actualSide = resolution.result === 1 ? "LONG" : "SHORT";
     const correct = predictedSide === actualSide;
     const tokenAsk = entry?.tick
       ? predictedSide === "LONG" ? entry.tick.polymarketBestAsk : entry.tick.negativeBestAsk
@@ -122,10 +126,12 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
       const quoteUpdatedAt = predictedSide === "LONG" ? entry.tick.polymarketUpdatedAt : entry.tick.negativeUpdatedAt;
       polymarketQuoteAges.push(Math.max(0, entry.tick.capturedAt.getTime() - quoteUpdatedAt.getTime()));
     }
+    const polymarketReturn = tokenAsk ? calculatePolymarketTokenReturn(tokenAsk, correct) : null;
     predictionResults.push({
       correct,
-      polymarketReturn: tokenAsk ? calculatePolymarketTokenReturn(tokenAsk, correct) : null,
+      polymarketReturn,
     });
+    if (hasExactExecution && polymarketReturn !== null) verifiedPositions += 1;
   }
 
   const auditedNotional = sum(exactResults.map((result) => result.notional));
@@ -139,10 +145,11 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     result.polymarketReturn === null ? [] : [result.polymarketReturn]
   ));
   const coverage = eligiblePositions.length ? exactResults.length / eligiblePositions.length : 0;
+  const verifiedCoverage = eligiblePositions.length ? verifiedPositions / eligiblePositions.length : 0;
   const maximumObservedTimingErrorMs = timingErrors.length ? Math.max(...timingErrors) : null;
   const maximumObservedPolymarketQuoteAgeMs = polymarketQuoteAges.length ? Math.max(...polymarketQuoteAges) : null;
-  const enoughData = exactResults.length >= minimumAuditedPositions;
-  const qualityPassed = coverage >= 0.95
+  const enoughData = verifiedPositions >= minimumAuditedPositions;
+  const qualityPassed = verifiedCoverage >= 0.95
     && maximumObservedTimingErrorMs !== null
     && maximumObservedTimingErrorMs <= maximumTimingErrorMs
     && maximumObservedPolymarketQuoteAgeMs !== null
@@ -155,6 +162,8 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     eligiblePositions: eligiblePositions.length,
     auditedPositions: exactResults.length,
     coverage,
+    verifiedPositions,
+    verifiedCoverage,
     resolvedPredictions: predictionResults.length,
     predictionAccuracy: predictionResults.length
       ? predictionResults.filter((result) => result.correct).length / predictionResults.length

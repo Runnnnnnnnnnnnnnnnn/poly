@@ -118,7 +118,7 @@ type MonitoringSnapshot = {
       assets: string[];
       arbitrageViolations: number;
       targetCadenceSeconds: number;
-      synchronizationVersion: "websocket-v2-rest-seeded";
+      synchronizationVersion: string;
     };
     synchronizedPrices?: {
       records: number;
@@ -320,6 +320,8 @@ type MonitoringSnapshot = {
         eligiblePositions: number;
         auditedPositions: number;
         coverage: number;
+        verifiedPositions: number;
+        verifiedCoverage: number;
         resolvedPredictions: number;
         predictionAccuracy: number | null;
         polymarketAuditedPositions: number;
@@ -918,9 +920,10 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
   const model = snapshot?.combinedShadow.shortTermDirection;
   const audit = model?.executionAudit;
   const trades = model?.trades ?? 0;
-  const minimumTrades = model?.minimumTrades ?? 50;
-  const progress = minimumTrades > 0 ? trades / minimumTrades : 0;
-  const sampleReady = trades >= minimumTrades;
+  const minimumTrades = audit?.minimumAuditedPositions ?? model?.minimumTrades ?? 50;
+  const verifiedTrades = audit?.verifiedPositions ?? 0;
+  const progress = minimumTrades > 0 ? verifiedTrades / minimumTrades : 0;
+  const sampleReady = verifiedTrades >= minimumTrades && audit?.status === "healthy";
   const netPositive = sampleReady && (model?.netReturnPct ?? 0) > 0;
   const edgePositive = sampleReady && (model?.confidenceLowerPct ?? Number.NEGATIVE_INFINITY) > 0;
   const drawdownReady = sampleReady && (model?.maxDrawdownPct ?? Number.POSITIVE_INFINITY) <= 0.05;
@@ -935,7 +938,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
       : model?.status === "underperforming" && sampleReady
         ? { label: "モデル改善が必要", note: "50件の検証で採用基準に届きませんでした。実取引には進みません。", tone: "bad" as const, icon: TrendingDown }
         : { label: "検証中・実取引不可", note: trades > 0
-          ? `必要な${minimumTrades}件に未到達です。現時点の損益と比較差もそのまま表示しています。`
+          ? `${trades}件決済、うち板と決着を確認できた${verifiedTrades}件を合格判定に使用します。`
           : "最初の決済結果を待っています。", tone: "watch" as const, icon: Clock3 };
   const VerdictIcon = verdict.icon;
   const pnlTone: Tone = trades === 0 ? "neutral" : (model?.netReturnPct ?? 0) > 0 ? "good" : "bad";
@@ -959,7 +962,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
       </div>
 
       <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
-        <ExecutiveMetric icon={Target} label="検証済み" value={`${trades} / ${minimumTrades}`} note={`あと${Math.max(0, minimumTrades - trades)}件`} tone={sampleReady ? "good" : "watch"} meter={progress * 100} />
+        <ExecutiveMetric icon={Target} label="完全監査" value={`${verifiedTrades} / ${minimumTrades}`} note={`決済 ${trades}件・あと${Math.max(0, minimumTrades - verifiedTrades)}件`} tone={sampleReady ? "good" : "watch"} meter={progress * 100} />
         <ExecutiveMetric icon={TrendingUp} label="純損益" value={trades ? formatSignedPct(model?.netReturnPct) : "未判定"} note="全コスト控除後" tone={pnlTone} />
         <ExecutiveMetric icon={BarChart3} label="単純戦略との差" value={trades ? formatSignedPct(model?.excessReturnPct) : "未判定"} note="同期間の対照比" tone={edgeTone} />
         <ExecutiveMetric icon={TrendingDown} label="最大下落" value={trades ? formatPct(model?.maxDrawdownPct) : "未判定"} note="上限 5.00%" tone={drawdownTone} />
@@ -968,7 +971,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
 
       <div className="grid grid-cols-2 border-t sm:grid-cols-5">
         <ExecutiveGate label="5秒板" value={dataReady ? "正常" : "確認中"} tone={dataReady ? "good" : "watch"} />
-        <ExecutiveGate label="必要件数" value={sampleReady ? "合格" : `${trades}/${minimumTrades}`} tone={sampleReady ? "good" : "watch"} />
+        <ExecutiveGate label="完全監査" value={sampleReady ? "合格" : `${verifiedTrades}/${minimumTrades}`} tone={sampleReady ? "good" : "watch"} />
         <ExecutiveGate label="純損益" value={netPositive ? "合格" : trades ? "未合格" : "未判定"} tone={netPositive ? "good" : trades ? "bad" : "neutral"} />
         <ExecutiveGate label="95%下限" value={edgePositive ? "合格" : model?.confidenceLowerPct === null || model?.confidenceLowerPct === undefined ? "未判定" : "未合格"} tone={edgePositive ? "good" : model?.confidenceLowerPct === null || model?.confidenceLowerPct === undefined ? "neutral" : "bad"} />
         <ExecutiveGate label="テストネット" value={testnetReady ? "接続済み" : "未接続"} tone={testnetReady ? "good" : "neutral"} />
@@ -983,7 +986,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${dataReady ? "text-emerald-600" : "text-amber-600"}`} />5秒板 {formatCompact(snapshot?.collection.realtimePrices?.records)}件・監査 {audit?.auditedPositions ?? 0}/{audit?.eligiblePositions ?? 0}件</span>
+        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${dataReady ? "text-emerald-600" : "text-amber-600"}`} />5秒板 {formatCompact(snapshot?.collection.realtimePrices?.records)}件・完全監査 {verifiedTrades}/{minimumTrades}件</span>
         <span>{savedSnapshot ? "公開保存値" : "自動更新"}・{latestAt ? `${relativeTime(latestAt)}に更新` : "更新待ち"}</span>
       </div>
     </section>
@@ -1205,8 +1208,11 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
   const model = snapshot?.combinedShadow.shortTermDirection;
   const audit = model?.executionAudit;
   const hasTrades = (model?.trades ?? 0) > 0;
-  const tone: Tone = model?.status === "promising" ? "good" : model?.status === "underperforming" ? "bad" : "neutral";
-  const remaining = Math.max(0, (model?.minimumTrades ?? 50) - (model?.trades ?? 0));
+  const requiredAudits = audit?.minimumAuditedPositions ?? 50;
+  const verifiedTrades = audit?.verifiedPositions ?? 0;
+  const auditReady = audit?.status === "healthy" && verifiedTrades >= requiredAudits;
+  const tone: Tone = auditReady && model?.status === "promising" ? "good" : auditReady && model?.status === "underperforming" ? "bad" : "neutral";
+  const remaining = Math.max(0, requiredAudits - verifiedTrades);
   const steps = [
     { label: "15分市場", value: model?.fifteenMinuteMarkets ?? 0, note: "対象" },
     { label: "開始2分後", value: model?.decisionWindowMarkets ?? 0, note: "直近" },
@@ -1226,10 +1232,10 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
       </div>
       <div className="grid lg:grid-cols-[minmax(240px,0.8fr)_minmax(0,1.5fr)]">
         <div className={`border-b p-5 lg:border-b-0 lg:border-r sm:p-6 ${toneSoftClass(tone)}`}>
-          <p className="text-xs font-bold text-muted-foreground">決済サンプル</p>
-          <p className="mt-2 text-4xl font-bold leading-none tabular-nums text-slate-950 sm:text-5xl">{model?.trades ?? 0}<span className="ml-2 text-base font-bold text-slate-500">/ {model?.minimumTrades ?? 50}</span></p>
-          <VisualMeter tone={tone} value={(model?.progressPct ?? 0) * 100} className="mt-4" />
-          <p className="mt-2 text-xs font-semibold text-slate-600">{model?.status === "collecting" || !model ? `あと${remaining}件で成績を判定` : `${model.passedGates}/${model.totalGates}条件を通過`}</p>
+          <p className="text-xs font-bold text-muted-foreground">板・決着の完全監査</p>
+          <p className="mt-2 text-4xl font-bold leading-none tabular-nums text-slate-950 sm:text-5xl">{verifiedTrades}<span className="ml-2 text-base font-bold text-slate-500">/ {requiredAudits}</span></p>
+          <VisualMeter tone={tone} value={(verifiedTrades / requiredAudits) * 100} className="mt-4" />
+          <p className="mt-2 text-xs font-semibold text-slate-600">決済 {model?.trades ?? 0}件・あと{remaining}件で成績を判定</p>
         </div>
         <div className="grid min-w-0">
           <div className="grid grid-cols-3 divide-x divide-border">

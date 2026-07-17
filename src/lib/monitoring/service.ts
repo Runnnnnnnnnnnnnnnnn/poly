@@ -20,6 +20,7 @@ import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { loadProspectiveSynchronizedData } from "@/src/lib/model-evaluation/prospective-synchronized";
 import { prisma } from "@/src/lib/server/prisma";
 import { evaluateSynchronizedPriceQuality } from "@/src/lib/monitoring/synchronized-quality";
+import { realtimeSynchronizationVersion } from "@/src/lib/realtime-market-data/collector";
 import { evaluateExactExecutionAudit } from "@/src/lib/realtime-market-data/execution-audit";
 
 const monitoredAssets = ["BTC", "ETH", "SOL", "XRP", "HYPE"] as const;
@@ -149,17 +150,30 @@ export async function getMonitoringSnapshot() {
       _max: { capturedAt: true, captureSkewMs: true },
     }),
     prisma.realtimeMarketTick.aggregate({
-      where: { synchronizationVersion: "websocket-v2-rest-seeded" },
+      where: { synchronizationVersion: realtimeSynchronizationVersion },
+      _count: { _all: true },
       _min: { capturedAt: true },
+      _max: { capturedAt: true, captureSkewMs: true },
     }),
-    prisma.realtimeMarketTick.count({ where: { capturedAt: { gte: last24Hours } } }),
+    prisma.realtimeMarketTick.count({
+      where: { capturedAt: { gte: last24Hours }, synchronizationVersion: realtimeSynchronizationVersion },
+    }),
     prisma.realtimeMarketTick.findMany({
-      where: { capturedAt: { gte: new Date(now.getTime() - 60_000) } },
+      where: {
+        capturedAt: { gte: new Date(now.getTime() - 60_000) },
+        synchronizationVersion: realtimeSynchronizationVersion,
+      },
       select: { marketId: true, asset: true, capturedAt: true, captureSkewMs: true },
       orderBy: { capturedAt: "desc" },
       take: 2_000,
     }),
-    prisma.realtimeMarketTick.count({ where: { capturedAt: { gte: last24Hours }, arbitrageViolation: true } }),
+    prisma.realtimeMarketTick.count({
+      where: {
+        capturedAt: { gte: last24Hours },
+        arbitrageViolation: true,
+        synchronizationVersion: realtimeSynchronizationVersion,
+      },
+    }),
     prisma.pipelineHeartbeat.findMany({ orderBy: { id: "asc" } }),
     Promise.all(monitoredAssets.map((asset) => prisma.hyperliquidSnapshot.findFirst({ where: { asset }, orderBy: { capturedAt: "desc" } }))),
     prisma.modelEvaluationRun.findFirst({ where: { status: "completed" }, orderBy: { completedAt: "desc" } }),
@@ -273,7 +287,7 @@ export async function getMonitoringSnapshot() {
     ? await prisma.realtimeMarketTick.findMany({
         where: {
           marketId: { in: exactAuditMarketIds },
-          synchronizationVersion: "websocket-v2-rest-seeded",
+          synchronizationVersion: realtimeSynchronizationVersion,
         },
         select: {
           marketId: true,
@@ -292,6 +306,12 @@ export async function getMonitoringSnapshot() {
           capturedAt: true,
         },
         orderBy: { capturedAt: "asc" },
+      })
+    : [];
+  const shortTermResolutions = exactAuditMarketIds.length
+    ? await prisma.predictionMarket.findMany({
+        where: { id: { in: exactAuditMarketIds } },
+        select: { id: true, resolved: true, result: true },
       })
     : [];
   const settlementBasis = summarizeSettlementBasis(combinedPositions);
@@ -385,6 +405,11 @@ export async function getMonitoringSnapshot() {
     ? evaluateExactExecutionAudit({
         positions: shortTermPositions,
         ticks: shortTermRealtimeTicks,
+        resolutions: shortTermResolutions.map((resolution) => ({
+          marketId: resolution.id,
+          resolved: resolution.resolved,
+          result: resolution.result,
+        })),
         collectionStartedAt: executionAuditRealtimeAggregate._min.capturedAt,
         takerFeePerSide: shortTermConfig.takerFeePerSide ?? 0.00045,
         slippagePerSide: shortTermConfig.slippagePerSide ?? 0.0002,
@@ -408,7 +433,8 @@ export async function getMonitoringSnapshot() {
   );
   const ageMs = newestDataAt ? now.getTime() - newestDataAt.getTime() : Number.POSITIVE_INFINITY;
   const status = ageMs <= freshnessMs ? "live" : ageMs <= 60 * 60 * 1_000 ? "delayed" : "offline";
-  const combinedEdgeConfirmed = forwardEvaluation?.status === "promising" || shortTermEvaluation?.status === "promising";
+  const combinedEdgeConfirmed = shortTermEvaluation?.status === "promising"
+    && shortTermExecutionAudit?.status === "healthy";
   const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
@@ -453,15 +479,15 @@ export async function getMonitoringSnapshot() {
       last24Hours: polymarketLast24Hours + hyperLast24Hours + realtimeLast24Hours + paperEquityLast24Hours + combinedSnapshotsLast24Hours,
       realtimePrices: {
         status: operationalStatus(realtimeHeartbeat, now, 30_000),
-        records: realtimeAggregate._count._all,
+        records: executionAuditRealtimeAggregate._count._all,
         last24Hours: realtimeLast24Hours,
-        latestAt: realtimeAggregate._max.capturedAt?.toISOString() ?? null,
-        maximumSkewMs: realtimeAggregate._max.captureSkewMs ?? null,
+        latestAt: executionAuditRealtimeAggregate._max.capturedAt?.toISOString() ?? null,
+        maximumSkewMs: executionAuditRealtimeAggregate._max.captureSkewMs ?? null,
         activeMarkets: realtimeMarketIds.size,
         assets: realtimeAssets,
         arbitrageViolations: realtimeArbitrageViolations,
         targetCadenceSeconds: 5,
-        synchronizationVersion: "websocket-v2-rest-seeded",
+        synchronizationVersion: realtimeSynchronizationVersion,
       },
       synchronizedPrices: {
         records: synchronizedAggregate._count._all,
