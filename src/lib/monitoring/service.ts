@@ -65,11 +65,25 @@ export async function getMonitoringSnapshot() {
   const aiImprovement = averageAiBrier !== null && averageMarketBrier !== null ? averageMarketBrier - averageAiBrier : null;
 
   const latestCompletedPaper = paperRuns.find((run) => run.status === "completed" && run.metricsJson) ?? null;
+  const latestRunningPaper = paperRuns.find((run) => run.status === "running") ?? null;
+  const [latestRunningEquity, runningOpenPositions, runningPaperFills] = latestRunningPaper
+    ? await Promise.all([
+        prisma.paperEquitySnapshot.findFirst({ where: { runId: latestRunningPaper.id }, orderBy: { capturedAt: "desc" } }),
+        prisma.paperPosition.count({ where: { runId: latestRunningPaper.id, status: "OPEN" } }),
+        prisma.paperFill.count({ where: { runId: latestRunningPaper.id } }),
+      ])
+    : [null, 0, 0];
   const latestPaperMetrics = parseJson<Record<string, number | null>>(latestCompletedPaper?.metricsJson ?? null);
   const newestDataAt = latestDate(polymarketAggregate._max.capturedAt, hyperAggregate._max.capturedAt, paperEquityAggregate._max.capturedAt);
   const oldestDataAt = earliestDate(polymarketAggregate._min.capturedAt, hyperAggregate._min.capturedAt, paperEquityAggregate._min.capturedAt);
   const ageMs = newestDataAt ? now.getTime() - newestDataAt.getTime() : Number.POSITIVE_INFINITY;
   const status = ageMs <= freshnessMs ? "live" : ageMs <= 60 * 60 * 1_000 ? "delayed" : "offline";
+  const combinedEdgeConfirmed = evaluation?.quality.status === "promising"
+    && evaluation.combinedTrading?.selectedStrategy.id !== "no-trade guard"
+    && evaluation.combinedTrading?.statisticallyPositive === true;
+  const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
+    ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
+    : null;
 
   const inferredPipelines = pipelineStatuses({
     now,
@@ -89,6 +103,19 @@ export async function getMonitoringSnapshot() {
       latestAt: newestDataAt?.toISOString() ?? null,
       totalRecords: polymarketAggregate._count._all + hyperAggregate._count._all + backtestPointCount + paperEquityAggregate._count._all + aiRows.length,
       last24Hours: polymarketLast24Hours + hyperLast24Hours + paperEquityLast24Hours,
+    },
+    tradeReadiness: {
+      objective: "Polymarketの予測をシグナルにしてHyperliquidで売買する",
+      currentStage: combinedEdgeConfirmed ? "shadow" : "backtest",
+      realTradingEnabled: false,
+      combinedPaperRunning: false,
+      hyperliquidOrderConnection: "not_connected",
+      gates: [
+        { id: "data", label: "データ収集", status: status === "live" ? "ready" : "attention" },
+        { id: "edge", label: "優位性確認", status: combinedEdgeConfirmed ? "ready" : "blocked" },
+        { id: "shadow", label: "組み合わせ仮想売買", status: "not_started" },
+        { id: "live", label: "実取引", status: "locked" },
+      ],
     },
     polymarket: {
       snapshots: polymarketAggregate._count._all,
@@ -140,6 +167,19 @@ export async function getMonitoringSnapshot() {
       paperFills: fillCount,
       paperReturnPct: typeof latestPaperMetrics?.totalReturnPct === "number" ? latestPaperMetrics.totalReturnPct : null,
     },
+    paperExperiment: {
+      label: "Polymarket単体の仮想売買",
+      strategy: latestRunningPaper?.strategy ?? null,
+      status: latestRunningPaper?.status ?? "not_running",
+      realMoney: false,
+      initialCash: latestRunningPaper?.initialCash ?? null,
+      equity: latestRunningEquity?.equity ?? null,
+      returnPct: runningPaperReturnPct,
+      unrealizedPnl: latestRunningEquity?.unrealizedPnl ?? null,
+      openPositions: runningOpenPositions,
+      fills: runningPaperFills,
+      updatedAt: latestRunningEquity?.capturedAt.toISOString() ?? null,
+    },
     backtestQuality: {
       status: evaluation?.quality.status ?? "building",
       checks: evaluation?.quality.gates.map((gate) => ({ label: gate.label, passed: gate.passed })) ?? [],
@@ -175,7 +215,7 @@ function pipelineStatuses(input: {
     pipeline("polymarket", "Polymarket収集", "5分ごと", input.polymarketAt, heartbeatMap.get("polymarket"), input.now),
     pipeline("hyperliquid", "相場データ収集", "5分ごと", input.hyperliquidAt, heartbeatMap.get("hyperliquid"), input.now),
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
-    pipeline("paper", "仮想運用", "5分ごと", input.paperAt, heartbeatMap.get("paper"), input.now),
+    pipeline("paper", "Poly仮想運用", "5分ごと", input.paperAt, heartbeatMap.get("paper"), input.now),
   ];
 }
 

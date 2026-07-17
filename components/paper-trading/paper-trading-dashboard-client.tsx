@@ -4,12 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertCircle,
+  ArrowRight,
   BarChart3,
+  BrainCircuit,
   CheckCircle2,
   CircleDot,
   Database,
   Gauge,
   Layers3,
+  LockKeyhole,
   MinusCircle,
   Play,
   RefreshCw,
@@ -87,6 +90,18 @@ type MonitoringSnapshot = {
   status: "live" | "delayed" | "offline";
   generatedAt: string;
   collection: { startedAt: string | null; latestAt: string | null; totalRecords: number; last24Hours: number };
+  tradeReadiness: {
+    objective: string;
+    currentStage: "backtest" | "shadow";
+    realTradingEnabled: boolean;
+    combinedPaperRunning: boolean;
+    hyperliquidOrderConnection: "not_connected";
+    gates: Array<{
+      id: "data" | "edge" | "shadow" | "live";
+      label: string;
+      status: "ready" | "attention" | "blocked" | "not_started" | "locked";
+    }>;
+  };
   polymarket: { snapshots: number; markets: number; latestAt: string | null; backtestRuns: number; backtestPoints: number };
   model: {
     name: string;
@@ -130,6 +145,19 @@ type MonitoringSnapshot = {
     paperOrders: number;
     paperFills: number;
     paperReturnPct: number | null;
+  };
+  paperExperiment: {
+    label: string;
+    strategy: string | null;
+    status: string;
+    realMoney: false;
+    initialCash: number | null;
+    equity: number | null;
+    returnPct: number | null;
+    unrealizedPnl: number | null;
+    openPositions: number;
+    fills: number;
+    updatedAt: string | null;
   };
   backtestQuality: {
     status: "promising" | "inconclusive" | "underperforming" | "building";
@@ -379,9 +407,9 @@ export function PaperTradingDashboardClient() {
     <div className="space-y-4 pb-24">
       <section className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-primary"><Activity className="h-4 w-4" />MODEL DEVELOPMENT</div>
-          <h1 className="mt-1 text-2xl font-bold leading-tight text-slate-950 md:text-3xl">予測モデル開発モニター</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Polymarketのデータを蓄積し、未使用期間のバックテストで継続検証</p>
+          <div className="flex items-center gap-2 text-xs font-bold text-primary"><Activity className="h-4 w-4" />POLYMARKET × HYPERLIQUID</div>
+          <h1 className="mt-1 max-w-3xl text-2xl font-bold leading-tight text-slate-950 md:text-3xl">予測で売買するモデルを検証中</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Polymarketの予測確率を読み、Hyperliquidでロング・ショートする仕組みを開発しています。</p>
         </div>
         <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${!snapshot && monitoring?.status === "live" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
           <span className={`h-2.5 w-2.5 rounded-full ${!snapshot && monitoring?.status === "live" ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
@@ -389,13 +417,17 @@ export function PaperTradingDashboardClient() {
         </div>
       </section>
 
+      <TradingPurposePanel snapshot={monitoring} />
+
       <ModelSummaryPanel monitoring={monitoring} />
+
+      <PaperExperimentPanel snapshot={monitoring} />
 
       <DevelopmentMonitor snapshot={monitoring} readOnly={snapshot} />
 
       <details className="rounded-lg border border-border bg-white shadow-sm">
         <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 sm:px-5">
-          <span className="flex items-center gap-2 text-sm font-bold text-slate-950"><Gauge className="h-4 w-4 text-primary" />運用操作</span>
+          <span className="flex items-center gap-2 text-sm font-bold text-slate-950"><Gauge className="h-4 w-4 text-primary" />管理者用の操作</span>
           <span className="max-w-[60%] truncate text-xs text-muted-foreground">{readOnly ? message : "管理者用"}</span>
         </summary>
         <div className="grid gap-4 border-t p-4 sm:p-5">
@@ -414,8 +446,8 @@ export function PaperTradingDashboardClient() {
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
                 <Button variant="outline" onClick={() => void runBaselineBacktest()} disabled={loading || readOnly}><BarChart3 className="h-4 w-4" />市場基準を確認</Button>
-                <Button variant="outline" onClick={() => void startRun("historical")} disabled={loading || readOnly || Boolean(activeRun)}><Play className="h-4 w-4" />仮想売買</Button>
-                <Button variant="outline" onClick={() => void startRun("live")} disabled={loading || readOnly || Boolean(activeRun)}><Activity className="h-4 w-4" />継続観察</Button>
+                <Button variant="outline" onClick={() => void startRun("historical")} disabled={loading || readOnly || Boolean(activeRun)}><Play className="h-4 w-4" />Poly単体を検証</Button>
+                <Button variant="outline" onClick={() => void startRun("live")} disabled={loading || readOnly || Boolean(activeRun)}><Activity className="h-4 w-4" />Poly単体を観察</Button>
               </div>
               {activeRun ? (
                 <div className="flex flex-wrap gap-2">
@@ -442,6 +474,94 @@ export function PaperTradingDashboardClient() {
 
       <DetailPanel paperRun={selectedPaperRun} backtest={selectedBacktest} loading={detailLoading} />
     </div>
+  );
+}
+
+function TradingPurposePanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
+  const gates = snapshot?.tradeReadiness?.gates ?? fallbackReadinessGates;
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="取引モデルの仕組みと現在地">
+      <div className="grid gap-3 border-b border-amber-200 bg-amber-50 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-800"><AlertCircle className="h-5 w-5" /></span>
+          <div>
+            <p className="text-xs font-bold text-amber-800">現在地: 2. バックテスト</p>
+            <p className="mt-1 text-base font-bold text-slate-950">優位性が確認できるまで、実取引は行いません</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">未使用期間のテストで採用条件に届かず、Hyperliquidへの注文は停止しています。</p>
+          </div>
+        </div>
+        <span className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 text-xs font-bold text-white"><LockKeyhole className="h-4 w-4" />実取引 OFF</span>
+      </div>
+      <div className="p-4 sm:p-5">
+        <p className="text-xs font-bold text-muted-foreground">やっていること</p>
+        <div className="mt-4 grid items-stretch gap-2 md:grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)_24px_minmax(0,1fr)] md:gap-3">
+          <FlowStep icon={Database} number="1" title="予測を読む" source="Polymarket" detail="将来価格の確率" state="収集中" tone="good" />
+          <ArrowRight className="h-5 w-5 rotate-90 self-center justify-self-center text-slate-300 md:rotate-0" />
+          <FlowStep icon={BrainCircuit} number="2" title="方向を決める" source="予測モデル" detail="買い・売り・見送り" state="検証中" tone="watch" />
+          <ArrowRight className="h-5 w-5 rotate-90 self-center justify-self-center text-slate-300 md:rotate-0" />
+          <FlowStep icon={TrendingUp} number="3" title="注文する" source="Hyperliquid" detail="ロング・ショート" state="未接続" tone="neutral" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 border-t sm:grid-cols-4">
+        {gates.map((gate, index) => (
+          <div key={gate.id} className="flex min-w-0 items-center gap-2 border-b border-r p-3 last:border-r-0 sm:border-b-0 sm:p-4">
+            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${readinessStepClass(gate.status)}`}>{gate.status === "ready" ? <CheckCircle2 className="h-4 w-4" /> : index + 1}</span>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-bold text-slate-800">{gate.label}</p>
+              <p className="mt-0.5 text-[10px] font-semibold text-muted-foreground">{readinessStatusLabel(gate.status)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FlowStep({ icon: Icon, number, title, source, detail, state, tone }: { icon: LucideIcon; number: string; title: string; source: string; detail: string; state: string; tone: Tone }) {
+  return (
+    <div className="flex min-h-24 items-center gap-3 rounded-md border border-border p-3 sm:p-4">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${toneIconClass(tone)}`}><Icon className="h-5 w-5" /></span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-bold text-muted-foreground">STEP {number}</p>
+          <span className={`rounded-sm px-1.5 py-0.5 text-[10px] font-bold ${tonePillClass(tone)}`}>{state}</span>
+        </div>
+        <p className="mt-1 text-sm font-bold text-slate-950">{title}</p>
+        <p className="mt-0.5 truncate text-xs font-semibold text-slate-600">{source} / {detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function PaperExperimentPanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
+  const paper = snapshot?.paperExperiment;
+  const signal = getProfitSignal(paper?.returnPct);
+  const ProfitIcon = signal.icon;
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="現在稼働中の仮想運用">
+      <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] sm:p-5">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-sky-100 text-sky-700"><Activity className="h-5 w-5" /></span>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-bold text-muted-foreground">現在動いている別実験</p>
+              <span className="rounded-sm bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">仮想資金</span>
+            </div>
+            <h2 className="mt-1 text-base font-bold text-slate-950">Polymarket単体の仮想売買</h2>
+            <p className="mt-1 max-w-xl text-xs leading-5 text-slate-600">これは組み合わせ戦略とは別の参考実験です。実資金もHyperliquid注文も使っていません。</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 divide-x divide-border border-t pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+          <CompactMetric label="仮想残高" value={formatUsd(paper?.equity)} />
+          <CompactMetric label="現在損益" value={formatSignedPct(paper?.returnPct)} />
+          <CompactMetric label="保有中" value={`${paper?.openPositions ?? 0}件`} />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-5">
+        <span className="inline-flex items-center gap-1.5"><ProfitIcon className={`h-3.5 w-3.5 ${signal.tone === "good" ? "text-emerald-600" : signal.tone === "bad" ? "text-rose-600" : "text-slate-500"}`} />含み損益 {formatUsd(paper?.unrealizedPnl)} / 仮想約定 {paper?.fills ?? 0}件</span>
+        <span>{paper?.updatedAt ? `${relativeTime(paper.updatedAt)}に更新` : "データ待ち"}</span>
+      </div>
+    </section>
   );
 }
 
@@ -492,8 +612,13 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
   const passedChecks = snapshot?.backtestQuality.checks.filter((check) => check.passed).length ?? 0;
   const qualitySignal = getEvaluationSignal(snapshot?.backtestQuality.status);
   return (
-    <section className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-      <div className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5">
+    <details className="rounded-lg border border-border bg-white shadow-sm">
+      <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 sm:px-5">
+        <span className="flex items-center gap-2 text-sm font-bold text-slate-950"><Layers3 className="h-4 w-4 text-primary" />詳しい収集・検証データ</span>
+        <span className="text-xs font-semibold text-muted-foreground">必要なときだけ表示</span>
+      </summary>
+      <div className="grid gap-4 border-t bg-slate-50/60 p-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] sm:p-4">
+      <div className="rounded-md border border-border bg-white p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-primary" />
@@ -518,7 +643,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5">
+      <div className="rounded-md border border-border bg-white p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Layers3 className="h-5 w-5 text-primary" />
@@ -541,7 +666,8 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
         </div>
         <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Polymarketの予測を売買方向に変換し、Hyperliquidの価格で損益を計測。売買価格取得率 {formatPct(modelFeatureCoverage(snapshot))}</p>
       </div>
-    </section>
+      </div>
+    </details>
   );
 }
 
@@ -558,18 +684,28 @@ const fallbackPipelines = [
   { id: "polymarket", label: "Polymarket収集", cadence: "5分ごと", status: "waiting" as const },
   { id: "hyperliquid", label: "相場データ収集", cadence: "5分ごと", status: "waiting" as const },
   { id: "backtest", label: "モデル再検証", cadence: "6時間ごと", status: "waiting" as const },
-  { id: "paper", label: "仮想運用", cadence: "5分ごと", status: "waiting" as const },
+  { id: "paper", label: "Poly仮想運用", cadence: "5分ごと", status: "waiting" as const },
+];
+
+const fallbackReadinessGates: MonitoringSnapshot["tradeReadiness"]["gates"] = [
+  { id: "data", label: "データ収集", status: "attention" },
+  { id: "edge", label: "優位性確認", status: "blocked" },
+  { id: "shadow", label: "組み合わせ仮想売買", status: "not_started" },
+  { id: "live", label: "実取引", status: "locked" },
 ];
 
 function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | null }) {
   const model = monitoring?.model;
   const decision = getEvaluationSignal(model?.evaluationStatus, model?.combinedStrategy);
   const DecisionIcon = decision.icon;
-  const comparisonTone: Tone = (model?.excessReturnPct ?? 0) > 0 ? "good" : (model?.excessReturnPct ?? 0) < 0 ? "bad" : "neutral";
-  const profitSignal = getProfitSignal(model?.latestReturnPct);
+  const hasTrades = (model?.trades ?? 0) > 0;
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="モデル成績の概要">
+    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="組み合わせ戦略の検証結果">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
+        <h2 className="text-sm font-bold text-slate-950">Polymarket → Hyperliquid の検証結果</h2>
+        <span className="inline-flex items-center gap-1.5 rounded-sm bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700"><LockKeyhole className="h-3.5 w-3.5" />実取引 OFF</span>
+      </div>
       <div className="grid lg:grid-cols-[minmax(260px,0.9fr)_minmax(0,1.8fr)]">
         <div className={`border-b p-5 lg:border-b-0 lg:border-r sm:p-6 ${toneSoftClass(decision.tone)}`}>
           <div className="flex items-center gap-3">
@@ -577,42 +713,47 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
               <DecisionIcon className="h-6 w-6" />
             </span>
             <div>
-              <p className="text-sm font-bold text-muted-foreground">現在の判定</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">本番投入前</p>
+              <p className="text-sm font-bold text-muted-foreground">結論</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">未使用期間で判定</p>
             </div>
           </div>
-          <h2 className="mt-5 text-4xl font-bold leading-none text-slate-950 sm:text-5xl">{decision.label}</h2>
+          <p className="mt-5 text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{decision.label}</p>
           <p className="mt-4 max-w-sm text-sm font-semibold leading-6 text-slate-700">{decision.description}</p>
         </div>
         <div className="grid grid-cols-3 divide-x divide-border">
           <ResultMetric
-            icon={profitSignal.icon}
-            label="組み合わせ損益"
-            value={formatPct(model?.latestReturnPct)}
-            note="全コスト控除後"
-            tone={profitSignal.tone}
+            icon={Database}
+            label="最終テスト"
+            value={`${model?.testedEvents ?? 0}件`}
+            note="学習に未使用のテーマ"
+            tone={(model?.testedEvents ?? 0) >= 30 ? "good" : "watch"}
           />
           <ResultMetric
             icon={Target}
-            label="常時ロングとの差"
-            value={formatSignedPct(model?.excessReturnPct)}
-            note={`基準 ${formatPct(model?.benchmarkReturnPct)}`}
-            tone={comparisonTone}
+            label="売買した回数"
+            value={`${model?.trades ?? 0}回`}
+            note={`候補 ${model?.eligibleSignals ?? 0}件から選定`}
+            tone={hasTrades ? "good" : "watch"}
           />
           <ResultMetric
-            icon={ShieldCheck}
-            label="取引数"
-            value={`${model?.trades ?? 0}回`}
-            note={`買い ${model?.longTrades ?? 0} / 売り ${model?.shortTrades ?? 0}`}
-            tone={(model?.trades ?? 0) >= 12 ? "good" : "watch"}
+            icon={Gauge}
+            label="収益性"
+            value={hasTrades ? formatSignedPct(model?.latestReturnPct) : "未判定"}
+            note={hasTrades ? "全コスト控除後" : "0回のため評価できず"}
+            tone={hasTrades ? getProfitSignal(model?.latestReturnPct).tone : "neutral"}
           />
         </div>
       </div>
-      <ReturnComparison strategyReturn={model?.latestReturnPct} benchmarkReturn={model?.benchmarkReturnPct} />
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3 text-xs text-muted-foreground">
-        <span>{model?.name ?? "モデル検証準備中"} / 採用: {formatCombinedStrategy(model?.combinedStrategy)}</span>
-        <span>{formatEvaluationPeriod(model?.datasetStartedAt, model?.datasetEndedAt)}</span>
-      </div>
+      <details className="border-t">
+        <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">詳しい検証数値を見る</summary>
+        <div className="border-t">
+          {hasTrades ? <ReturnComparison strategyReturn={model?.latestReturnPct} benchmarkReturn={model?.benchmarkReturnPct} /> : <p className="px-5 py-4 text-sm leading-6 text-slate-600">採用基準を通ったルールがないため、最終テストでは資金を動かしていません。損益0%は優位性を示す成績ではありません。</p>}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3 text-xs text-muted-foreground">
+            <span>{model?.name ?? "モデル検証準備中"} / 採用: {formatCombinedStrategy(model?.combinedStrategy)}</span>
+            <span>{formatEvaluationPeriod(model?.datasetStartedAt, model?.datasetEndedAt)}</span>
+          </div>
+        </div>
+      </details>
     </section>
   );
 }
@@ -719,7 +860,7 @@ function PaperRunsCard({ asset, runs, updatedAt, onSelect }: { asset: string; ru
   return (
     <details className="rounded-lg border border-border bg-white shadow-sm">
       <summary className="flex cursor-pointer items-center justify-between gap-3 border-b px-4 py-3">
-        <span className="text-base font-bold text-slate-950">仮想売買の履歴</span>
+        <span className="text-base font-bold text-slate-950">Polymarket単体の仮想履歴</span>
         <span className="text-xs text-muted-foreground">{updatedAt ? new Date(updatedAt).toLocaleTimeString("ja-JP") : "-"}</span>
       </summary>
       <div className="grid gap-2 p-3">
@@ -756,7 +897,7 @@ function DetailPanel({ paperRun, backtest, loading }: { paperRun: PaperRunDetail
       {paperRun ? (
         <div className="grid gap-4">
           <div className="grid gap-1">
-            <h2 className="text-xl font-bold text-slate-950">仮想売買の詳細</h2>
+            <h2 className="text-xl font-bold text-slate-950">Polymarket単体の仮想売買</h2>
             <p className="text-sm text-muted-foreground">{paperRun.asset} / {modeLabel(paperRun.mode)} / {statusLabel(paperRun.status)}</p>
           </div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -852,7 +993,7 @@ function getEvaluationSignal(
   }
   if (status === "inconclusive") {
     if (combinedStrategy === "no-trade guard") {
-      return { label: "取引を見送り", description: "検証期間で採用基準に届かなかったため、未使用期間では取引を行っていません。", tone: "watch", icon: AlertCircle };
+      return { label: "実取引はまだ不可", description: "検証条件を満たす売買ルールがまだ見つかっていません。0%は利益ではなく、見送りルールが働いて0回だった結果です。", tone: "watch", icon: AlertCircle };
     }
     return { label: "検証継続", description: "優位性を判断できるだけの差がまだ確認できていません。", tone: "watch", icon: AlertCircle };
   }
@@ -935,6 +1076,24 @@ function profitMeter(value: number | null | undefined) {
   return clamp(50 + value * 500, 5, 100);
 }
 
+function readinessStatusLabel(status: MonitoringSnapshot["tradeReadiness"]["gates"][number]["status"]) {
+  const labels = {
+    ready: "完了",
+    attention: "確認中",
+    blocked: "未合格",
+    not_started: "未開始",
+    locked: "停止中",
+  } as const;
+  return labels[status];
+}
+
+function readinessStepClass(status: MonitoringSnapshot["tradeReadiness"]["gates"][number]["status"]) {
+  if (status === "ready") return "bg-emerald-100 text-emerald-700";
+  if (status === "attention") return "bg-sky-100 text-sky-700";
+  if (status === "blocked") return "bg-amber-100 text-amber-800";
+  return "bg-slate-100 text-slate-500";
+}
+
 function toneSoftClass(tone: Tone) {
   const classes: Record<Tone, string> = {
     good: "bg-emerald-50",
@@ -1001,7 +1160,7 @@ function statusLabel(status: string) {
     open: "保有中",
     closed: "決済済み",
   };
-  return labels[status] ?? status;
+  return labels[status.toLowerCase()] ?? status;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -1070,5 +1229,7 @@ function formatPct(value: number | null | undefined) {
 }
 
 function formatUsd(value: number | null | undefined) {
-  return value === null || value === undefined || !Number.isFinite(value) ? "-" : `$${value.toFixed(2)}`;
+  return value === null || value === undefined || !Number.isFinite(value)
+    ? "-"
+    : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
