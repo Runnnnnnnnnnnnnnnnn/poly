@@ -15,9 +15,9 @@ const strategyCandidates: CombinedStrategyCandidate[] = [
   { id: "signal z 0.10", minimumSignalZ: 0.1, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
   { id: "signal z 0.25", minimumSignalZ: 0.25, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
   { id: "signal z 0.50", minimumSignalZ: 0.5, signalRule: "polymarket-only", minimumTrendZ: 0, positionPct: 0.05 },
-  { id: "trend z 0.10", minimumSignalZ: 0.1, signalRule: "trend-confirmed", minimumTrendZ: 0.1, positionPct: 0.05 },
-  { id: "trend z 0.25", minimumSignalZ: 0.25, signalRule: "trend-confirmed", minimumTrendZ: 0.1, positionPct: 0.05 },
-  { id: "trend z 0.50", minimumSignalZ: 0.5, signalRule: "trend-confirmed", minimumTrendZ: 0.1, positionPct: 0.05 },
+  { id: "contrarian z 0.10", minimumSignalZ: 0.1, signalRule: "contrarian", minimumTrendZ: 0, positionPct: 0.05 },
+  { id: "contrarian z 0.25", minimumSignalZ: 0.25, signalRule: "contrarian", minimumTrendZ: 0, positionPct: 0.05 },
+  { id: "contrarian z 0.50", minimumSignalZ: 0.5, signalRule: "contrarian", minimumTrendZ: 0, positionPct: 0.05 },
 ];
 
 type TradeSignal = {
@@ -304,7 +304,8 @@ function simulate(
 
   [...signals].sort((left, right) => left.entryAt - right.entryAt || left.exitAt - right.exitAt).forEach((signal, index) => {
     settleThrough(signal.entryAt);
-    const side = direction === "long" ? 1 : direction === "short" ? -1 : direction === "alternating" ? (index % 2 === 0 ? 1 : -1) : signal.side;
+    const strategySide = candidate.signalRule === "contrarian" ? -signal.side as 1 | -1 : signal.side;
+    const side = direction === "long" ? 1 : direction === "short" ? -1 : direction === "alternating" ? (index % 2 === 0 ? 1 : -1) : strategySide;
     const holdingDays = Math.max(0, signal.exitAt - signal.entryAt) / (24 * 60 * 60 * 1_000);
     const grossReturn = side * (signal.exitPrice / signal.entryPrice - 1);
     const feeRate = takerFeePerSide * 2;

@@ -1,11 +1,14 @@
-import { ensureCombinedShadowRun, tickCombinedShadowRun } from "../src/lib/combined-trading/service";
+import { ensureCombinedShadowRun, getQualifiedModelShadowConfig, tickCombinedShadowRun } from "../src/lib/combined-trading/service";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
 
 const intervalMs = Math.max(60_000, Number(process.env.COMBINED_SHADOW_INTERVAL_MS ?? 300_000));
+const qualifiedModelConfig = process.env.COMBINED_USE_QUALIFIED_MODEL === "0" ? null : await getQualifiedModelShadowConfig();
 const config = {
   initialEquity: Number(process.env.COMBINED_INITIAL_EQUITY ?? 10_000),
-  minimumSignalZ: Number(process.env.COMBINED_MINIMUM_SIGNAL_Z ?? 0.5),
-  positionPct: Number(process.env.COMBINED_POSITION_PCT ?? 0.1),
+  minimumSignalZ: Number(qualifiedModelConfig?.minimumSignalZ ?? process.env.COMBINED_MINIMUM_SIGNAL_Z ?? 0.5),
+  signalRule: qualifiedModelConfig?.signalRule ?? (process.env.COMBINED_SIGNAL_RULE === "contrarian" ? "contrarian" : "polymarket-only"),
+  modelVersion: qualifiedModelConfig?.modelVersion ?? null,
+  positionPct: Number(qualifiedModelConfig?.positionPct ?? process.env.COMBINED_POSITION_PCT ?? 0.1),
   maxPositionNotional: Number(process.env.COMBINED_MAX_NOTIONAL ?? 1_000),
   maxDailyLossPct: Number(process.env.COMBINED_MAX_DAILY_LOSS_PCT ?? 0.02),
   maxDrawdownPct: Number(process.env.COMBINED_MAX_DRAWDOWN_PCT ?? 0.05),

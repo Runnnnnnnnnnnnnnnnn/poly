@@ -38,7 +38,7 @@ export type ModelCandidate = {
 export type CombinedStrategyCandidate = {
   id: string;
   minimumSignalZ: number;
-  signalRule: "polymarket-only" | "trend-confirmed";
+  signalRule: "polymarket-only" | "trend-confirmed" | "contrarian";
   minimumTrendZ: number;
   positionPct: number;
 };

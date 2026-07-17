@@ -27,7 +27,7 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
         eventSampling: "80% latest asset-balanced terminal-price events and 20% long-history events",
         split: "probability 60/20/20; execution-eligible signals 60/40 chronological with a holding-period embargo and four validation folds",
         eventWeighting: "equal",
-        signal: "Polymarket-implied terminal median with predeclared raw and six-hour trend-confirmed rules, evaluated independently by horizon",
+        signal: "Polymarket-implied terminal median with predeclared directional and contrarian rules, evaluated independently by horizon",
         execution: "Hyperliquid 1h next-open to last-close, one non-overlapping position per asset, up to four concurrent assets",
         candidateSelection: "six predeclared candidates, block-bootstrap interval, deflated Sharpe, four-period stability, and same-period best-of-three benchmark excess",
         costs: "0.045% taker and 0.02% slippage per side, plus 0.03% funding per 24h",

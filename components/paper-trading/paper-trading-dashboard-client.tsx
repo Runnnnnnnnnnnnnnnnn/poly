@@ -130,6 +130,8 @@ type MonitoringSnapshot = {
     riskStatus: string;
     emergencyStopped: boolean;
     minimumSignalZ: number | null;
+    signalRule: "polymarket-only" | "contrarian";
+    modelVersion: string | null;
     funnel: {
       scans: number;
       scannedMarkets: number;
@@ -194,7 +196,7 @@ type MonitoringSnapshot = {
     closestValidationCandidate: {
       id: string;
       minimumSignalZ: number;
-      signalRule: "polymarket-only" | "trend-confirmed";
+      signalRule: "polymarket-only" | "trend-confirmed" | "contrarian";
       minimumTrendZ: number;
       positionPct: number;
     } | null;
@@ -202,7 +204,7 @@ type MonitoringSnapshot = {
       strategy: {
         id: string;
         minimumSignalZ: number;
-        signalRule: "polymarket-only" | "trend-confirmed";
+        signalRule: "polymarket-only" | "trend-confirmed" | "contrarian";
         minimumTrendZ: number;
         positionPct: number;
       };
@@ -758,7 +760,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
       <ScanFunnel funnel={shadow?.funnel} />
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-5">
         <span>採用前の固定ルールで収集中 / 実取引判断には不使用</span>
-        <span>観測帯 6・12・24・48時間 / 強度 {formatNumber(shadow?.minimumSignalZ, 2)}以上</span>
+        <span>固定ルール: {formatShadowRule(shadow?.signalRule)} / 強度 {formatNumber(shadow?.minimumSignalZ, 2)}以上{shadow?.modelVersion ? ` / ${shadow.modelVersion}` : ""}</span>
         <span>{shadow?.testnet.ready ? shadow.testnet.autoMirrorEnabled ? "テストネット連動: 待機中" : "テストネット接続可" : "テストネット: 設定待ち"}</span>
       </div>
     </section>
@@ -1111,6 +1113,9 @@ function CandidateDiagnosis({ diagnostics }: { diagnostics: MonitoringSnapshot["
   )[0] : null;
   if (!best) return null;
   const passed = best.gates.filter((gate) => gate.passed).length;
+  const contrarian = [...(diagnostics ?? [])]
+    .filter((candidate) => candidate.strategy.signalRule === "contrarian")
+    .sort((left, right) => right.netReturnPct - left.netReturnPct)[0];
 
   return (
     <div className="border-t px-5 py-4" aria-label="候補ルールの採用診断">
@@ -1136,6 +1141,7 @@ function CandidateDiagnosis({ diagnostics }: { diagnostics: MonitoringSnapshot["
       <p className="mt-3 text-xs font-semibold text-slate-600">
         検証 {best.trades}取引 / 損益 {formatSignedPct(best.netReturnPct)} / 単純戦略との差 {formatSignedPct(best.excessReturnPct)} / 確信度 {formatPct(best.deflatedSharpeProbability)}
       </p>
+      {contrarian ? <p className="mt-2 text-[11px] font-semibold text-slate-500">追加検証: 予測乖離への逆張り {formatSignedPct(contrarian.netReturnPct)} / {contrarian.gates.filter((gate) => gate.passed).length}/{contrarian.gates.length}条件で不採用</p> : null}
     </div>
   );
 }
@@ -1602,6 +1608,7 @@ function formatCombinedStrategy(strategy: string | null | undefined) {
   if (strategy === "no-trade guard") return "取引見送り";
   const threshold = strategy.match(/[0-9.]+$/)?.[0];
   if (!threshold) return strategy;
+  if (strategy.startsWith("contrarian")) return `予測乖離へ逆張り / 強度 ${threshold}以上`;
   return strategy.startsWith("trend")
     ? `予測方向 + 6時間トレンド / 強度 ${threshold}以上`
     : `予測方向 / 強度 ${threshold}以上`;
@@ -1618,6 +1625,10 @@ function formatShadowAction(action: string | null | undefined) {
     BLOCKED: "リスク制限で停止",
   };
   return action ? labels[action] ?? action : "確認待ち";
+}
+
+function formatShadowRule(rule: MonitoringSnapshot["combinedShadow"]["signalRule"] | null | undefined) {
+  return rule === "contrarian" ? "予測乖離へ逆張り" : "予測方向に追随";
 }
 
 function modelFeatureCoverage(snapshot: MonitoringSnapshot | null) {

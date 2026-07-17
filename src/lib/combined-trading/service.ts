@@ -8,6 +8,8 @@ import { prisma } from "@/src/lib/server/prisma";
 export type CombinedShadowConfig = {
   initialEquity: number;
   minimumSignalZ: number;
+  signalRule: "polymarket-only" | "contrarian";
+  modelVersion: string | null;
   positionPct: number;
   maxPositionNotional: number;
   maxConcurrentPositions: number;
@@ -21,6 +23,8 @@ export type CombinedShadowConfig = {
 const defaultConfig: CombinedShadowConfig = {
   initialEquity: 10_000,
   minimumSignalZ: 0.5,
+  signalRule: "polymarket-only",
+  modelVersion: null,
   positionPct: 0.1,
   maxPositionNotional: 1_000,
   maxConcurrentPositions: 1,
@@ -30,6 +34,25 @@ const defaultConfig: CombinedShadowConfig = {
   slippagePerSide: 0.0002,
   fundingPer24h: 0.0003,
 };
+
+export async function getQualifiedModelShadowConfig(): Promise<Partial<CombinedShadowConfig> | null> {
+  const latestEvaluation = await prisma.modelEvaluationRun.findFirst({ where: { status: "completed" }, orderBy: { completedAt: "desc" } });
+  const metrics = parseJson<ModelEvaluationMetrics>(latestEvaluation?.metricsJson ?? null);
+  const strategy = metrics?.combinedTrading?.selectedStrategy;
+  if (
+    metrics?.quality.status !== "promising"
+    || !strategy
+    || strategy.id === "no-trade guard"
+    || metrics.combinedTrading.statisticallyPositive !== true
+    || (strategy.signalRule !== "polymarket-only" && strategy.signalRule !== "contrarian")
+  ) return null;
+  return {
+    minimumSignalZ: strategy.minimumSignalZ,
+    signalRule: strategy.signalRule,
+    positionPct: strategy.positionPct,
+    modelVersion: metrics.modelVersion,
+  };
+}
 
 export async function ensureCombinedShadowRun(configOverride: Partial<CombinedShadowConfig> = {}) {
   const existing = await prisma.combinedShadowRun.findFirst({ where: { status: "running" }, orderBy: { startedAt: "desc" } });
@@ -100,6 +123,7 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
   equity = run.cash + positionsPnl;
 
   const scan = await scanCombinedLiveSignal(now);
+  const executableSignal = scan.signal ? applyCombinedSignalRule(scan.signal, config.signalRule) : null;
   let action = "WAIT";
   let reason = scan.reason;
   if (riskReason) {
@@ -119,13 +143,13 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
       action = "SKIP";
       reason = "同じ予測テーマはすでに検証済み";
     } else {
-      const opened = await openShadowPosition(run, scan.signal, equity, config, now);
+      const opened = await openShadowPosition(run, executableSignal as CombinedLiveSignal, equity, config, now);
       run = opened.run;
       positions.push(opened.position);
       prices.set(opened.position.asset, scan.signal.spotPrice);
       await maybeMirrorTestnetOrder(run, opened.position, "OPEN", scan.signal.spotPrice);
-      action = scan.signal.side === "LONG" ? "OPEN_LONG" : "OPEN_SHORT";
-      reason = `${scan.signal.asset}を${scan.signal.side === "LONG" ? "ロング" : "ショート"}で仮想発注`;
+      action = executableSignal?.side === "LONG" ? "OPEN_LONG" : "OPEN_SHORT";
+      reason = `${scan.signal.asset}を${executableSignal?.side === "LONG" ? "ロング" : "ショート"}で仮想発注`;
     }
   }
 
@@ -143,7 +167,7 @@ export async function tickCombinedShadowRun(runId?: string, now = new Date()) {
   const decision = {
     action,
     reason,
-    signal: scan.signal,
+    signal: executableSignal,
     scannedMarkets: scan.scannedMarkets,
     eligibleEvents: scan.eligibleEvents,
     threshold: config.minimumSignalZ,
@@ -277,11 +301,16 @@ async function openShadowPosition(run: CombinedShadowRun, signal: CombinedLiveSi
       quantity,
       referencePrice: signal.spotPrice,
       status: "FILLED",
-      reason: `signalZ=${signal.signalZ.toFixed(4)} target=${signal.impliedTarget.toFixed(2)}`,
+      reason: `rule=${config.signalRule} signalZ=${signal.signalZ.toFixed(4)} target=${signal.impliedTarget.toFixed(2)}`,
     },
   });
   const updatedRun = await prisma.combinedShadowRun.update({ where: { id: run.id }, data: { cash: run.cash - entryFee } });
   return { run: updatedRun, position };
+}
+
+export function applyCombinedSignalRule(signal: CombinedLiveSignal, rule: CombinedShadowConfig["signalRule"]): CombinedLiveSignal {
+  if (rule !== "contrarian") return signal;
+  return { ...signal, side: signal.side === "LONG" ? "SHORT" : "LONG" };
 }
 
 async function closeShadowPosition(
@@ -446,6 +475,8 @@ function normalizeConfig(override: Partial<CombinedShadowConfig>) {
   return {
     initialEquity: positive(override.initialEquity, defaultConfig.initialEquity),
     minimumSignalZ: clamp(override.minimumSignalZ ?? defaultConfig.minimumSignalZ, 0.1, 3),
+    signalRule: override.signalRule === "contrarian" ? "contrarian" : "polymarket-only",
+    modelVersion: typeof override.modelVersion === "string" && override.modelVersion.trim() ? override.modelVersion.trim() : null,
     positionPct: clamp(override.positionPct ?? defaultConfig.positionPct, 0.01, 0.2),
     maxPositionNotional: positive(override.maxPositionNotional, defaultConfig.maxPositionNotional),
     maxConcurrentPositions: Math.max(1, Math.min(3, Math.floor(override.maxConcurrentPositions ?? defaultConfig.maxConcurrentPositions))),

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
 import { compareTestnetPositions, normalizeExchangeOrderStatus } from "../src/lib/combined-trading/hyperliquid-execution";
-import { calculateCombinedClose } from "../src/lib/combined-trading/service";
+import { applyCombinedSignalRule, calculateCombinedClose } from "../src/lib/combined-trading/service";
 import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
 import { evaluatePipelineAlerts } from "../src/lib/monitoring/operational-alerts";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
@@ -78,6 +78,36 @@ assert.ok(longClose.realizedPnl < longClose.grossPnl);
 assert.ok(shortClose.realizedPnl < shortClose.grossPnl);
 
 console.log("combined shadow cost tests passed");
+
+const syntheticLiveSignal = {
+  eventId: "event",
+  marketId: "market",
+  asset: "BTC" as const,
+  observedAt: "2026-01-01T00:00:00Z",
+  exitAt: "2026-01-02T00:00:00Z",
+  horizonHours: 24,
+  actualHoursToEnd: 24,
+  marketProbability: 0.8,
+  marketBestBid: 0.79,
+  marketBestAsk: 0.81,
+  marketSpread: 0.02,
+  polymarketReferencePrice: 100,
+  referenceSource: "BINANCE" as const,
+  referenceCapturedAt: "2026-01-01T00:00:00Z",
+  spotPrice: 100,
+  priceBasisPct: 0,
+  impliedTarget: 102,
+  realizedVolatility24h: 0.02,
+  signalZ: 1,
+  side: "LONG" as const,
+  sourceMarkets: 3,
+  ladderViolations: 0,
+  ladderAdjustmentRms: 0,
+};
+assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "polymarket-only").side, "LONG");
+assert.equal(applyCombinedSignalRule(syntheticLiveSignal, "contrarian").side, "SHORT");
+
+console.log("combined shadow signal-rule tests passed");
 
 const evaluationSamples: EvaluationSample[] = [];
 for (let eventIndex = 0; eventIndex < 80; eventIndex += 1) {
@@ -165,9 +195,18 @@ assert.equal(concurrentCombined.totalEligibleSignals, 120);
 assert.equal(concurrentCombined.validationEligibleSignals, 72);
 assert.equal(concurrentCombined.trades, 48);
 
-const guarded = evaluateCombinedTrading(combinedSamples.map((sample, index) => index < 36 ? ({
+const contrarianCombined = evaluateCombinedTrading(combinedSamples.map((sample) => ({
   ...sample,
   hyperliquidExitPrice: sample.hyperliquidExitPrice === 102 ? 98 : 102,
+})));
+assert.equal(contrarianCombined.selectedStrategy.signalRule, "contrarian");
+assert.equal(contrarianCombined.trades, 24);
+assert.ok(contrarianCombined.netReturnPct > 0);
+assert.ok(contrarianCombined.excessReturnPct > 0);
+
+const guarded = evaluateCombinedTrading(combinedSamples.map((sample, index) => index < 36 ? ({
+  ...sample,
+  hyperliquidExitPrice: 100,
 }) : sample));
 assert.equal(guarded.selectedStrategy.id, "no-trade guard");
 assert.equal(guarded.selectedFromValidation, false);

@@ -116,7 +116,7 @@ export async function getMonitoringSnapshot() {
   const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
-  const combinedConfig = parseJson<{ minimumSignalZ?: number }>(combinedRun?.configJson ?? null);
+  const combinedConfig = parseJson<{ minimumSignalZ?: number; signalRule?: "polymarket-only" | "contrarian"; modelVersion?: string | null }>(combinedRun?.configJson ?? null);
   const executionReadiness = getHyperliquidExecutionReadiness();
   const testnetReconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
   const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
@@ -188,6 +188,8 @@ export async function getMonitoringSnapshot() {
       riskStatus: combinedRun?.riskStatus ?? "NOT_STARTED",
       emergencyStopped: combinedRun?.emergencyStopped ?? false,
       minimumSignalZ: combinedConfig?.minimumSignalZ ?? null,
+      signalRule: combinedConfig?.signalRule ?? "polymarket-only",
+      modelVersion: combinedConfig?.modelVersion ?? null,
       funnel: {
         scans: combinedDecisions.length,
         scannedMarkets: latestCombinedDecision?.scannedMarkets ?? 0,
@@ -236,7 +238,7 @@ export async function getMonitoringSnapshot() {
       backtestPoints: backtestPointCount,
     },
     model: {
-      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v10",
+      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v11",
       selectedCandidate: evaluation?.selectedCandidate.id ?? null,
       selectedCandidateKind: evaluation?.selectedCandidate.kind ?? null,
       combinedStrategy: evaluation?.combinedTrading?.selectedStrategy.id ?? null,
