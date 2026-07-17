@@ -7,7 +7,7 @@ import type { EvaluationSample, ModelEvaluationMetrics, ModelEvaluationResult } 
 import { prisma } from "@/src/lib/server/prisma";
 
 const maximumEvents = 260;
-const maximumObservationAgeHours = 72;
+const maximumObservationAgeHours = 3;
 
 export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
   const id = crypto.randomUUID();
@@ -22,9 +22,11 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
         maximumObservationAgeHours,
         split: "60/20/20 chronological events",
         eventWeighting: "equal",
-        independentFeatures: "Hyperliquid 8h price and EWMA realized volatility",
-        candidateSelection: "walk-forward validation with positive 95% improvement interval",
-        maximumTradesPerEvent: 1,
+        signal: "Polymarket-implied 24h terminal median",
+        execution: "Hyperliquid 8h open-to-close, one non-overlapping position at a time",
+        candidateSelection: "validation-only signal threshold with positive 95% net-return interval and long-benchmark excess",
+        costs: "0.045% taker and 0.02% slippage per side, plus 0.03% funding per 24h",
+        maximumPositionPct: 0.2,
       }),
       startedAt,
     },

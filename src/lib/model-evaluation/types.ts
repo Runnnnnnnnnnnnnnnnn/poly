@@ -11,6 +11,10 @@ export type EvaluationSample = {
   structuralProbability?: number | null;
   spotPrice?: number | null;
   realizedVolatility24h?: number | null;
+  hyperliquidEntryAt?: string | null;
+  hyperliquidEntryPrice?: number | null;
+  hyperliquidExitAt?: string | null;
+  hyperliquidExitPrice?: number | null;
   thresholdKind?: "above" | "below" | "between" | null;
   thresholdLower?: number | null;
   thresholdUpper?: number | null;
@@ -23,6 +27,12 @@ export type ModelCandidate = {
   structuralWeight: number;
   regularization: number;
   coefficients?: [number, number, number];
+};
+
+export type CombinedStrategyCandidate = {
+  id: string;
+  minimumSignalZ: number;
+  positionPct: number;
 };
 
 export type ModelEvaluationMetrics = {
@@ -45,6 +55,8 @@ export type ModelEvaluationMetrics = {
     assets: Record<string, number>;
     structuralFeatureMarkets: number;
     structuralFeatureCoverage: number;
+    executionFeatureMarkets: number;
+    executionFeatureCoverage: number;
   };
   probability: {
     modelBrierScore: number;
@@ -70,6 +82,31 @@ export type ModelEvaluationMetrics = {
     assumedHalfSpread: number;
     assumedSlippage: number;
     entryEdge: number;
+  };
+  combinedTrading: {
+    selectedStrategy: CombinedStrategyCandidate;
+    eligibleSignals: number;
+    initialCapital: number;
+    endingCapital: number;
+    netReturnPct: number;
+    benchmarkReturnPct: number;
+    excessReturnPct: number;
+    trades: number;
+    longTrades: number;
+    shortTrades: number;
+    wins: number;
+    winRate: number | null;
+    directionalAccuracy: number | null;
+    averageNetTradeReturn: number | null;
+    returnConfidenceInterval95: [number, number] | null;
+    statisticallyPositive: boolean;
+    maxDrawdownPct: number;
+    totalFees: number;
+    totalSlippage: number;
+    totalFunding: number;
+    assumedTakerFeePerSide: number;
+    assumedSlippagePerSide: number;
+    assumedFundingPer24h: number;
   };
   quality: {
     status: "promising" | "inconclusive" | "underperforming";

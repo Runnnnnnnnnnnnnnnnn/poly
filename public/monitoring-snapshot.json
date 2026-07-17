@@ -1,10 +1,10 @@
 {
   "status": "offline",
-  "generatedAt": "2026-07-17T05:31:35.986Z",
+  "generatedAt": "2026-07-17T05:57:01.048Z",
   "collection": {
     "startedAt": "2026-07-13T02:42:17.427Z",
     "latestAt": "2026-07-16T19:32:43.657Z",
-    "totalRecords": 8518,
+    "totalRecords": 8520,
     "last24Hours": 6938
   },
   "polymarket": {
@@ -15,15 +15,20 @@
     "backtestPoints": 781
   },
   "model": {
-    "name": "Market Structure Ensemble v5",
+    "name": "Polymarket x Hyperliquid Signal v6",
     "selectedCandidate": "market guard",
     "selectedCandidateKind": "market",
+    "combinedStrategy": "no-trade guard",
+    "combinedMinimumSignalZ": 0,
     "structuralFeatureCoverage": 1,
     "evaluationStatus": "inconclusive",
     "latestAsset": "ETH・BTC・SOL・XRP",
     "latestBrierScore": 0.06813190454181237,
     "latestAccuracy": 0.9038752913752914,
     "latestReturnPct": 0,
+    "benchmarkReturnPct": 0,
+    "excessReturnPct": 0,
+    "eligibleSignals": 52,
     "testedMarkets": 482,
     "testedEvents": 52,
     "observations": 786,
@@ -34,13 +39,16 @@
       0
     ],
     "statisticallyPositive": false,
-    "completedAt": "2026-07-17T05:30:23.639Z",
+    "completedAt": "2026-07-17T05:55:42.077Z",
     "datasetStartedAt": "2024-03-01T00:00:00.000Z",
     "datasetEndedAt": "2026-07-16T16:00:00.000Z",
     "trades": 0,
+    "longTrades": 0,
+    "shortTrades": 0,
     "winRate": null,
+    "averageTradeReturn": null,
     "maxDrawdownPct": 0,
-    "aiPredictions": 63,
+    "aiPredictions": 65,
     "aiResolved": 0,
     "aiBrierScore": null,
     "marketBrierScore": null,
@@ -64,15 +72,15 @@
         "passed": true
       },
       {
-        "label": "同一テスト市場でPolymarketと比較",
+        "label": "未使用期間のHyperliquid価格で売買検証",
         "passed": true
       },
       {
-        "label": "価格構造データを90%以上取得",
+        "label": "売買価格データを90%以上取得",
         "passed": true
       },
       {
-        "label": "スプレッド・滑り・手数料を反映",
+        "label": "手数料・滑り・資金調達を控除",
         "passed": true
       },
       {
@@ -80,7 +88,15 @@
         "passed": true
       },
       {
-        "label": "誤差改善の95%区間がプラス",
+        "label": "最終テスト12取引以上",
+        "passed": false
+      },
+      {
+        "label": "常時ロングを上回る",
+        "passed": false
+      },
+      {
+        "label": "平均損益の95%区間がプラス",
         "passed": false
       }
     ]

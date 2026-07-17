@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 
+import { evaluateCombinedTrading } from "@/src/lib/model-evaluation/combined-trading";
 import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
-export const MODEL_VERSION = "Market Structure Ensemble v5";
+export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v6";
 export const HORIZON_HOURS = 24;
 export const MIN_TRAIN_EVENTS = 20;
 export const MIN_HOLDOUT_EVENTS = 15;
+const minimumCombinedTrades = 12;
 
 const candidates: ModelCandidate[] = [
   { id: "market guard", kind: "market", structuralWeight: 0, regularization: 0 },
@@ -63,22 +65,29 @@ export function evaluateChronologicalModel(input: EvaluationSample[]): ModelEval
   const relativeImprovement = marketBrierScore > 0 ? brierSkill / marketBrierScore : 0;
   const confidenceInterval95 = meanConfidenceInterval(improvements);
   const trading = simulateTrading(eventScores.map((event) => event.predictions));
+  const combinedTrading = evaluateCombinedTrading(validation, test);
   const assets = samples.reduce<Record<string, number>>((counts, sample) => ({ ...counts, [sample.asset]: (counts[sample.asset] ?? 0) + 1 }), {});
   const structuralFeatureMarkets = samples.filter(hasStructuralProbability).length;
   const structuralFeatureCoverage = samples.length ? structuralFeatureMarkets / samples.length : 0;
+  const executionFeatureMarkets = samples.filter(hasExecutionData).length;
+  const executionFeatureCoverage = samples.length ? executionFeatureMarkets / samples.length : 0;
   const statisticallyPositive = confidenceInterval95[0] > 0;
   const gates = [
     { id: "chronology", label: "時系列で訓練とテストを分離", passed: true },
     { id: "horizon", label: "全市場を決着24時間前で統一", passed: true },
-    { id: "same-holdout", label: "同一テスト市場でPolymarketと比較", passed: true },
-    { id: "features", label: "価格構造データを90%以上取得", passed: structuralFeatureCoverage >= 0.9 },
-    { id: "costs", label: "スプレッド・滑り・手数料を反映", passed: true },
+    { id: "same-holdout", label: "未使用期間のHyperliquid価格で売買検証", passed: true },
+    { id: "features", label: "売買価格データを90%以上取得", passed: executionFeatureCoverage >= 0.9 },
+    { id: "costs", label: "手数料・滑り・資金調達を控除", passed: true },
     { id: "sample", label: `最終テスト${MIN_HOLDOUT_EVENTS}イベント以上`, passed: testEvents.length >= MIN_HOLDOUT_EVENTS },
-    { id: "significance", label: "誤差改善の95%区間がプラス", passed: statisticallyPositive },
+    { id: "trades", label: `最終テスト${minimumCombinedTrades}取引以上`, passed: combinedTrading.trades >= minimumCombinedTrades },
+    { id: "benchmark", label: "常時ロングを上回る", passed: combinedTrading.excessReturnPct > 0 },
+    { id: "significance", label: "平均損益の95%区間がプラス", passed: combinedTrading.statisticallyPositive },
   ];
-  const qualityStatus = relativeImprovement < 0
-    ? "underperforming"
-    : testEvents.length >= MIN_HOLDOUT_EVENTS && statisticallyPositive && trading.netReturnPct > 0
+  const qualityStatus = combinedTrading.selectedStrategy.id === "no-trade guard"
+    ? "inconclusive"
+    : combinedTrading.netReturnPct < 0 || combinedTrading.excessReturnPct <= 0
+      ? "underperforming"
+      : testEvents.length >= MIN_HOLDOUT_EVENTS && combinedTrading.trades >= minimumCombinedTrades && combinedTrading.statisticallyPositive
       ? "promising"
       : "inconclusive";
 
@@ -102,6 +111,8 @@ export function evaluateChronologicalModel(input: EvaluationSample[]): ModelEval
       assets,
       structuralFeatureMarkets,
       structuralFeatureCoverage,
+      executionFeatureMarkets,
+      executionFeatureCoverage,
     },
     probability: {
       modelBrierScore,
@@ -116,6 +127,7 @@ export function evaluateChronologicalModel(input: EvaluationSample[]): ModelEval
       marketAccuracy: eventAverage(testEvents, predictions, ({ sample }) => Number((sample.marketProbability >= 0.5) === Boolean(sample.outcome))),
     },
     trading,
+    combinedTrading,
     quality: { status: qualityStatus, gates },
   };
 }
@@ -262,7 +274,7 @@ function feePerShare(price: number) {
 
 function createDatasetHash(samples: EvaluationSample[]) {
   return createHash("sha256")
-    .update(samples.map((sample) => `${sample.marketId}:${sample.observedAt}:${sample.marketProbability}:${sample.structuralProbability ?? "none"}:${sample.outcome}`).join("|"))
+    .update(samples.map((sample) => `${sample.marketId}:${sample.observedAt}:${sample.marketProbability}:${sample.structuralProbability ?? "none"}:${sample.hyperliquidEntryPrice ?? "none"}:${sample.hyperliquidExitPrice ?? "none"}:${sample.outcome}`).join("|"))
     .digest("hex")
     .slice(0, 16);
 }
@@ -308,6 +320,13 @@ function logLoss(probability: number, outcome: 0 | 1) {
 
 function hasStructuralProbability(sample: EvaluationSample): sample is EvaluationSample & { structuralProbability: number } {
   return typeof sample.structuralProbability === "number" && Number.isFinite(sample.structuralProbability);
+}
+
+function hasExecutionData(sample: EvaluationSample) {
+  return typeof sample.hyperliquidEntryPrice === "number"
+    && Number.isFinite(sample.hyperliquidEntryPrice)
+    && typeof sample.hyperliquidExitPrice === "number"
+    && Number.isFinite(sample.hyperliquidExitPrice);
 }
 
 function logit(probability: number) {

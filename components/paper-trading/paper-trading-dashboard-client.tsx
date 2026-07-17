@@ -92,12 +92,17 @@ type MonitoringSnapshot = {
     name: string;
     selectedCandidate: string | null;
     selectedCandidateKind: "market" | "logit-pool" | "ridge-logit-pool" | null;
+    combinedStrategy: string | null;
+    combinedMinimumSignalZ: number | null;
     structuralFeatureCoverage: number | null;
     evaluationStatus: "promising" | "inconclusive" | "underperforming" | "building";
     latestAsset: string | null;
     latestBrierScore: number | null;
     latestAccuracy: number | null;
     latestReturnPct: number | null;
+    benchmarkReturnPct: number | null;
+    excessReturnPct: number | null;
+    eligibleSignals: number;
     testedMarkets: number;
     testedEvents: number;
     observations: number;
@@ -109,7 +114,10 @@ type MonitoringSnapshot = {
     datasetStartedAt: string | null;
     datasetEndedAt: string | null;
     trades: number;
+    longTrades: number;
+    shortTrades: number;
     winRate: number | null;
+    averageTradeReturn: number | null;
     maxDrawdownPct: number | null;
     aiPredictions: number;
     aiResolved: number;
@@ -496,8 +504,8 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           </span>
         </div>
         <div className="mt-5 grid grid-cols-3 divide-x divide-border">
-          <CompactMetric label="モデル誤差" value={formatNumber(model?.latestBrierScore, 3)} />
-          <CompactMetric label="市場の誤差" value={formatNumber(model?.previousBrierScore, 3)} />
+          <CompactMetric label="戦略損益" value={formatPct(model?.latestReturnPct)} />
+          <CompactMetric label="常時ロング" value={formatPct(model?.benchmarkReturnPct)} />
           <CompactMetric label="最大下落" value={formatPct(model?.maxDrawdownPct)} />
         </div>
         <div className="mt-5 flex flex-wrap gap-2 border-t pt-4">
@@ -531,7 +539,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           ))}
           {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
         </div>
-        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Hyperliquidの価格と実現変動率を独立確率の計算に使用。特徴量取得率 {formatPct(modelFeatureCoverage(snapshot))}</p>
+        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">Polymarketの予測を売買方向に変換し、Hyperliquidの価格で損益を計測。売買価格取得率 {formatPct(modelFeatureCoverage(snapshot))}</p>
       </div>
     </section>
   );
@@ -555,9 +563,9 @@ const fallbackPipelines = [
 
 function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | null }) {
   const model = monitoring?.model;
-  const decision = getEvaluationSignal(model?.evaluationStatus, model?.selectedCandidateKind);
+  const decision = getEvaluationSignal(model?.evaluationStatus, model?.combinedStrategy);
   const DecisionIcon = decision.icon;
-  const comparisonTone: Tone = (model?.brierImprovement ?? 0) > 0 ? "good" : (model?.brierImprovement ?? 0) < 0 ? "bad" : "neutral";
+  const comparisonTone: Tone = (model?.excessReturnPct ?? 0) > 0 ? "good" : (model?.excessReturnPct ?? 0) < 0 ? "bad" : "neutral";
   const profitSignal = getProfitSignal(model?.latestReturnPct);
 
   return (
@@ -578,51 +586,61 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
         </div>
         <div className="grid grid-cols-3 divide-x divide-border">
           <ResultMetric
-            icon={Target}
-            label="市場との差"
-            value={formatImprovement(model?.brierImprovement)}
-            note={`${model?.testedEvents ?? 0}イベント比較`}
-            tone={comparisonTone}
-          />
-          <ResultMetric
             icon={profitSignal.icon}
-            label="検証損益"
+            label="組み合わせ損益"
             value={formatPct(model?.latestReturnPct)}
-            note={`${model?.trades ?? 0}回の仮想売買`}
+            note="全コスト控除後"
             tone={profitSignal.tone}
           />
           <ResultMetric
+            icon={Target}
+            label="常時ロングとの差"
+            value={formatSignedPct(model?.excessReturnPct)}
+            note={`基準 ${formatPct(model?.benchmarkReturnPct)}`}
+            tone={comparisonTone}
+          />
+          <ResultMetric
             icon={ShieldCheck}
-            label="最終テスト"
-            value={`${model?.testedEvents ?? 0}件`}
-            note={`${model?.testedMarkets ?? 0}市場 / 未使用期間`}
-            tone={(model?.testedEvents ?? 0) >= 15 ? "good" : "watch"}
+            label="取引数"
+            value={`${model?.trades ?? 0}回`}
+            note={`買い ${model?.longTrades ?? 0} / 売り ${model?.shortTrades ?? 0}`}
+            tone={(model?.trades ?? 0) >= 12 ? "good" : "watch"}
           />
         </div>
       </div>
-      <BrierComparison modelScore={model?.latestBrierScore} marketScore={model?.previousBrierScore} />
+      <ReturnComparison strategyReturn={model?.latestReturnPct} benchmarkReturn={model?.benchmarkReturnPct} />
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3 text-xs text-muted-foreground">
-        <span>{model?.name ?? "モデル検証準備中"} / 採用: {formatCandidate(model?.selectedCandidate, model?.selectedCandidateKind)}</span>
+        <span>{model?.name ?? "モデル検証準備中"} / 採用: {formatCombinedStrategy(model?.combinedStrategy)}</span>
         <span>{formatEvaluationPeriod(model?.datasetStartedAt, model?.datasetEndedAt)}</span>
       </div>
     </section>
   );
 }
 
-function BrierComparison({ modelScore, marketScore }: { modelScore: number | null | undefined; marketScore: number | null | undefined }) {
-  const maximum = Math.max(modelScore ?? 0, marketScore ?? 0, 0.01) * 1.12;
+function ReturnComparison({ strategyReturn, benchmarkReturn }: { strategyReturn: number | null | undefined; benchmarkReturn: number | null | undefined }) {
+  const maximum = Math.max(Math.abs(strategyReturn ?? 0), Math.abs(benchmarkReturn ?? 0), 0.01) * 1.12;
   const rows = [
-    { label: "開発モデル", value: modelScore, className: (modelScore ?? 0) <= (marketScore ?? 0) ? "bg-emerald-500" : "bg-rose-500" },
-    { label: "Polymarket", value: marketScore, className: "bg-slate-500" },
+    { label: "組み合わせ", value: strategyReturn, className: (strategyReturn ?? 0) >= 0 ? "bg-emerald-500" : "bg-rose-500" },
+    { label: "常時ロング", value: benchmarkReturn, className: "bg-slate-500" },
   ];
   return (
-    <div className="grid gap-2 border-t px-5 py-4" aria-label="予測誤差の比較">
-      <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground"><span>予測誤差</span><span>小さいほど良い</span></div>
+    <div className="grid gap-2 border-t px-5 py-4" aria-label="未使用期間の損益比較">
+      <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground"><span>未使用期間の損益</span><span>中央より右が利益</span></div>
       {rows.map((row) => (
-        <div key={row.label} className="grid grid-cols-[84px_minmax(0,1fr)_52px] items-center gap-2 text-xs">
+        <div key={row.label} className="grid grid-cols-[84px_minmax(0,1fr)_64px] items-center gap-2 text-xs">
           <span className="font-bold text-slate-700">{row.label}</span>
-          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${row.className}`} style={{ width: `${row.value === null || row.value === undefined ? 0 : Math.max(3, row.value / maximum * 100)}%` }} /></div>
-          <span className="text-right font-bold tabular-nums text-slate-950">{formatNumber(row.value, 3)}</span>
+          <div className="relative h-3 overflow-hidden rounded-full bg-slate-100">
+            <span className="absolute inset-y-0 left-1/2 w-px bg-slate-300" />
+            <span
+              className={`absolute inset-y-0 ${row.className}`}
+              style={row.value === null || row.value === undefined
+                ? { width: 0 }
+                : row.value >= 0
+                  ? { left: "50%", width: `${Math.max(2, Math.abs(row.value) / maximum * 50)}%` }
+                  : { right: "50%", width: `${Math.max(2, Math.abs(row.value) / maximum * 50)}%` }}
+            />
+          </div>
+          <span className="text-right font-bold tabular-nums text-slate-950">{formatSignedPct(row.value)}</span>
         </div>
       ))}
     </div>
@@ -824,17 +842,17 @@ function scoreBacktest(run: BacktestRun) {
 
 function getEvaluationSignal(
   status: MonitoringSnapshot["model"]["evaluationStatus"] | undefined,
-  selectedCandidateKind?: MonitoringSnapshot["model"]["selectedCandidateKind"],
+  combinedStrategy?: string | null,
 ): Signal {
   if (status === "promising") {
-    return { label: "改善を確認", description: "未使用期間でも市場価格より誤差が小さく、コスト控除後もプラスです。", tone: "good", icon: CheckCircle2 };
+    return { label: "優位性を確認", description: "Polymarketの予測を使ったHyperliquid取引が、未使用期間でもコスト控除後に基準を上回りました。", tone: "good", icon: CheckCircle2 };
   }
   if (status === "underperforming") {
-    return { label: "改善が必要", description: "市場価格を下回ったため、現在のモデルは本番利用せず改良を続けます。", tone: "bad", icon: TrendingDown };
+    return { label: "改善が必要", description: "組み合わせ戦略が損失、または常時ロングを下回ったため、本番利用せず改良を続けます。", tone: "bad", icon: TrendingDown };
   }
   if (status === "inconclusive") {
-    if (selectedCandidateKind === "market") {
-      return { label: "優位性は未確認", description: "独立モデルは採用基準に届かず、市場価格を基準として維持しています。", tone: "watch", icon: AlertCircle };
+    if (combinedStrategy === "no-trade guard") {
+      return { label: "取引を見送り", description: "検証期間で採用基準に届かなかったため、未使用期間では取引を行っていません。", tone: "watch", icon: AlertCircle };
     }
     return { label: "検証継続", description: "優位性を判断できるだけの差がまだ確認できていません。", tone: "watch", icon: AlertCircle };
   }
@@ -994,20 +1012,11 @@ function formatNumber(value: number | null | undefined, digits = 2) {
   return value === null || value === undefined || !Number.isFinite(value) ? "-" : value.toFixed(digits);
 }
 
-function formatImprovement(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  if (value > 0) return `${(value * 100).toFixed(1)}%改善`;
-  if (value < 0) return `${Math.abs(value * 100).toFixed(1)}%悪化`;
-  return "差なし";
-}
-
-function formatCandidate(
-  candidate: string | null | undefined,
-  kind: MonitoringSnapshot["model"]["selectedCandidateKind"] | undefined,
-) {
-  if (!candidate || !kind) return "選定中";
-  if (kind === "market") return "市場基準";
-  return kind === "ridge-logit-pool" ? "価格構造リッジ統合" : "価格構造統合";
+function formatCombinedStrategy(strategy: string | null | undefined) {
+  if (!strategy) return "選定中";
+  if (strategy === "no-trade guard") return "取引見送り";
+  const threshold = strategy.match(/[0-9.]+$/)?.[0];
+  return threshold ? `シグナル強度 ${threshold}以上` : strategy;
 }
 
 function modelFeatureCoverage(snapshot: MonitoringSnapshot | null) {

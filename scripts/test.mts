@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
+import { evaluateCombinedTrading } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { parseTerminalPriceCondition, probabilityForCondition } from "../src/lib/model-evaluation/price-structure";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
@@ -63,3 +64,39 @@ assert.equal(evaluation.quality.gates.find((gate) => gate.id === "same-holdout")
 assert.equal(evaluation.dataset.hash, evaluateChronologicalModel([...evaluationSamples].reverse()).dataset.hash);
 
 console.log("chronological model evaluation tests passed");
+
+const combinedSamples: EvaluationSample[] = [];
+for (let eventIndex = 0; eventIndex < 60; eventIndex += 1) {
+  const long = eventIndex % 2 === 0;
+  const entryAt = new Date(Date.UTC(2024, 0, 1 + eventIndex * 2, 0));
+  const exitAt = new Date(entryAt.getTime() + 24 * 60 * 60 * 1_000);
+  combinedSamples.push({
+    eventId: `combined-${eventIndex}`,
+    marketId: `combined-market-${eventIndex}`,
+    asset: "BTC",
+    title: "Will Bitcoin be above $100 on the test date?",
+    endAt: exitAt.toISOString(),
+    observedAt: entryAt.toISOString(),
+    marketProbability: long ? 0.8 : 0.2,
+    realizedVolatility24h: 0.02,
+    hyperliquidEntryAt: entryAt.toISOString(),
+    hyperliquidEntryPrice: 100,
+    hyperliquidExitAt: exitAt.toISOString(),
+    hyperliquidExitPrice: long ? 102 : 98,
+    thresholdKind: "above",
+    thresholdLower: 100,
+    thresholdUpper: null,
+    outcome: long ? 1 : 0,
+  });
+}
+
+const combined = evaluateCombinedTrading(combinedSamples.slice(0, 40), combinedSamples.slice(40));
+assert.notEqual(combined.selectedStrategy.id, "no-trade guard");
+assert.equal(combined.trades, 20);
+assert.equal(combined.longTrades, 10);
+assert.equal(combined.shortTrades, 10);
+assert.ok(combined.netReturnPct > 0);
+assert.ok(combined.excessReturnPct > 0);
+assert.equal(combined.statisticallyPositive, true);
+
+console.log("combined Polymarket and Hyperliquid strategy tests passed");

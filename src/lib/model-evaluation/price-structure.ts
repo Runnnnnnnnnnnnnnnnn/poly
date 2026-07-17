@@ -15,12 +15,14 @@ const candleSchema = z.array(z.object({
   T: z.number(),
   s: z.string(),
   i: z.string(),
+  o: z.string(),
   c: z.string(),
 }));
 
 type Candle = {
   openedAt: number;
   closedAt: number;
+  open: number;
   close: number;
 };
 
@@ -71,6 +73,9 @@ export async function addPriceStructureFeatures(samples: EvaluationSample[]): Pr
     const currentIndex = findLatestClosedCandle(candles, observedAt);
     if (currentIndex < minimumReturnCount) return sample;
     const current = candles[currentIndex];
+    const entry = candles.find((candle) => candle.openedAt >= observedAt && candle.openedAt < endAt);
+    const exitIndex = findLatestClosedCandle(candles, endAt);
+    const exit = exitIndex >= 0 ? candles[exitIndex] : null;
     const priceWindow = candles.slice(Math.max(0, currentIndex - volatilityLookbackCandles), currentIndex + 1);
     const returns = priceWindow
       .slice(1)
@@ -89,6 +94,10 @@ export async function addPriceStructureFeatures(samples: EvaluationSample[]): Pr
       structuralProbability,
       spotPrice: current.close,
       realizedVolatility24h: Math.sqrt(Math.max(1e-8, variancePerCandle * 24 / candleIntervalHours)),
+      hyperliquidEntryAt: entry ? new Date(entry.openedAt).toISOString() : null,
+      hyperliquidEntryPrice: entry?.open ?? null,
+      hyperliquidExitAt: exit ? new Date(exit.closedAt).toISOString() : null,
+      hyperliquidExitPrice: exit?.close ?? null,
       thresholdKind: condition.kind,
       thresholdLower: condition.lower,
       thresholdUpper: condition.upper,
@@ -118,8 +127,8 @@ async function fetchCandles(asset: CryptoAsset, startTime: number, endTime: numb
   }, 30_000);
   if (!response.ok) throw new Error(`Hyperliquid candle history ${asset}: ${response.status}`);
   return candleSchema.parse(await response.json())
-    .map((candle) => ({ openedAt: candle.t, closedAt: candle.T, close: Number(candle.c) }))
-    .filter((candle) => Number.isFinite(candle.close) && candle.close > 0)
+    .map((candle) => ({ openedAt: candle.t, closedAt: candle.T, open: Number(candle.o), close: Number(candle.c) }))
+    .filter((candle) => Number.isFinite(candle.open) && candle.open > 0 && Number.isFinite(candle.close) && candle.close > 0)
     .sort((a, b) => a.closedAt - b.closedAt);
 }
 
