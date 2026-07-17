@@ -170,7 +170,7 @@ python3 -m venv ~/.polymarket-watch/hyperliquid-venv
 
 テストネットの模擬USDCを取得するには、[公式faucetの条件](https://hyperliquid.gitbook.io/hyperliquid-docs/onboarding/testnet-faucet)により、同じマスターアドレスでメインネット入金済みである必要があります。秘密鍵にはメインウォレットではなく、Hyperliquidで承認した[専用APIウォレット](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/nonces-and-api-wallets)だけを使用してください。現在のテストネット対象は`HYPERLIQUID_TESTNET_ASSETS=BTC,ETH,SOL`で、XRPはテストネットの取引ユニバースにないため送信しません。接続確認中は`HYPERLIQUID_TESTNET_AUTO_MIRROR=0`を維持します。
 
-照合処理はCLOIDから注文状態を取得し、取引所注文ID、部分約定数量、平均約定価格、手数料、取消状態をDBへ保存します。緊急停止時はモデルを停止したうえで、テストネットの未約定注文をCLOIDで取り消します。
+照合処理はCLOIDから注文状態を取得し、取引所注文ID、部分約定数量、平均約定価格、手数料、取消状態をDBへ保存します。緊急停止時はモデルを先に停止し、専用テストネット口座に実在する全未約定注文を取り消したあと、全残存ポジションをreduce-only IOC注文で解消します。最後の再照合で注文または保有が1件でも残れば、停止完了として扱いません。
 
 固定公開URLを使う場合は、CloudflareでNamed Tunnelを作成し、`http://127.0.0.1:3001`へ向けた公開ホスト名を登録してから、`.env`へ`CLOUDFLARED_TUNNEL_TOKEN`と`CLOUDFLARED_PUBLIC_URL`を設定します。外部ヘルスチェックが失敗した場合はQuick Tunnelへ自動退避します。
 

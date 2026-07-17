@@ -3,6 +3,7 @@ import type { CombinedShadowPosition, CombinedShadowRun } from "@prisma/client";
 import {
   cancelOutstandingHyperliquidTestnetOrders,
   executeHyperliquidTestnetOrder,
+  flattenHyperliquidTestnetPositions,
   getHyperliquidExecutionReadiness,
 } from "@/src/lib/combined-trading/hyperliquid-execution";
 import {
@@ -316,8 +317,26 @@ export async function setCombinedShadowEmergencyStop(stopped: boolean) {
     data: { emergencyStopped: stopped },
   });
   if (stopped) {
-    const cancellation = await cancelOutstandingHyperliquidTestnetOrders();
-    if (cancellation.failed > 0) throw new Error(`テストネット注文${cancellation.failed}件の取消を確認できませんでした`);
+    let cancellationIssue: string | null = null;
+    let flattenIssue: string | null = null;
+    try {
+      const cancellation = await cancelOutstandingHyperliquidTestnetOrders();
+      if (cancellation.failed > 0 || cancellation.remainingOpenOrders.length > 0) {
+        cancellationIssue = `未約定注文: 取消失敗${cancellation.failed}件・残存${cancellation.remainingOpenOrders.length}件`;
+      }
+    } catch (error) {
+      cancellationIssue = `未約定注文: ${error instanceof Error ? error.message : "取消処理に失敗"}`;
+    }
+    try {
+      const flatten = await flattenHyperliquidTestnetPositions();
+      if (flatten.failed > 0 || flatten.remainingPositions.length > 0) {
+        flattenIssue = `保有: 解消失敗${flatten.failed}件・残存${flatten.remainingPositions.length}件`;
+      }
+    } catch (error) {
+      flattenIssue = `保有: ${error instanceof Error ? error.message : "解消処理に失敗"}`;
+    }
+    const issues = [cancellationIssue, flattenIssue].filter(Boolean);
+    if (issues.length) throw new Error(`テストネット緊急停止の再照合に失敗しました（${issues.join(" / ")}）`);
   }
   return tickActiveForwardRuns();
 }

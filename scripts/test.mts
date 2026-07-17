@@ -958,6 +958,13 @@ assert.deepEqual(compareTestnetPositions(
   [{ coin: "BTC", size: 0.04 }],
   [{ asset: "BTC", side: "LONG", action: "OPEN", quantity: 0.1, filledQuantity: 0.04, status: "PARTIALLY_FILLED" }],
 ), []);
+assert.deepEqual(compareTestnetPositions(
+  [],
+  [
+    { asset: "BTC", side: "LONG", action: "OPEN", quantity: 0.04, filledQuantity: 0.04, status: "FILLED" },
+    { asset: "BTC", side: "LONG", action: "FLATTEN", quantity: 0.04, filledQuantity: 0.04, status: "FILLED" },
+  ],
+), []);
 
 assert.equal(requiredApiAccess("GET", "/api/public-dashboard"), "public");
 assert.equal(requiredApiAccess("GET", "/api/markets/123"), "public");

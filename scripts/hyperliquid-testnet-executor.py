@@ -68,8 +68,59 @@ def main():
 
     wallet = eth_account.Account.from_key(secret_key)
     exchange = Exchange(wallet, constants.TESTNET_API_URL, account_address=account_address)
-    asset = str(request["asset"])
     available_assets = {item.get("name") for item in info.meta().get("universe", [])}
+    if action == "cancel_all":
+        results = []
+        for order in info.open_orders(account_address):
+            asset = str(order.get("coin", ""))
+            oid = order.get("oid")
+            try:
+                result = exchange.cancel(asset, int(oid))
+            except Exception as error:
+                result = {"status": "error", "error": str(error)}
+            results.append({"asset": asset, "oid": oid, "result": result})
+        output({"ok": True, "environment": "testnet", "cancelResults": results})
+        return
+
+    if action == "flatten":
+        requested_assets = set(request.get("assets", []))
+        client_order_prefix = str(request["clientOrderPrefix"])
+        slippage = float(request.get("slippage", 0.01))
+        results = []
+        for item in user_state.get("assetPositions", []):
+            position = item.get("position", {})
+            asset = str(position.get("coin", ""))
+            size = float(position.get("szi", 0))
+            if size == 0 or (requested_assets and asset not in requested_assets):
+                continue
+            client_order_id = f"{client_order_prefix}:{asset}"
+            cloid = Cloid.from_str("0x" + hashlib.sha256(client_order_id.encode("utf-8")).hexdigest()[:32])
+            try:
+                if asset not in available_assets:
+                    raise ValueError(f"{asset} is not available in the configured Hyperliquid testnet universe")
+                is_buy = size < 0
+                limit_price = exchange._slippage_price(asset, is_buy, slippage, None)
+                result = exchange.order(
+                    asset,
+                    is_buy,
+                    abs(size),
+                    limit_price,
+                    order_type={"limit": {"tif": "Ioc"}},
+                    reduce_only=True,
+                    cloid=cloid,
+                )
+            except Exception as error:
+                result = {"status": "error", "error": str(error)}
+            results.append({
+                "asset": asset,
+                "size": size,
+                "clientOrderId": client_order_id,
+                "result": result,
+            })
+        output({"ok": True, "environment": "testnet", "flattenResults": results})
+        return
+
+    asset = str(request["asset"])
     if asset not in available_assets:
         raise ValueError(f"{asset} is not available on Hyperliquid testnet")
     client_order_id = str(request["clientOrderId"])
@@ -97,11 +148,20 @@ def main():
             cloid=cloid,
         )
     elif action == "close":
-        result = exchange.market_close(
+        is_buy = bool(request["isBuy"])
+        limit_price = exchange._slippage_price(
             asset,
-            sz=size,
-            px=float(request["referencePrice"]),
-            slippage=float(request.get("slippage", 0.01)),
+            is_buy,
+            float(request.get("slippage", 0.01)),
+            float(request["referencePrice"]),
+        )
+        result = exchange.order(
+            asset,
+            is_buy,
+            size,
+            limit_price,
+            order_type={"limit": {"tif": "Ioc"}},
+            reduce_only=True,
             cloid=cloid,
         )
     else:

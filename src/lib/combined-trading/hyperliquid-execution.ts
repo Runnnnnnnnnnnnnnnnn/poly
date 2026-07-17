@@ -36,6 +36,8 @@ type ExecutorResponse = {
   openOrders?: unknown[];
   recentFills?: unknown[];
   orderStatuses?: Array<{ clientOrderId?: string; exchangeCloid?: string; result?: unknown }>;
+  cancelResults?: Array<{ asset?: string; oid?: string | number; result?: unknown }>;
+  flattenResults?: Array<{ asset?: string; size?: number; clientOrderId?: string; result?: unknown }>;
   error?: string;
 };
 
@@ -100,48 +102,93 @@ export async function cancelHyperliquidTestnetOrder(request: TestnetCancelReques
 
 export async function cancelOutstandingHyperliquidTestnetOrders() {
   const readiness = getHyperliquidExecutionReadiness();
-  if (!readiness.ready) return { ...readiness, attempted: 0, cancelled: 0, failed: 0 };
-  await reconcileHyperliquidTestnetOrders();
-  const orders = await prisma.combinedExecutionOrder.findMany({
-    where: {
-      environment: "TESTNET",
-      status: { in: ["SUBMITTED", "PENDING", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] },
-    },
-    orderBy: { createdAt: "asc" },
-    take: 100,
-  });
+  if (!readiness.ready) {
+    return { ...readiness, attempted: 0, cancelled: 0, failed: 0, remainingOpenOrders: [] };
+  }
+  const response = await runExecutor({ action: "cancel_all" });
+  if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet cancellation failed");
+
   let cancelled = 0;
   let failed = 0;
-  for (const order of orders) {
-    try {
-      const response = await cancelHyperliquidTestnetOrder({
-        asset: order.asset as TestnetCancelRequest["asset"],
-        clientOrderId: order.clientOrderId,
-      });
-      await prisma.combinedExecutionOrder.update({
-        where: { id: order.id },
-        data: {
-          status: response.evidence.status,
-          exchangeStatus: response.evidence.exchangeStatus,
-          reason: response.evidence.reason,
-          responseJson: JSON.stringify(response.result ?? null),
-          lastReconciledAt: new Date(),
-        },
-      });
-      if (response.evidence.status === "CANCELLED") cancelled += 1;
-      else failed += 1;
-    } catch (error) {
+  for (const item of response.cancelResults ?? []) {
+    const evidence = parseHyperliquidOrderEvidence(item.result, "cancel");
+    if (evidence.status === "CANCELLED") cancelled += 1;
+    else failed += 1;
+  }
+
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
+  const reconciliation = await reconcileHyperliquidTestnetOrders();
+  return {
+    ...readiness,
+    attempted: response.cancelResults?.length ?? 0,
+    cancelled,
+    failed,
+    remainingOpenOrders: reconciliation.openOrders,
+  };
+}
+
+export async function flattenHyperliquidTestnetPositions() {
+  const readiness = getHyperliquidExecutionReadiness();
+  if (!readiness.ready) {
+    return { ...readiness, attempted: 0, flattened: 0, failed: 0, remainingPositions: [] };
+  }
+  const response = await runExecutor({
+    action: "flatten",
+    clientOrderPrefix: crypto.randomUUID(),
+    slippage: 0.01,
+  });
+  if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet position flatten failed");
+
+  const run = await prisma.combinedShadowRun.findFirst({ orderBy: { startedAt: "desc" } });
+  let flattened = 0;
+  let failed = 0;
+  for (const item of response.flattenResults ?? []) {
+    if (!item.asset || !item.clientOrderId || typeof item.size !== "number" || item.size === 0) {
       failed += 1;
-      await prisma.combinedExecutionOrder.update({
-        where: { id: order.id },
+      continue;
+    }
+    const evidence = parseHyperliquidOrderEvidence(item.result, "order");
+    if (evidence.status === "FILLED") flattened += 1;
+    else failed += 1;
+    if (run) {
+      await prisma.combinedExecutionOrder.create({
         data: {
-          reason: error instanceof Error ? error.message : "testnet cancellation failed",
+          id: crypto.randomUUID(),
+          runId: run.id,
+          environment: "TESTNET",
+          clientOrderId: item.clientOrderId,
+          exchangeOrderId: evidence.exchangeOrderId,
+          exchangeStatus: evidence.exchangeStatus,
+          asset: item.asset,
+          side: item.size > 0 ? "LONG" : "SHORT",
+          action: "FLATTEN",
+          quantity: Math.abs(item.size),
+          filledQuantity: evidence.filledQuantity,
+          averageFillPrice: evidence.averageFillPrice,
+          feePaid: evidence.feePaid,
+          referencePrice: evidence.averageFillPrice,
+          status: evidence.status,
+          reason: evidence.reason ?? "emergency position flatten",
+          responseJson: JSON.stringify(item.result ?? null),
           lastReconciledAt: new Date(),
         },
       });
     }
   }
-  return { ...readiness, attempted: orders.length, cancelled, failed };
+
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
+  const reconciliation = await reconcileHyperliquidTestnetOrders();
+  const remainingPositions = reconciliation.positions.filter((position) => (
+    position.coin
+    && Math.abs(position.size ?? 0) > 1e-8
+  ));
+  return {
+    ...readiness,
+    attempted: response.flattenResults?.length ?? 0,
+    flattened,
+    failed,
+    remainingPositions,
+  };
 }
 
 export async function reconcileHyperliquidTestnetOrders() {
@@ -190,6 +237,7 @@ export async function reconcileHyperliquidTestnetOrders() {
       environment: "TESTNET",
       OR: [{ filledQuantity: { gt: 0 } }, { status: "FILLED" }],
     },
+    orderBy: { createdAt: "asc" },
     select: { asset: true, side: true, action: true, quantity: true, filledQuantity: true, status: true },
   });
   const positionMismatches = compareTestnetPositions(response.positions ?? [], filledOrders);
@@ -213,6 +261,10 @@ export function compareTestnetPositions(
 ) {
   const expected = new Map<string, number>();
   for (const order of filledOrders) {
+    if (order.action === "FLATTEN") {
+      expected.set(order.asset, 0);
+      continue;
+    }
     const direction = order.side === "LONG" ? 1 : -1;
     const action = order.action === "OPEN" ? 1 : -1;
     const quantity = typeof order.filledQuantity === "number" && order.filledQuantity > 0
