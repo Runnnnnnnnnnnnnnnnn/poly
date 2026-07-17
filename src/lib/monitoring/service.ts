@@ -4,6 +4,11 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 import type { BacktestMetrics } from "@/src/lib/backtest/types";
+import {
+  evaluateForwardExperiment,
+  forwardControlExperimentKey,
+  forwardStrategyExperimentKey,
+} from "@/src/lib/combined-trading/forward-evaluation";
 import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
 import { getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
@@ -72,8 +77,13 @@ export async function getMonitoringSnapshot() {
     ?? null;
   const evaluation = parseJson<ModelEvaluationMetrics>(latestEvaluation?.metricsJson ?? null);
   const combinedRun = combinedRuns.find((run) => (
+    parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.experimentKey === forwardStrategyExperimentKey
+  )) ?? combinedRuns.find((run) => (
     parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.forwardOnly === true
   )) ?? combinedRuns[0] ?? null;
+  const controlRun = combinedRuns.find((run) => (
+    parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.experimentKey === forwardControlExperimentKey
+  )) ?? null;
 
   const resolvedAiRows = aiRows.filter((row) => row.resolvedOutcome !== null && row.brierScore !== null);
   const averageAiBrier = average(resolvedAiRows.map((row) => row.brierScore as number));
@@ -89,7 +99,7 @@ export async function getMonitoringSnapshot() {
         prisma.paperFill.count({ where: { runId: latestRunningPaper.id } }),
       ])
     : [null, 0, 0];
-  const [latestCombinedDecision, latestCombinedSnapshot, combinedOpenPositions, combinedClosedTrades, combinedWinningTrades, combinedDecisions, combinedClosedPositions] = combinedRun
+  const [latestCombinedDecision, latestCombinedSnapshot, combinedOpenPositions, combinedClosedTrades, combinedWinningTrades, combinedDecisions, combinedPositions, controlPositions] = combinedRun
     ? await Promise.all([
         prisma.combinedShadowDecision.findFirst({ where: { runId: combinedRun.id }, orderBy: { observedAt: "desc" } }),
         prisma.combinedShadowEquitySnapshot.findFirst({ where: { runId: combinedRun.id }, orderBy: { capturedAt: "desc" } }),
@@ -102,13 +112,15 @@ export async function getMonitoringSnapshot() {
           orderBy: { observedAt: "asc" },
         }),
         prisma.combinedShadowPosition.findMany({
-          where: { runId: combinedRun.id, status: "CLOSED", exitPriceBasisPct: { not: null } },
-          select: { exitPriceBasisPct: true, exitReferenceCapturedAt: true, closedAt: true },
-          orderBy: { closedAt: "asc" },
+          where: { runId: combinedRun.id },
+          orderBy: { openedAt: "asc" },
         }),
+        controlRun
+          ? prisma.combinedShadowPosition.findMany({ where: { runId: controlRun.id }, orderBy: { openedAt: "asc" } })
+          : Promise.resolve([]),
       ])
-    : [null, null, [], 0, 0, [], []];
-  const measuredBasis = combinedClosedPositions.flatMap((position) => (
+    : [null, null, [], 0, 0, [], [], []];
+  const measuredBasis = combinedPositions.flatMap((position) => (
     typeof position.exitPriceBasisPct === "number" ? [position] : []
   ));
   const absoluteBasisValues = measuredBasis.map((position) => Math.abs(position.exitPriceBasisPct as number));
@@ -127,6 +139,21 @@ export async function getMonitoringSnapshot() {
       && (medianReferenceCaptureLagSeconds ?? Number.POSITIVE_INFINITY) <= 60
       ? "healthy" as const
       : "attention" as const;
+  const combinedConfig = parseJson<Partial<CombinedShadowConfig>>(combinedRun?.configJson ?? null);
+  const forwardEvaluation = combinedRun && combinedConfig?.forwardOnly === true
+    ? evaluateForwardExperiment({
+        strategyPositions: combinedPositions,
+        controlPositions,
+        strategyStartedAt: combinedRun.startedAt,
+        controlStartedAt: controlRun?.startedAt ?? null,
+        initialEquity: combinedRun.initialEquity,
+        takerFeePerSide: combinedConfig.takerFeePerSide ?? 0.00045,
+        slippagePerSide: combinedConfig.slippagePerSide ?? 0.0002,
+        fundingPer24h: combinedConfig.fundingPer24h ?? 0.0003,
+        maxDrawdownPct: combinedRun.maxDrawdownPct,
+        settlementBasisStatus,
+      })
+    : null;
   const latestPaperMetrics = parseJson<Record<string, number | null>>(latestCompletedPaper?.metricsJson ?? null);
   const newestDataAt = latestDate(
     polymarketAggregate._max.capturedAt,
@@ -138,13 +165,13 @@ export async function getMonitoringSnapshot() {
   const oldestDataAt = earliestDate(polymarketAggregate._min.capturedAt, hyperAggregate._min.capturedAt, paperEquityAggregate._min.capturedAt);
   const ageMs = newestDataAt ? now.getTime() - newestDataAt.getTime() : Number.POSITIVE_INFINITY;
   const status = ageMs <= freshnessMs ? "live" : ageMs <= 60 * 60 * 1_000 ? "delayed" : "offline";
-  const combinedEdgeConfirmed = evaluation?.quality.status === "promising"
+  const historicalCombinedEdgeConfirmed = evaluation?.quality.status === "promising"
     && evaluation.combinedTrading?.selectedStrategy.id !== "no-trade guard"
     && evaluation.combinedTrading?.statisticallyPositive === true;
+  const combinedEdgeConfirmed = historicalCombinedEdgeConfirmed || forwardEvaluation?.status === "promising";
   const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
-  const combinedConfig = parseJson<Partial<CombinedShadowConfig>>(combinedRun?.configJson ?? null);
   const executionReadiness = getHyperliquidExecutionReadiness();
   const testnetReconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
   const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
@@ -194,7 +221,8 @@ export async function getMonitoringSnapshot() {
       updatedAt: latestCombinedSnapshot?.capturedAt.toISOString() ?? null,
       initialEquity: combinedRun?.initialEquity ?? null,
       equity: latestCombinedSnapshot?.equity ?? combinedRun?.equity ?? null,
-      returnPct: combinedRun && combinedRun.initialEquity > 0 ? combinedRun.realizedPnl / combinedRun.initialEquity : null,
+      returnPct: forwardEvaluation?.netReturnPct
+        ?? (combinedRun && combinedRun.initialEquity > 0 ? combinedRun.realizedPnl / combinedRun.initialEquity : null),
       cash: combinedRun?.cash ?? null,
       realizedPnl: combinedRun?.realizedPnl ?? null,
       openPositions: combinedOpenPositions.map((position) => ({
@@ -212,9 +240,9 @@ export async function getMonitoringSnapshot() {
         openedAt: position.openedAt.toISOString(),
         exitAt: position.exitAt.toISOString(),
       })),
-      trades: combinedClosedTrades,
-      wins: combinedWinningTrades,
-      winRate: combinedClosedTrades > 0 ? combinedWinningTrades / combinedClosedTrades : null,
+      trades: forwardEvaluation?.trades ?? combinedClosedTrades,
+      wins: forwardEvaluation?.wins ?? combinedWinningTrades,
+      winRate: forwardEvaluation?.winRate ?? (combinedClosedTrades > 0 ? combinedWinningTrades / combinedClosedTrades : null),
       maxDrawdownPct: combinedRun?.maxDrawdownPct ?? null,
       riskStatus: combinedRun?.riskStatus ?? "NOT_STARTED",
       emergencyStopped: combinedRun?.emergencyStopped ?? false,
@@ -225,6 +253,7 @@ export async function getMonitoringSnapshot() {
       minimumFunding24h: combinedConfig?.minimumFunding24h ?? null,
       signalRule: combinedConfig?.signalRule ?? "polymarket-only",
       modelVersion: combinedConfig?.modelVersion ?? null,
+      forwardEvaluation,
       settlementBasis: {
         status: settlementBasisStatus,
         samples: measuredBasis.length,

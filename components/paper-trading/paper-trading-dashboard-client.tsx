@@ -8,6 +8,7 @@ import {
   BarChart3,
   BrainCircuit,
   CheckCircle2,
+  ChevronDown,
   CircleDot,
   Database,
   Gauge,
@@ -151,6 +152,46 @@ type MonitoringSnapshot = {
     minimumFunding24h: number | null;
     signalRule: CombinedSignalRule;
     modelVersion: string | null;
+    forwardEvaluation: {
+      status: "collecting" | "promising" | "underperforming";
+      trades: number;
+      wins: number;
+      winRate: number | null;
+      controlTrades: number;
+      comparableEvents: number;
+      minimumTrades: number;
+      minimumComparableEvents: number;
+      progressPct: number;
+      comparisonStartedAt: string | null;
+      netReturnPct: number | null;
+      benchmarkReturnPct: number | null;
+      benchmarkLabel: "Polymarket方向のみ" | "常時ロング" | "常時ショート" | null;
+      excessReturnPct: number | null;
+      excessConfidenceInterval95: [number, number] | null;
+      deflatedSharpeProbability: number | null;
+      maxDrawdownPct: number;
+      passedGates: number;
+      totalGates: number;
+      gates: Array<{
+        id: "trades" | "control" | "net-positive" | "benchmark" | "significance" | "selection-bias" | "drawdown" | "settlement";
+        label: string;
+        passed: boolean;
+      }>;
+      benchmarks: {
+        polymarketOnlyReturnPct: number | null;
+        alwaysLongReturnPct: number | null;
+        alwaysShortReturnPct: number | null;
+      };
+      attribution: {
+        byAsset: Array<{
+          asset: string;
+          trades: number;
+          wins: number;
+          returnContributionPct: number;
+          averageTradeReturnPct: number | null;
+        }>;
+      };
+    } | null;
     settlementBasis: {
       status: "collecting" | "healthy" | "attention";
       samples: number;
@@ -770,14 +811,22 @@ function FlowStep({ icon: Icon, number, title, source, detail, state, tone }: { 
 
 function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
   const shadow = snapshot?.combinedShadow;
+  const forward = shadow?.forwardEvaluation;
   const running = shadow?.status === "running" && !shadow.emergencyStopped;
-  const pnlSignal = getProfitSignal(shadow?.returnPct);
+  const displayedReturn = forward ? forward.netReturnPct : shadow?.returnPct;
+  const pnlSignal = getProfitSignal(displayedReturn);
   const DecisionIcon = running ? Activity : AlertCircle;
   const position = shadow?.openPositions[0];
   const latest = shadow?.latestDecision;
   const decisionLabel = formatShadowAction(latest?.action);
-  const hasClosedTrades = (shadow?.trades ?? 0) > 0;
+  const hasClosedTrades = (forward?.trades ?? shadow?.trades ?? 0) > 0;
   const forwardOnly = shadow?.forwardOnly === true;
+  const remainingTrades = Math.max(0, (forward?.minimumTrades ?? 50) - (forward?.trades ?? 0));
+  const evaluationMeta = forward?.status === "promising"
+    ? { label: "基準達成", tone: "good" as const }
+    : forward?.status === "underperforming"
+      ? { label: "改善が必要", tone: "bad" as const }
+      : { label: "収集中", tone: "neutral" as const };
 
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="組み合わせ仮想売買の現在成績">
@@ -785,26 +834,27 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
         <div className="flex items-center gap-2">
           <DecisionIcon className={`h-4 w-4 ${running ? "text-emerald-600" : "text-amber-600"}`} />
           <h2 className="text-sm font-bold text-slate-950">{forwardOnly ? "次期モデルのフォワード検証" : "リアルタイム検証"}</h2>
-          <span className="rounded-sm bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">{forwardOnly ? "開始後のみ採点" : "候補収集"}</span>
+          <span className={`rounded-sm px-2 py-0.5 text-[10px] font-bold ${tonePillClass(evaluationMeta.tone)}`}>{forwardOnly ? evaluationMeta.label : "候補収集"}</span>
         </div>
         <span className={`rounded-sm px-2 py-1 text-[11px] font-bold ${running ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{running ? "5分ごとに市場を確認" : shadow?.emergencyStopped ? "緊急停止中" : "開始待ち"}</span>
       </div>
       <div className="grid lg:grid-cols-[minmax(250px,0.8fr)_minmax(0,1.5fr)]">
         <div className={`border-b p-5 lg:border-b-0 lg:border-r sm:p-6 ${toneSoftClass(pnlSignal.tone)}`}>
-          <p className="text-xs font-bold text-muted-foreground">決済済み取引の成績</p>
-          <p className={`mt-3 text-4xl font-bold leading-none sm:text-5xl ${pnlSignal.tone === "good" ? "text-emerald-700" : pnlSignal.tone === "bad" ? "text-rose-700" : "text-slate-950"}`}>{hasClosedTrades ? formatSignedPct(shadow?.returnPct) : "未判定"}</p>
-          <div className="mt-4 flex items-center justify-between gap-3 text-xs font-semibold text-slate-600">
-            <span>残高 {formatUsd(shadow?.equity)}</span>
-            <span>実資金 $0</span>
+          <p className="text-xs font-bold text-muted-foreground">コスト控除後の累計損益</p>
+          <p className={`mt-3 text-4xl font-bold leading-none sm:text-5xl ${pnlSignal.tone === "good" ? "text-emerald-700" : pnlSignal.tone === "bad" ? "text-rose-700" : "text-slate-950"}`}>{hasClosedTrades ? formatSignedPct(displayedReturn) : "未判定"}</p>
+          <div className="mt-5 flex items-center justify-between gap-3 text-xs font-bold text-slate-700">
+            <span>{forward?.trades ?? shadow?.trades ?? 0} / {forward?.minimumTrades ?? 50}取引</span>
+            <span>{forward?.status === "collecting" || !forward ? `あと${remainingTrades}件` : `${forward.passedGates} / ${forward.totalGates}条件`}</span>
           </div>
-          {hasClosedTrades ? <VisualMeter tone={pnlSignal.tone} value={profitMeter(shadow?.returnPct)} className="mt-4" /> : <p className="mt-4 text-xs font-semibold leading-5 text-slate-600">決済が完了すると、コスト控除後の損益を表示します。</p>}
+          <VisualMeter tone={evaluationMeta.tone} value={(forward?.progressPct ?? 0) * 100} className="mt-2" />
+          <p className="mt-3 text-xs font-semibold leading-5 text-slate-600">{forward?.status === "promising" ? "優位性の基準をすべて満たしました。次はテストネット検証です。" : forward?.status === "underperforming" ? "十分な件数で基準を満たさず、実取引には進みません。" : "50件までは結果を確定せず、固定条件のまま収集します。"}</p>
         </div>
         <div className="grid min-w-0">
           <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
-            <CompactMetric label="決済完了" value={`${shadow?.trades ?? 0} / 50`} />
-            <CompactMetric label="保有中" value={`${shadow?.openPositions.length ?? 0}件`} />
-            <CompactMetric label="最大下落" value={formatPct(shadow?.maxDrawdownPct)} />
-            <CompactMetric label="参照価格差" value={(shadow?.settlementBasis.samples ?? 0) > 0 ? formatBasisBps(shadow?.settlementBasis.medianAbsolutePct) : "待機"} />
+            <CompactMetric label="決済完了" value={`${forward?.trades ?? shadow?.trades ?? 0} / ${forward?.minimumTrades ?? 50}`} />
+            <CompactMetric label="単純戦略との差" value={hasClosedTrades ? formatSignedPct(forward?.excessReturnPct) : "未判定"} />
+            <CompactMetric label="95%下限" value={forward?.status !== "collecting" ? formatSignedPct(forward?.excessConfidenceInterval95?.[0]) : "50件後"} />
+            <CompactMetric label="最大下落" value={hasClosedTrades ? formatPct(forward?.maxDrawdownPct ?? shadow?.maxDrawdownPct) : "未判定"} />
           </div>
           <div className="grid gap-3 border-t bg-slate-50 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
             <div className="min-w-0">
@@ -824,13 +874,47 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
         </div>
       </div>
       <ScanFunnel funnel={shadow?.funnel} />
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-5">
-        <span>{forwardOnly ? `実験開始 ${shadow?.startedAt ? formatJapanDateTime(shadow.startedAt) : "準備中"} / 過去データの遡及なし` : "採用前の固定ルールで収集中"} / 実取引判断には不使用</span>
-        {shadow?.experimentLabel ? <span>{shadow.experimentLabel}</span> : null}
-        <span>固定ルール: {formatShadowRule(shadow?.signalRule)} / 強度 {formatNumber(shadow?.minimumSignalZ, 2)}以上{shadow?.modelVersion ? ` / ${shadow.modelVersion}` : ""}</span>
-        <span>決済時の参照価格差: {shadow?.settlementBasis.samples ?? 0}件 / 中央 {formatBasisBps(shadow?.settlementBasis.medianAbsolutePct)} / 取得ずれ {formatSeconds(shadow?.settlementBasis.medianReferenceCaptureLagSeconds)}</span>
-        <span>{shadow?.testnet.ready ? shadow.testnet.autoMirrorEnabled ? "テストネット連動: 待機中" : "テストネット接続可" : "テストネット: 設定待ち"}</span>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-[11px] font-bold text-slate-600 sm:px-5">
+        <span>比較対象: {forward?.benchmarkLabel ?? "Polymarket方向のみを同時収集中"}</span>
+        <span className="text-rose-700">実取引 OFF</span>
       </div>
+      <details className="group border-t">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-800 sm:px-5">
+          <span>評価条件と資産別成績</span>
+          <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="border-t bg-slate-50 px-4 py-4 sm:px-5">
+          <p className="text-xs leading-5 text-slate-600">開始後のデータだけを使い、同時稼働するPolymarket単体戦略と同期間で比較します。</p>
+          <div className="mt-4 grid gap-x-6 sm:grid-cols-2">
+            {(forward?.gates ?? []).map((gate) => (
+              <div key={gate.id} className="flex items-center gap-2 border-b py-2.5 text-xs font-semibold text-slate-700">
+                {gate.passed ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <MinusCircle className="h-4 w-4 shrink-0 text-slate-400" />}
+                <span>{gate.label}</span>
+              </div>
+            ))}
+          </div>
+          {(forward?.attribution.byAsset.length ?? 0) > 0 ? (
+            <div className="mt-5">
+              <p className="text-xs font-bold text-slate-800">資産別</p>
+              <div className="mt-2 divide-y border-y">
+                {forward?.attribution.byAsset.map((asset) => (
+                  <div key={asset.asset} className="grid grid-cols-[48px_1fr_auto] items-center gap-3 py-2.5 text-xs">
+                    <span className="font-bold text-slate-950">{asset.asset}</span>
+                    <span className="font-semibold text-slate-600">{asset.trades}取引 / 勝率 {formatPct(asset.trades ? asset.wins / asset.trades : null)}</span>
+                    <span className={`font-bold ${asset.returnContributionPct >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(asset.returnContributionPct)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[11px] font-semibold text-slate-500">
+            <span>同期間比較 {forward?.comparableEvents ?? 0}件</span>
+            <span>参照価格差 {shadow?.settlementBasis.samples ?? 0}件 / 中央 {formatBasisBps(shadow?.settlementBasis.medianAbsolutePct)}</span>
+            <span>固定ルール {formatShadowRule(shadow?.signalRule)}</span>
+            <span>{shadow?.testnet.ready ? "テストネット接続可" : "テストネット設定待ち"}</span>
+          </div>
+        </div>
+      </details>
     </section>
   );
 }
@@ -1831,11 +1915,6 @@ function formatBasisBps(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   const basisPoints = value * 10_000;
   return `${basisPoints.toFixed(Math.abs(basisPoints) < 10 ? 1 : 0)}bp`;
-}
-
-function formatSeconds(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  return value < 60 ? `${Math.round(value)}秒` : `${(value / 60).toFixed(1)}分`;
 }
 
 function formatCompact(value: number | null | undefined) {

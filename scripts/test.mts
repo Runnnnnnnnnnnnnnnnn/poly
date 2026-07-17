@@ -4,6 +4,7 @@ import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
 import { compareTestnetPositions, normalizeExchangeOrderStatus } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
 import { applyCombinedSignalRule, calculateCombinedClose } from "../src/lib/combined-trading/service";
+import { evaluateForwardExperiment, type ForwardEvaluationPosition } from "../src/lib/combined-trading/forward-evaluation";
 import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
 import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts } from "../src/lib/monitoring/operational-alerts";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
@@ -89,6 +90,87 @@ assert.ok(fundingReceivingShort.funding < 0);
 assert.ok(fundingReceivingShort.realizedPnl > fundingPayingLong.realizedPnl);
 
 console.log("combined shadow cost tests passed");
+
+function syntheticForwardPosition(index: number, winning: boolean): ForwardEvaluationPosition {
+  const side = index % 2 === 0 ? "SHORT" : "LONG";
+  const sideMultiplier = side === "LONG" ? 1 : -1;
+  const openedAt = new Date(Date.UTC(2026, 0, 1 + index * 2));
+  const closedAt = new Date(openedAt.getTime() + 24 * 60 * 60 * 1_000);
+  const entrySpotPrice = 100;
+  const entryPrice = entrySpotPrice * (1 + sideMultiplier * closeCost.slippagePerSide);
+  const quantity = 500 / entryPrice;
+  const entryFee = 500 * closeCost.takerFeePerSide;
+  const markPrice = entrySpotPrice * (1 + sideMultiplier * (winning ? 0.02 : -0.02));
+  const close = calculateCombinedClose({
+    ...closeCost,
+    side,
+    quantity,
+    entryPrice,
+    entryFee,
+    markPrice,
+    openedAt,
+    now: closedAt,
+    fundingRate24h: 0,
+  });
+  return {
+    eventId: `forward-${index}`,
+    asset: index % 3 === 0 ? "ETH" : "BTC",
+    side,
+    quantity,
+    entryPrice,
+    entrySpotPrice,
+    markPrice,
+    entryFee,
+    realizedPnl: close.realizedPnl,
+    polymarketSide: side,
+    entryFunding24h: 0,
+    status: "CLOSED",
+    openedAt,
+    closedAt,
+  };
+}
+
+const forwardStrategyPositions = Array.from({ length: 60 }, (_, index) => syntheticForwardPosition(index, true));
+const forwardControlPositions = Array.from({ length: 120 }, (_, index) => syntheticForwardPosition(index, index < 60));
+const forwardEvaluationInput = {
+  strategyPositions: forwardStrategyPositions,
+  controlPositions: forwardControlPositions,
+  strategyStartedAt: new Date("2026-01-01T00:00:00Z"),
+  controlStartedAt: new Date("2026-01-01T00:00:00Z"),
+  initialEquity: 10_000,
+  takerFeePerSide: closeCost.takerFeePerSide,
+  slippagePerSide: closeCost.slippagePerSide,
+  fundingPer24h: closeCost.fundingPer24h,
+  maxDrawdownPct: 0.01,
+  settlementBasisStatus: "healthy" as const,
+};
+const forwardEvaluation = evaluateForwardExperiment(forwardEvaluationInput);
+assert.equal(forwardEvaluation.status, "promising");
+assert.equal(forwardEvaluation.trades, 60);
+assert.equal(forwardEvaluation.comparableEvents, 120);
+assert.ok((forwardEvaluation.netReturnPct ?? 0) > 0);
+assert.ok((forwardEvaluation.excessReturnPct ?? 0) > 0);
+assert.ok((forwardEvaluation.excessConfidenceInterval95?.[0] ?? 0) > 0);
+assert.ok((forwardEvaluation.deflatedSharpeProbability ?? 0) >= 0.95);
+assert.equal(forwardEvaluation.gates.every((gate) => gate.passed), true);
+assert.equal(forwardEvaluation.attribution.byAsset.reduce((total, group) => total + group.trades, 0), 60);
+
+const collectingForwardEvaluation = evaluateForwardExperiment({
+  ...forwardEvaluationInput,
+  strategyPositions: forwardStrategyPositions.slice(0, 10),
+  controlPositions: forwardControlPositions.slice(0, 20),
+});
+assert.equal(collectingForwardEvaluation.status, "collecting");
+assert.equal(collectingForwardEvaluation.trades, 10);
+
+const unprovenForwardEvaluation = evaluateForwardExperiment({
+  ...forwardEvaluationInput,
+  controlPositions: forwardStrategyPositions,
+});
+assert.equal(unprovenForwardEvaluation.status, "underperforming");
+assert.equal(unprovenForwardEvaluation.gates.find((gate) => gate.id === "benchmark")?.passed, false);
+
+console.log("forward experiment evaluation tests passed");
 
 const syntheticLiveSignal = {
   eventId: "event",

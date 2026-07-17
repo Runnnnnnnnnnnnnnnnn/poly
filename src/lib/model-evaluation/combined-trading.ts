@@ -541,7 +541,7 @@ export function deflatedSharpeProbability(returns: number[], strategyTrials: num
   return clamp(normalCdf(statistic), 0, 1);
 }
 
-function blockBootstrapMeanConfidenceInterval(values: number[]): [number, number] | null {
+export function blockBootstrapMeanConfidenceInterval(values: number[]): [number, number] | null {
   if (values.length < 2) return null;
   if (values.length < 5) return meanConfidenceInterval(values);
   const blockLength = Math.max(2, Math.ceil(Math.sqrt(values.length)));
