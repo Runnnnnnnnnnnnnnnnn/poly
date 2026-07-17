@@ -4,7 +4,7 @@ const LOCAL_API_STORAGE_KEY = "jmw.localApiBase";
 const LOCAL_API_TOKEN_STORAGE_KEY = "jmw.localApiToken";
 const DEFAULT_STATIC_LOCAL_API_BASE = process.env.NEXT_PUBLIC_LOCAL_API_BASE ?? "";
 const LIVE_CONNECTION_URL = process.env.NEXT_PUBLIC_LIVE_CONNECTION_URL
-  ?? "https://raw.githubusercontent.com/Runnnnnnnnnnnnnnnnn/poly/live/connection.json";
+  ?? "https://raw.githubusercontent.com/Runnnnnnnnnnnnnnnnn/poly/refs/heads/live/connection.json";
 const LIVE_CONNECTION_REFRESH_MS = 120_000;
 
 let liveConnectionPromise: Promise<string> | null = null;
