@@ -4,7 +4,7 @@ const LOCAL_API_STORAGE_KEY = "jmw.localApiBase";
 const LOCAL_API_TOKEN_STORAGE_KEY = "jmw.localApiToken";
 const DEFAULT_STATIC_LOCAL_API_BASE = process.env.NEXT_PUBLIC_LOCAL_API_BASE ?? "";
 const LIVE_CONNECTION_URL = process.env.NEXT_PUBLIC_LIVE_CONNECTION_URL
-  ?? "https://api.github.com/repos/Runnnnnnnnnnnnnnnnn/poly/contents/connection.json?ref=live";
+  ?? "https://raw.githubusercontent.com/Runnnnnnnnnnnnnnnnn/poly/live/connection.json";
 const LIVE_CONNECTION_REFRESH_MS = 120_000;
 
 let liveConnectionPromise: Promise<string> | null = null;
@@ -71,7 +71,10 @@ export async function discoverLiveApiBase() {
       if (getLocalApiBase() !== normalized) setLocalApiBase(normalized);
       return normalized;
     })
-    .catch(() => getLocalApiBase());
+    .catch(() => {
+      liveConnectionPromise = null;
+      return getLocalApiBase();
+    });
 
   return liveConnectionPromise;
 }
