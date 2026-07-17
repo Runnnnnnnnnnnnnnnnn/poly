@@ -113,6 +113,28 @@ type MonitoringSnapshot = {
       latestAt: string | null;
       maximumSkewMs: number | null;
       targetCadenceMinutes: number;
+      quality?: {
+        status: "collecting" | "healthy" | "attention";
+        records: number;
+        completeRecords: number;
+        totalRecords: number;
+        coverage: number;
+        durationHours: number;
+        medianSkewMs: number | null;
+        p95SkewMs: number | null;
+        medianSpread: number | null;
+        p95Spread: number | null;
+        medianAbsoluteBasisPct: number | null;
+        p95AbsoluteBasisPct: number | null;
+        passedGates: number;
+        totalGates: number;
+        assets: Array<{ asset: string; records: number }>;
+        gates: Array<{
+          id: "records" | "duration" | "coverage" | "timing" | "assets" | "basis";
+          label: string;
+          passed: boolean;
+        }>;
+      };
     };
   };
   tradeReadiness: {
@@ -1001,6 +1023,7 @@ function PaperExperimentPanel({ snapshot }: { snapshot: MonitoringSnapshot | nul
 function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapshot | null; readOnly: boolean }) {
   const healthyPipelines = snapshot?.pipelines.filter((pipeline) => pipeline.status === "healthy").length ?? 0;
   const synchronizedPrices = snapshot?.collection.synchronizedPrices;
+  const synchronizedQuality = synchronizedPrices?.quality;
   const operationRows = [
     {
       label: "異常通知",
@@ -1032,7 +1055,9 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
         <MonitorMetric
           label="1分価格同期"
           value={formatCompact(synchronizedPrices?.records)}
-          note={synchronizedPrices?.records ? `最大ずれ ${formatMilliseconds(synchronizedPrices.maximumSkewMs)}` : "新しい記録を収集中"}
+          note={synchronizedQuality
+            ? `同期率 ${formatPct(synchronizedQuality.coverage)} / 95%ずれ ${formatMilliseconds(synchronizedQuality.p95SkewMs)}`
+            : synchronizedPrices?.records ? `最大ずれ ${formatMilliseconds(synchronizedPrices.maximumSkewMs)}` : "新しい記録を収集中"}
         />
         <MonitorMetric label="最終テスト" value={`${snapshot?.model.testedEvents ?? 0}件`} note="未使用期間で評価" />
         <MonitorMetric label="連続蓄積" value={formatElapsed(snapshot?.collection.startedAt)} note={relativeTime(snapshot?.collection.latestAt)} />
@@ -1072,12 +1097,16 @@ function MonitorMetric({ label, value, note }: { label: string; value: string; n
 
 function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
   const model = snapshot?.model;
+  const synchronizedQuality = snapshot?.collection.synchronizedPrices?.quality;
   const holdoutAudit = model?.closestHoldoutAudit;
   const auditedReturn = holdoutAudit?.netReturnPct ?? model?.latestReturnPct;
   const auditedBenchmark = holdoutAudit?.benchmarkReturnPct ?? model?.benchmarkReturnPct;
   const auditedDrawdown = holdoutAudit?.maxDrawdownPct ?? model?.maxDrawdownPct;
   const passedChecks = snapshot?.backtestQuality.checks.filter((check) => check.passed).length ?? 0;
   const qualitySignal = getEvaluationSignal(snapshot?.backtestQuality.status);
+  const synchronizedTone: Tone = synchronizedQuality?.status === "healthy"
+    ? "good"
+    : synchronizedQuality?.status === "attention" ? "bad" : "watch";
   return (
     <details className="rounded-lg border border-border bg-white shadow-sm">
       <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 sm:px-5">
@@ -1114,9 +1143,24 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Layers3 className="h-5 w-5 text-primary" />
-            <h2 className="text-base font-bold text-slate-950">相場環境データ</h2>
+            <h2 className="text-base font-bold text-slate-950">同期価格の品質</h2>
           </div>
-          <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">モデル入力済み</span>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${tonePillClass(synchronizedTone)}`}>
+            {synchronizedQuality?.status === "healthy" ? "基準合格" : synchronizedQuality?.status === "attention" ? "要改善" : "48時間を確認中"}
+          </span>
+        </div>
+        <div className="mt-5 grid grid-cols-3 divide-x divide-border">
+          <CompactMetric label="同期率" value={formatPct(synchronizedQuality?.coverage)} />
+          <CompactMetric label="時刻ずれ 95%" value={formatMilliseconds(synchronizedQuality?.p95SkewMs)} />
+          <CompactMetric label="価格差 95%" value={formatBasisBps(synchronizedQuality?.p95AbsoluteBasisPct)} />
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2 border-t pt-4">
+          {(synchronizedQuality?.gates ?? []).map((gate) => (
+            <span key={gate.id} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold ${gate.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+              {gate.passed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleDot className="h-3.5 w-3.5" />}
+              {gate.label}
+            </span>
+          ))}
         </div>
         <div className="mt-4 divide-y divide-border">
           {(snapshot?.hyperliquid.assets ?? []).map((item) => (
@@ -1132,7 +1176,7 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
           {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
         </div>
         <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
-          過去検証はHyperliquidの1時間足を使用。現在はCLOB板・判定参照価格・Hyperliquid価格を1分ごとに同時保存し、高精度検証用データを{formatCompact(snapshot?.collection.synchronizedPrices?.records)}件蓄積しています。
+          過去検証はHyperliquidの1時間足を使用。CLOB板・判定参照価格・Hyperliquid価格を1分ごとに同時保存し、{formatCompact(snapshot?.collection.synchronizedPrices?.records)}件を48時間連続で検査しています。
         </p>
       </div>
       </div>

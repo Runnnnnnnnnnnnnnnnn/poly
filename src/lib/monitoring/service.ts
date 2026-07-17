@@ -13,6 +13,7 @@ import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
 import { getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
+import { evaluateSynchronizedPriceQuality } from "@/src/lib/monitoring/synchronized-quality";
 
 const monitoredAssets = ["BTC", "ETH", "SOL", "XRP", "HYPE"] as const;
 const freshnessMs = 12 * 60 * 1_000;
@@ -27,6 +28,8 @@ export async function getMonitoringSnapshot() {
     polymarketLast24Hours,
     synchronizedAggregate,
     synchronizedLast24Hours,
+    synchronizedCompleteAggregate,
+    synchronizedCompleteLast24Hours,
     marketCount,
     backtestPointCount,
     backtestRunCount,
@@ -53,8 +56,11 @@ export async function getMonitoringSnapshot() {
       where: {
         bestBid: { not: null },
         bestAsk: { not: null },
+        spread: { not: null },
+        synchronizationVersion: "fetch-time-v2",
         hyperliquidMidPrice: { not: null },
         referencePrice: { not: null },
+        priceBasisPct: { not: null },
         captureSkewMs: { lte: 60_000 },
       },
       _count: { _all: true },
@@ -65,9 +71,40 @@ export async function getMonitoringSnapshot() {
         capturedAt: { gte: last24Hours },
         bestBid: { not: null },
         bestAsk: { not: null },
+        spread: { not: null },
+        synchronizationVersion: "fetch-time-v2",
         hyperliquidMidPrice: { not: null },
         referencePrice: { not: null },
+        priceBasisPct: { not: null },
         captureSkewMs: { lte: 60_000 },
+      },
+    }),
+    prisma.marketSnapshot.aggregate({
+      where: {
+        bestBid: { not: null },
+        bestAsk: { not: null },
+        spread: { not: null },
+        synchronizationVersion: "fetch-time-v2",
+        hyperliquidMidPrice: { not: null },
+        referencePrice: { not: null },
+        priceBasisPct: { not: null },
+        captureSkewMs: { not: null },
+      },
+      _count: { _all: true },
+      _min: { capturedAt: true },
+      _max: { capturedAt: true },
+    }),
+    prisma.marketSnapshot.count({
+      where: {
+        capturedAt: { gte: last24Hours },
+        bestBid: { not: null },
+        bestAsk: { not: null },
+        spread: { not: null },
+        synchronizationVersion: "fetch-time-v2",
+        hyperliquidMidPrice: { not: null },
+        referencePrice: { not: null },
+        priceBasisPct: { not: null },
+        captureSkewMs: { not: null },
       },
     }),
     prisma.predictionMarket.count(),
@@ -98,6 +135,14 @@ export async function getMonitoringSnapshot() {
     ?? usableBacktests.find((item) => item.metrics.observations >= 100 && item.metrics.markets >= 10)
     ?? usableBacktests[0]
     ?? null;
+  const synchronizedQuality = await loadSynchronizedPriceQuality({
+    records: synchronizedAggregate._count._all,
+    completeRecords: synchronizedCompleteAggregate._count._all,
+    windowRecords: synchronizedLast24Hours,
+    windowCompleteRecords: synchronizedCompleteLast24Hours,
+    startedAt: synchronizedCompleteAggregate._min.capturedAt,
+    latestAt: synchronizedCompleteAggregate._max.capturedAt,
+  });
   const evaluation = parseJson<ModelEvaluationMetrics>(latestEvaluation?.metricsJson ?? null);
   const combinedRun = combinedRuns.find((run) => (
     parseJson<Partial<CombinedShadowConfig>>(run.configJson)?.experimentKey === forwardStrategyExperimentKey
@@ -227,6 +272,7 @@ export async function getMonitoringSnapshot() {
         latestAt: synchronizedAggregate._max.capturedAt?.toISOString() ?? null,
         maximumSkewMs: synchronizedAggregate._max.captureSkewMs ?? null,
         targetCadenceMinutes: 1,
+        quality: synchronizedQuality,
       },
     },
     tradeReadiness: {
@@ -238,7 +284,17 @@ export async function getMonitoringSnapshot() {
         ? executionReadiness.autoMirrorEnabled ? "testnet_armed" : "testnet_ready"
         : executionReadiness.installed ? "connector_ready" : "not_installed",
       gates: [
-        { id: "data", label: "データ収集", status: status === "live" ? "ready" : "attention" },
+        {
+          id: "data",
+          label: "同期データ品質",
+          status: status !== "live"
+            ? "attention" as const
+            : synchronizedQuality.status === "healthy"
+              ? "ready" as const
+              : synchronizedQuality.status === "collecting"
+                ? "running" as const
+                : "attention" as const,
+        },
         { id: "edge", label: "優位性確認", status: combinedEdgeConfirmed ? "ready" : "blocked" },
         { id: "shadow", label: "シャドー検証", status: combinedShadowRunning ? "running" : "not_started" },
         { id: "testnet", label: "テストネット", status: executionReadiness.ready ? "ready" : executionReadiness.installed ? "attention" : "not_started" },
@@ -572,6 +628,124 @@ function median(values: number[]) {
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+async function loadSynchronizedPriceQuality(input: {
+  records: number;
+  completeRecords: number;
+  windowRecords: number;
+  windowCompleteRecords: number;
+  startedAt: Date | null;
+  latestAt: Date | null;
+}) {
+  if (!input.startedAt || !input.latestAt) {
+    return evaluateSynchronizedPriceQuality({
+      ...input,
+      totalRecords: 0,
+      medianSkewMs: null,
+      p95SkewMs: null,
+      medianSpread: null,
+      p95Spread: null,
+      medianAbsoluteBasisPct: null,
+      p95AbsoluteBasisPct: null,
+      maximumCaptureGapMs: null,
+      assets: [],
+    });
+  }
+
+  const qualityStartedAt = new Date(Math.max(input.startedAt.getTime(), input.latestAt.getTime() - 24 * 60 * 60 * 1_000));
+  const continuityStartedAt = new Date(Math.max(input.startedAt.getTime(), input.latestAt.getTime() - 48 * 60 * 60 * 1_000));
+  const [totalRecords, quantileRows, assetRows, continuityRows] = await Promise.all([
+    prisma.marketSnapshot.count({ where: { capturedAt: { gte: qualityStartedAt } } }),
+    prisma.$queryRaw<Array<Record<string, number | bigint | null>>>`
+      WITH complete AS (
+        SELECT
+          "captureSkewMs",
+          "spread",
+          ABS("priceBasisPct") AS "absoluteBasisPct"
+        FROM "MarketSnapshot"
+        WHERE "capturedAt" >= ${qualityStartedAt}
+          AND "synchronizationVersion" = 'fetch-time-v2'
+          AND "bestBid" IS NOT NULL
+          AND "bestAsk" IS NOT NULL
+          AND "spread" IS NOT NULL
+          AND "hyperliquidMidPrice" IS NOT NULL
+          AND "referencePrice" IS NOT NULL
+          AND "priceBasisPct" IS NOT NULL
+          AND "captureSkewMs" IS NOT NULL
+      ), ranked AS (
+        SELECT
+          *,
+          ROW_NUMBER() OVER (ORDER BY "captureSkewMs") AS "skewRank",
+          ROW_NUMBER() OVER (ORDER BY "spread") AS "spreadRank",
+          ROW_NUMBER() OVER (ORDER BY "absoluteBasisPct") AS "basisRank",
+          COUNT(*) OVER () AS "total"
+        FROM complete
+      )
+      SELECT
+        MAX(CASE WHEN "skewRank" = CAST(("total" - 1) * 0.5 AS INTEGER) + 1 THEN "captureSkewMs" END) AS "medianSkewMs",
+        MAX(CASE WHEN "skewRank" = CAST(("total" - 1) * 0.95 AS INTEGER) + 1 THEN "captureSkewMs" END) AS "p95SkewMs",
+        MAX(CASE WHEN "spreadRank" = CAST(("total" - 1) * 0.5 AS INTEGER) + 1 THEN "spread" END) AS "medianSpread",
+        MAX(CASE WHEN "spreadRank" = CAST(("total" - 1) * 0.95 AS INTEGER) + 1 THEN "spread" END) AS "p95Spread",
+        MAX(CASE WHEN "basisRank" = CAST(("total" - 1) * 0.5 AS INTEGER) + 1 THEN "absoluteBasisPct" END) AS "medianAbsoluteBasisPct",
+        MAX(CASE WHEN "basisRank" = CAST(("total" - 1) * 0.95 AS INTEGER) + 1 THEN "absoluteBasisPct" END) AS "p95AbsoluteBasisPct"
+      FROM ranked
+    `,
+    prisma.$queryRaw<Array<{ asset: string; records: number | bigint }>>`
+      SELECT market."asset" AS "asset", COUNT(*) AS "records"
+      FROM "MarketSnapshot" snapshot
+      INNER JOIN "PredictionMarket" market ON market."id" = snapshot."marketId"
+      WHERE snapshot."capturedAt" >= ${qualityStartedAt}
+        AND snapshot."synchronizationVersion" = 'fetch-time-v2'
+        AND snapshot."bestBid" IS NOT NULL
+        AND snapshot."bestAsk" IS NOT NULL
+        AND snapshot."spread" IS NOT NULL
+        AND snapshot."hyperliquidMidPrice" IS NOT NULL
+        AND snapshot."referencePrice" IS NOT NULL
+        AND snapshot."priceBasisPct" IS NOT NULL
+        AND snapshot."captureSkewMs" IS NOT NULL
+      GROUP BY market."asset"
+      ORDER BY market."asset"
+    `,
+    prisma.$queryRaw<Array<{ maximumCaptureGapMs: number | bigint | null }>>`
+      WITH cycles AS (
+        SELECT DISTINCT "capturedAt"
+        FROM "MarketSnapshot"
+        WHERE "capturedAt" >= ${continuityStartedAt}
+          AND "synchronizationVersion" = 'fetch-time-v2'
+          AND "bestBid" IS NOT NULL
+          AND "bestAsk" IS NOT NULL
+          AND "spread" IS NOT NULL
+          AND "hyperliquidMidPrice" IS NOT NULL
+          AND "referencePrice" IS NOT NULL
+          AND "priceBasisPct" IS NOT NULL
+          AND "captureSkewMs" IS NOT NULL
+      ), gaps AS (
+        SELECT "capturedAt" - LAG("capturedAt") OVER (ORDER BY "capturedAt") AS "gapMs"
+        FROM cycles
+      )
+      SELECT MAX("gapMs") AS "maximumCaptureGapMs" FROM gaps
+    `,
+  ]);
+  const quantiles = quantileRows[0] ?? {};
+  return evaluateSynchronizedPriceQuality({
+    ...input,
+    totalRecords,
+    medianSkewMs: finiteNumber(quantiles.medianSkewMs),
+    p95SkewMs: finiteNumber(quantiles.p95SkewMs),
+    medianSpread: finiteNumber(quantiles.medianSpread),
+    p95Spread: finiteNumber(quantiles.p95Spread),
+    medianAbsoluteBasisPct: finiteNumber(quantiles.medianAbsoluteBasisPct),
+    p95AbsoluteBasisPct: finiteNumber(quantiles.p95AbsoluteBasisPct),
+    maximumCaptureGapMs: finiteNumber(continuityRows[0]?.maximumCaptureGapMs),
+    assets: assetRows.map((row) => ({ asset: row.asset, records: finiteNumber(row.records) ?? 0 })),
+  });
+}
+
+function finiteNumber(value: number | bigint | null | undefined) {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function latestDate(...values: Array<Date | null | undefined>) {

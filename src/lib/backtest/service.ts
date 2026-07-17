@@ -71,6 +71,7 @@ export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; 
         bestAsk,
         spread: bestBid !== null && bestAsk !== null && bestAsk >= bestBid ? bestAsk - bestBid : null,
         clobCapturedAt: book?.capturedAt ?? null,
+        clobUpdatedAt: book?.updatedAt ?? null,
         hyperliquidMidPrice: hyperliquid?.midPrice ?? null,
         hyperliquidMarkPrice: hyperliquid?.markPrice ?? null,
         hyperliquidOraclePrice: hyperliquid?.oraclePrice ?? null,
@@ -81,11 +82,20 @@ export async function collectCryptoSnapshots(options: { assets?: CryptoAsset[]; 
         referenceCapturedAt: reference?.capturedAt ? new Date(reference.capturedAt) : null,
         priceBasisPct: hyperliquid && reference ? calculatePriceBasisPct(hyperliquid.midPrice, reference.price) : null,
         captureSkewMs,
+        synchronizationVersion: "fetch-time-v2",
         capturedAt,
       },
     });
     saved += 1;
-    if (bestBid !== null && bestAsk !== null && hyperliquid && reference && captureSkewMs !== null && captureSkewMs <= 60_000) synchronized += 1;
+    if (
+      bestBid !== null
+      && bestAsk !== null
+      && bestAsk >= bestBid
+      && hyperliquid
+      && reference
+      && captureSkewMs !== null
+      && captureSkewMs <= 60_000
+    ) synchronized += 1;
   }
 
   return {

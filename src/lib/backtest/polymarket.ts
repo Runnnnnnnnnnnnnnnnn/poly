@@ -304,7 +304,7 @@ export async function fetchCurrentBook(tokenId: string) {
 
 export async function fetchCurrentBooks(tokenIds: string[]) {
   const unique = Array.from(new Set(tokenIds.filter(Boolean))).slice(0, 500);
-  if (!unique.length) return new Map<string, ReturnType<typeof normalizeBook> & { capturedAt: Date }>();
+  if (!unique.length) return new Map<string, ReturnType<typeof normalizeBook> & { capturedAt: Date; updatedAt: Date | null }>();
   const response = await fetchWithTimeout(`${CLOB_API}/books`, {
     method: "POST",
     cache: "no-store",
@@ -312,10 +312,10 @@ export async function fetchCurrentBooks(tokenIds: string[]) {
     body: JSON.stringify(unique.map((tokenId) => ({ token_id: tokenId }))),
   }, 20_000);
   if (!response.ok) throw new Error(`books ${response.status}`);
-  const fallbackCapturedAt = new Date();
+  const capturedAt = new Date();
   return new Map(batchBookSchema.parse(await response.json()).map((book) => [
     book.asset_id,
-    { ...normalizeBook(book), capturedAt: parseBookTimestamp(book.timestamp) ?? fallbackCapturedAt },
+    { ...normalizeBook(book), capturedAt, updatedAt: parseBookTimestamp(book.timestamp) },
   ]));
 }
 

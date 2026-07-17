@@ -8,6 +8,7 @@ import { applyCombinedSignalRule, calculateCombinedClose } from "../src/lib/comb
 import { evaluateForwardExperiment, type ForwardEvaluationPosition } from "../src/lib/combined-trading/forward-evaluation";
 import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
 import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts } from "../src/lib/monitoring/operational-alerts";
+import { evaluateSynchronizedPriceQuality } from "../src/lib/monitoring/synchronized-quality";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
 import { deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
@@ -47,6 +48,28 @@ assert.equal(calculateCaptureSkewMs([
   new Date("2026-01-01T00:00:01.200Z"),
 ]), 1_200);
 assert.equal(calculateCaptureSkewMs([new Date("2026-01-01T00:00:00Z"), null]), null);
+const synchronizedQualityInput = {
+  records: 1_200,
+  completeRecords: 1_300,
+  windowRecords: 1_200,
+  windowCompleteRecords: 1_300,
+  totalRecords: 1_800,
+  startedAt: new Date("2026-01-01T00:00:00Z"),
+  latestAt: new Date("2026-01-03T00:00:00Z"),
+  medianSkewMs: 5_000,
+  p95SkewMs: 55_000,
+  medianSpread: 0.004,
+  p95Spread: 0.03,
+  medianAbsoluteBasisPct: 0.0002,
+  p95AbsoluteBasisPct: 0.0008,
+  maximumCaptureGapMs: 70_000,
+  assets: ["BTC", "ETH", "SOL", "XRP"].map((asset) => ({ asset, records: 300 })),
+};
+const synchronizedQuality = evaluateSynchronizedPriceQuality(synchronizedQualityInput);
+assert.equal(synchronizedQuality.status, "healthy");
+assert.equal(synchronizedQuality.gates.every((gate) => gate.passed), true);
+assert.equal(evaluateSynchronizedPriceQuality({ ...synchronizedQualityInput, p95SkewMs: 75_000 }).status, "attention");
+assert.equal(evaluateSynchronizedPriceQuality({ ...synchronizedQualityInput, latestAt: new Date("2026-01-01T12:00:00Z") }).status, "collecting");
 const fundingPoints = Array.from({ length: 31 }, (_, hour) => ({ time: hour * fundingHour, rate: 0.00001 }));
 const fundingSummary = summarizeFundingAt(fundingPoints, 24 * fundingHour, 24 * fundingHour, 30 * fundingHour);
 assert.ok(Math.abs((fundingSummary.prior24h ?? 0) - 0.00024) < 1e-12);

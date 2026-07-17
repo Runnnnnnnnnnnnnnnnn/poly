@@ -29,6 +29,7 @@ model MarketSnapshot {
   bestAsk                Float?
   spread                 Float?
   clobCapturedAt         DateTime?
+  clobUpdatedAt          DateTime?
   hyperliquidMidPrice    Float?
   hyperliquidMarkPrice   Float?
   hyperliquidOraclePrice Float?
@@ -39,10 +40,12 @@ model MarketSnapshot {
   referenceCapturedAt    DateTime?
   priceBasisPct          Float?
   captureSkewMs          Int?
+  synchronizationVersion String?
   capturedAt             DateTime  @default(now())
 
   @@index([marketId, capturedAt])
   @@index([capturedAt, captureSkewMs])
+  @@index([synchronizationVersion, capturedAt, captureSkewMs])
 }
 
 model HyperliquidSnapshot {
