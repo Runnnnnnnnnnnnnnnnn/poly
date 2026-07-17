@@ -82,17 +82,28 @@ export async function getMonitoringSnapshot() {
         prisma.paperFill.count({ where: { runId: latestRunningPaper.id } }),
       ])
     : [null, 0, 0];
-  const [latestCombinedDecision, latestCombinedSnapshot, combinedOpenPositions, combinedClosedTrades, combinedWinningTrades] = combinedRun
+  const [latestCombinedDecision, latestCombinedSnapshot, combinedOpenPositions, combinedClosedTrades, combinedWinningTrades, combinedDecisions] = combinedRun
     ? await Promise.all([
         prisma.combinedShadowDecision.findFirst({ where: { runId: combinedRun.id }, orderBy: { observedAt: "desc" } }),
         prisma.combinedShadowEquitySnapshot.findFirst({ where: { runId: combinedRun.id }, orderBy: { capturedAt: "desc" } }),
         prisma.combinedShadowPosition.findMany({ where: { runId: combinedRun.id, status: "OPEN" }, orderBy: { openedAt: "asc" } }),
         prisma.combinedShadowPosition.count({ where: { runId: combinedRun.id, status: "CLOSED" } }),
         prisma.combinedShadowPosition.count({ where: { runId: combinedRun.id, status: "CLOSED", realizedPnl: { gt: 0 } } }),
+        prisma.combinedShadowDecision.findMany({
+          where: { runId: combinedRun.id },
+          select: { action: true, signalZ: true, threshold: true },
+          orderBy: { observedAt: "asc" },
+        }),
       ])
-    : [null, null, [], 0, 0];
+    : [null, null, [], 0, 0, []];
   const latestPaperMetrics = parseJson<Record<string, number | null>>(latestCompletedPaper?.metricsJson ?? null);
-  const newestDataAt = latestDate(polymarketAggregate._max.capturedAt, hyperAggregate._max.capturedAt, paperEquityAggregate._max.capturedAt);
+  const newestDataAt = latestDate(
+    polymarketAggregate._max.capturedAt,
+    hyperAggregate._max.capturedAt,
+    paperEquityAggregate._max.capturedAt,
+    combinedSnapshotAggregate._max.capturedAt,
+    ...heartbeats.map((heartbeat) => heartbeat.lastSuccessAt),
+  );
   const oldestDataAt = earliestDate(polymarketAggregate._min.capturedAt, hyperAggregate._min.capturedAt, paperEquityAggregate._min.capturedAt);
   const ageMs = newestDataAt ? now.getTime() - newestDataAt.getTime() : Number.POSITIVE_INFINITY;
   const status = ageMs <= freshnessMs ? "live" : ageMs <= 60 * 60 * 1_000 ? "delayed" : "offline";
@@ -104,6 +115,7 @@ export async function getMonitoringSnapshot() {
     : null;
   const combinedConfig = parseJson<{ minimumSignalZ?: number }>(combinedRun?.configJson ?? null);
   const executionReadiness = getHyperliquidExecutionReadiness();
+  const testnetReconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
   const combinedShadowRunning = combinedRun?.status === "running";
 
   const inferredPipelines = pipelineStatuses({
@@ -137,7 +149,7 @@ export async function getMonitoringSnapshot() {
       gates: [
         { id: "data", label: "データ収集", status: status === "live" ? "ready" : "attention" },
         { id: "edge", label: "優位性確認", status: combinedEdgeConfirmed ? "ready" : "blocked" },
-        { id: "shadow", label: "組み合わせ仮想売買", status: combinedShadowRunning ? "running" : "not_started" },
+        { id: "shadow", label: "シャドー検証", status: combinedShadowRunning ? "running" : "not_started" },
         { id: "testnet", label: "テストネット", status: executionReadiness.ready ? "ready" : executionReadiness.installed ? "attention" : "not_started" },
         { id: "live", label: "実取引", status: "locked" },
       ],
@@ -158,6 +170,8 @@ export async function getMonitoringSnapshot() {
         entryPrice: position.entryPrice,
         markPrice: position.markPrice,
         signalZ: position.signalZ,
+        horizonHours: position.horizonHours,
+        priceBasisPct: position.priceBasisPct,
         openedAt: position.openedAt.toISOString(),
         exitAt: position.exitAt.toISOString(),
       })),
@@ -168,6 +182,19 @@ export async function getMonitoringSnapshot() {
       riskStatus: combinedRun?.riskStatus ?? "NOT_STARTED",
       emergencyStopped: combinedRun?.emergencyStopped ?? false,
       minimumSignalZ: combinedConfig?.minimumSignalZ ?? null,
+      funnel: {
+        scans: combinedDecisions.length,
+        scannedMarkets: latestCombinedDecision?.scannedMarkets ?? 0,
+        structuredMarkets: latestCombinedDecision?.structuredMarkets ?? 0,
+        horizonEligibleMarkets: latestCombinedDecision?.horizonEligibleMarkets ?? 0,
+        groupedEvents: latestCombinedDecision?.groupedEvents ?? 0,
+        priceReadyEvents: latestCombinedDecision?.priceReadyEvents ?? 0,
+        thresholdSignals: combinedDecisions.filter((decision) => (
+          typeof decision.signalZ === "number" && Math.abs(decision.signalZ) >= decision.threshold
+        )).length,
+        opened: combinedDecisions.filter((decision) => decision.action === "OPEN_LONG" || decision.action === "OPEN_SHORT").length,
+        closed: combinedClosedTrades,
+      },
       latestDecision: latestCombinedDecision ? {
         action: latestCombinedDecision.action,
         reason: latestCombinedDecision.reason,
@@ -175,9 +202,25 @@ export async function getMonitoringSnapshot() {
         signalZ: latestCombinedDecision.signalZ,
         spotPrice: latestCombinedDecision.spotPrice,
         targetPrice: latestCombinedDecision.targetPrice,
+        horizonHours: latestCombinedDecision.horizonHours,
+        marketBestBid: latestCombinedDecision.marketBestBid,
+        marketBestAsk: latestCombinedDecision.marketBestAsk,
+        marketSpread: latestCombinedDecision.marketSpread,
+        polymarketReferencePrice: latestCombinedDecision.polymarketReferencePrice,
+        referenceSource: latestCombinedDecision.referenceSource,
+        priceBasisPct: latestCombinedDecision.priceBasisPct,
+        ladderViolations: latestCombinedDecision.ladderViolations,
+        nextWindowAt: latestCombinedDecision.nextWindowAt?.toISOString() ?? null,
         observedAt: latestCombinedDecision.observedAt.toISOString(),
       } : null,
-      testnet: executionReadiness,
+      testnet: {
+        ...executionReadiness,
+        reconciliation: {
+          status: testnetReconciliation?.status ?? "not_configured",
+          lastSuccessAt: testnetReconciliation?.lastSuccessAt?.toISOString() ?? null,
+          message: testnetReconciliation?.message ?? null,
+        },
+      },
     },
     polymarket: {
       snapshots: polymarketAggregate._count._all,
@@ -187,18 +230,20 @@ export async function getMonitoringSnapshot() {
       backtestPoints: backtestPointCount,
     },
     model: {
-      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v6",
+      name: latestEvaluation?.modelVersion ?? "Polymarket x Hyperliquid Signal v8",
       selectedCandidate: evaluation?.selectedCandidate.id ?? null,
       selectedCandidateKind: evaluation?.selectedCandidate.kind ?? null,
       combinedStrategy: evaluation?.combinedTrading?.selectedStrategy.id ?? null,
       combinedMinimumSignalZ: evaluation?.combinedTrading?.selectedStrategy.minimumSignalZ ?? null,
-      structuralFeatureCoverage: evaluation?.dataset.executionFeatureCoverage ?? evaluation?.dataset.structuralFeatureCoverage ?? null,
+      structuralFeatureCoverage: evaluation?.dataset.testExecutionFeatureCoverage ?? evaluation?.dataset.executionFeatureCoverage ?? evaluation?.dataset.structuralFeatureCoverage ?? null,
       evaluationStatus: evaluation?.quality.status ?? "building",
       latestAsset: evaluation ? Object.keys(evaluation.dataset.assets).join("・") : null,
       latestBrierScore: evaluation?.probability.modelBrierScore ?? null,
       latestAccuracy: evaluation?.combinedTrading?.directionalAccuracy ?? evaluation?.probability.modelAccuracy ?? null,
       latestReturnPct: evaluation?.combinedTrading?.netReturnPct ?? evaluation?.trading.netReturnPct ?? null,
       benchmarkReturnPct: evaluation?.combinedTrading?.benchmarkReturnPct ?? null,
+      benchmarkReturns: evaluation?.combinedTrading?.benchmarks ?? null,
+      horizonStudies: evaluation?.horizonStudies ?? [],
       excessReturnPct: evaluation?.combinedTrading?.excessReturnPct ?? null,
       eligibleSignals: evaluation?.combinedTrading?.eligibleSignals ?? 0,
       testedMarkets: evaluation?.dataset.testMarkets ?? 0,
@@ -208,6 +253,9 @@ export async function getMonitoringSnapshot() {
       previousBrierScore: evaluation?.probability.marketBrierScore ?? null,
       confidenceInterval95: evaluation?.combinedTrading?.returnConfidenceInterval95 ?? evaluation?.probability.confidenceInterval95 ?? null,
       statisticallyPositive: evaluation?.combinedTrading?.statisticallyPositive ?? evaluation?.probability.statisticallyPositive ?? false,
+      deflatedSharpeProbability: evaluation?.combinedTrading?.deflatedSharpeProbability ?? null,
+      walkForwardFolds: evaluation?.combinedTrading?.walkForwardFolds ?? 0,
+      profitableValidationFolds: evaluation?.combinedTrading?.profitableValidationFolds ?? 0,
       completedAt: latestEvaluation?.completedAt?.toISOString() ?? null,
       datasetStartedAt: evaluation?.dataset.firstEndAt ?? null,
       datasetEndedAt: evaluation?.dataset.lastEndAt ?? null,
@@ -217,6 +265,12 @@ export async function getMonitoringSnapshot() {
       winRate: evaluation?.combinedTrading?.winRate ?? evaluation?.trading.winRate ?? null,
       averageTradeReturn: evaluation?.combinedTrading?.averageNetTradeReturn ?? null,
       maxDrawdownPct: evaluation?.combinedTrading?.maxDrawdownPct ?? evaluation?.trading.maxDrawdownPct ?? null,
+      medianObservationLagMinutes: evaluation?.dataset.medianObservationLagMinutes ?? null,
+      medianEntryLagMinutes: evaluation?.dataset.medianEntryLagMinutes ?? null,
+      medianExitLeadMinutes: evaluation?.dataset.medianExitLeadMinutes ?? null,
+      maximumExecutionTimingErrorMinutes: evaluation?.dataset.maximumExecutionTimingErrorMinutes ?? null,
+      probabilityLadderEvents: evaluation?.dataset.probabilityLadderEvents ?? 0,
+      probabilityLadderViolationEvents: evaluation?.dataset.probabilityLadderViolationEvents ?? 0,
       aiPredictions: aiRows.length,
       aiResolved: resolvedAiRows.length,
       aiBrierScore: averageAiBrier,
@@ -279,7 +333,7 @@ function pipelineStatuses(input: {
     pipeline("hyperliquid", "相場データ収集", "5分ごと", input.hyperliquidAt, heartbeatMap.get("hyperliquid"), input.now),
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("paper", "Poly仮想運用", "5分ごと", input.paperAt, heartbeatMap.get("paper"), input.now),
-    pipeline("combined-shadow", "組み合わせ仮想売買", "5分ごと", input.combinedAt, heartbeatMap.get("combined-shadow"), input.now),
+    pipeline("combined-shadow", "組み合わせ市場確認", "5分ごと", input.combinedAt, heartbeatMap.get("combined-shadow"), input.now),
   ];
 }
 

@@ -28,6 +28,40 @@ def main():
     if action == "readiness":
         output({"ok": True, "environment": "testnet", "accountValue": account_value})
         return
+    if action == "reconcile":
+        positions = []
+        for item in user_state.get("assetPositions", []):
+            position = item.get("position", {})
+            size = float(position.get("szi", 0))
+            if size == 0:
+                continue
+            positions.append({
+                "coin": position.get("coin"),
+                "size": size,
+                "entryPrice": float(position.get("entryPx") or 0),
+                "positionValue": float(position.get("positionValue") or 0),
+                "unrealizedPnl": float(position.get("unrealizedPnl") or 0),
+                "liquidationPrice": float(position.get("liquidationPx") or 0),
+            })
+        order_statuses = []
+        for client_order_id in request.get("clientOrderIds", [])[:100]:
+            client_order_id = str(client_order_id)
+            cloid = Cloid.from_str("0x" + hashlib.sha256(client_order_id.encode("utf-8")).hexdigest()[:32])
+            try:
+                status = info.query_order_by_cloid(account_address, cloid)
+            except Exception as error:
+                status = {"status": "query_error", "error": str(error)}
+            order_statuses.append({"clientOrderId": client_order_id, "exchangeCloid": cloid.to_raw(), "result": status})
+        output({
+            "ok": True,
+            "environment": "testnet",
+            "accountValue": account_value,
+            "positions": positions,
+            "openOrders": info.open_orders(account_address)[:100],
+            "recentFills": info.user_fills(account_address)[:100],
+            "orderStatuses": order_statuses,
+        })
+        return
 
     secret_key = os.environ.get("HYPERLIQUID_API_WALLET_PRIVATE_KEY", "").strip()
     if not secret_key:

@@ -1,13 +1,15 @@
 import type { ModelEvaluationRun } from "@prisma/client";
 
-import { discoverHistoricalCryptoEvents, fetchHistoricalProbability } from "@/src/lib/backtest/polymarket";
+import { discoverHistoricalCryptoEvents, fetchHistoricalProbability, type HistoricalCryptoEvent } from "@/src/lib/backtest/polymarket";
 import { evaluateChronologicalModel, HORIZON_HOURS, MODEL_VERSION } from "@/src/lib/model-evaluation/engine";
 import { addPriceStructureFeatures } from "@/src/lib/model-evaluation/price-structure";
 import type { EvaluationSample, ModelEvaluationMetrics, ModelEvaluationResult } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
 
 const maximumEvents = 260;
-const maximumObservationAgeHours = 3;
+const priceHistoryFidelityMinutes = 1;
+const maximumObservationAgeMinutes = 90;
+export const PREDECLARED_HORIZONS = [6, 12, 24, 48] as const;
 
 export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
   const id = crypto.randomUUID();
@@ -18,13 +20,15 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
       modelVersion: MODEL_VERSION,
       status: "running",
       configJson: JSON.stringify({
-        horizonHours: HORIZON_HOURS,
-        maximumObservationAgeHours,
-        split: "60/20/20 chronological events",
+        predeclaredHorizonHours: PREDECLARED_HORIZONS,
+        primaryHorizonHours: HORIZON_HOURS,
+        priceHistoryFidelityMinutes,
+        maximumObservationAgeMinutes,
+        split: "60/20/20 chronological events with four validation folds",
         eventWeighting: "equal",
-        signal: "Polymarket-implied 24h terminal median",
-        execution: "Hyperliquid 8h open-to-close, one non-overlapping position at a time",
-        candidateSelection: "validation-only signal threshold with positive 95% net-return interval and long-benchmark excess",
+        signal: "Polymarket-implied terminal median, evaluated independently by horizon",
+        execution: "Hyperliquid 1h next-open to last-close, one non-overlapping position at a time",
+        candidateSelection: "block-bootstrap interval, deflated Sharpe, and best-of-three benchmark excess",
         costs: "0.045% taker and 0.02% slippage per side, plus 0.03% funding per 24h",
         maximumPositionPct: 0.2,
       }),
@@ -33,8 +37,38 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
   });
 
   try {
-    const samples = await loadEvaluationSamples();
-    const metrics = evaluateChronologicalModel(samples);
+    const datasets = await loadEvaluationSamplesByHorizon([...PREDECLARED_HORIZONS]);
+    const evaluations = new Map<number, ModelEvaluationMetrics>();
+    const horizonStudies: NonNullable<ModelEvaluationMetrics["horizonStudies"]> = [];
+
+    for (const horizonHours of PREDECLARED_HORIZONS) {
+      const samples = datasets.get(horizonHours) ?? [];
+      try {
+        const metrics = evaluateChronologicalModel(samples, { horizonHours });
+        evaluations.set(horizonHours, metrics);
+        horizonStudies.push(toHorizonStudy(metrics));
+      } catch (error) {
+        horizonStudies.push({
+          horizonHours,
+          status: "unavailable",
+          totalEvents: new Set(samples.map((sample) => sample.eventId)).size,
+          testEvents: 0,
+          eligibleSignals: 0,
+          trades: 0,
+          netReturnPct: null,
+          bestBenchmarkReturnPct: null,
+          excessReturnPct: null,
+          deflatedSharpeProbability: null,
+          testExecutionFeatureCoverage: null,
+          maximumExecutionTimingErrorMinutes: null,
+          error: error instanceof Error ? error.message : "horizon evaluation failed",
+        });
+      }
+    }
+
+    const metrics = evaluations.get(HORIZON_HOURS);
+    if (!metrics) throw new Error(`primary ${HORIZON_HOURS}h evaluation is unavailable`);
+    metrics.horizonStudies = horizonStudies;
     const completed = await prisma.modelEvaluationRun.update({
       where: { id },
       data: {
@@ -65,39 +99,87 @@ export async function listModelEvaluations(limit = 12) {
   return runs.map((run) => toResult(run, parseMetrics(run.metricsJson)));
 }
 
-export async function loadEvaluationSamples() {
-  const events = await discoverHistoricalCryptoEvents({ maxEvents: maximumEvents, horizonHours: HORIZON_HOURS });
+export async function loadEvaluationSamples(horizonHours = HORIZON_HOURS) {
+  const datasets = await loadEvaluationSamplesByHorizon([horizonHours]);
+  return datasets.get(horizonHours) ?? [];
+}
+
+export async function loadEvaluationSamplesByHorizon(horizons: number[]) {
+  const normalizedHorizons = Array.from(new Set(horizons.map((horizon) => Math.max(1, Math.round(horizon))))).sort((a, b) => a - b);
+  if (!normalizedHorizons.length) return new Map<number, EvaluationSample[]>();
+  const events = await discoverHistoricalCryptoEvents({ maxEvents: maximumEvents, horizonHours: normalizedHorizons[0] });
   const markets = events.flatMap((event) => event.markets.map((market) => ({ event, market })));
 
-  const rows = await mapWithConcurrency(markets, 8, async ({ event, market }): Promise<EvaluationSample | null> => {
+  const rows = await mapWithConcurrency(markets, 8, async ({ event, market }): Promise<EvaluationSample[]> => {
     const endAt = new Date(event.endDate);
-    const targetMs = endAt.getTime() - HORIZON_HOURS * 60 * 60 * 1_000;
-    const oldestAllowedMs = targetMs - maximumObservationAgeHours * 60 * 60 * 1_000;
+    const eligibleHorizons = normalizedHorizons.filter((horizon) => eventSupportsHorizon(event, horizon));
+    if (!eligibleHorizons.length) return [];
+    const targets = eligibleHorizons.map((horizonHours) => ({
+      horizonHours,
+      targetMs: endAt.getTime() - horizonHours * 60 * 60 * 1_000,
+    }));
+    const earliestMs = Math.min(...targets.map((target) => target.targetMs)) - maximumObservationAgeMinutes * 60 * 1_000;
+    const latestMs = Math.max(...targets.map((target) => target.targetMs));
     const history = await fetchHistoricalProbability(market.tokenId, {
-      fidelity: 60,
-      startTs: Math.floor(oldestAllowedMs / 1_000),
-      endTs: Math.floor(targetMs / 1_000),
+      fidelity: priceHistoryFidelityMinutes,
+      startTs: Math.floor(earliestMs / 1_000),
+      endTs: Math.floor(latestMs / 1_000),
     });
-    const observation = history
-      .filter((point) => {
-        const timestamp = new Date(point.timestamp).getTime();
-        return timestamp <= targetMs && timestamp >= oldestAllowedMs;
-      })
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-    if (!observation) return null;
-    return {
-      eventId: event.id,
-      marketId: market.id,
-      asset: market.asset,
-      title: market.title,
-      endAt: endAt.toISOString(),
-      observedAt: observation.timestamp,
-      marketProbability: observation.probability,
-      outcome: market.result as 0 | 1,
-    };
+
+    return targets.flatMap(({ horizonHours, targetMs }) => {
+      const oldestAllowedMs = targetMs - maximumObservationAgeMinutes * 60 * 1_000;
+      const observation = history
+        .filter((point) => {
+          const timestamp = new Date(point.timestamp).getTime();
+          return timestamp <= targetMs && timestamp >= oldestAllowedMs;
+        })
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      if (!observation) return [];
+      return [{
+        eventId: event.id,
+        marketId: market.id,
+        asset: market.asset,
+        title: market.title,
+        endAt: endAt.toISOString(),
+        observedAt: observation.timestamp,
+        horizonHours,
+        marketProbability: observation.probability,
+        observationLagMinutes: Math.max(0, targetMs - new Date(observation.timestamp).getTime()) / (60 * 1_000),
+        outcome: market.result as 0 | 1,
+      }];
+    });
   });
 
-  return addPriceStructureFeatures(rows.filter((row): row is EvaluationSample => Boolean(row)));
+  const rawSamples = rows.flatMap((row) => row ?? []);
+  const enriched = await addPriceStructureFeatures(rawSamples);
+  return new Map(normalizedHorizons.map((horizonHours) => [
+    horizonHours,
+    enriched.filter((sample) => sample.horizonHours === horizonHours),
+  ]));
+}
+
+function eventSupportsHorizon(event: HistoricalCryptoEvent, horizonHours: number) {
+  const decisionAt = new Date(event.endDate).getTime() - horizonHours * 60 * 60 * 1_000;
+  const startAt = new Date(event.startDate).getTime();
+  const closedAt = event.closedTime ? new Date(event.closedTime).getTime() : Number.POSITIVE_INFINITY;
+  return startAt < decisionAt && closedAt > decisionAt;
+}
+
+function toHorizonStudy(metrics: ModelEvaluationMetrics): NonNullable<ModelEvaluationMetrics["horizonStudies"]>[number] {
+  return {
+    horizonHours: metrics.horizonHours,
+    status: metrics.quality.status,
+    totalEvents: metrics.dataset.totalEvents,
+    testEvents: metrics.dataset.testEvents,
+    eligibleSignals: metrics.combinedTrading.eligibleSignals,
+    trades: metrics.combinedTrading.trades,
+    netReturnPct: metrics.combinedTrading.trades ? metrics.combinedTrading.netReturnPct : null,
+    bestBenchmarkReturnPct: metrics.combinedTrading.benchmarks.bestReturnPct,
+    excessReturnPct: metrics.combinedTrading.trades ? metrics.combinedTrading.excessReturnPct : null,
+    deflatedSharpeProbability: metrics.combinedTrading.deflatedSharpeProbability,
+    testExecutionFeatureCoverage: metrics.dataset.testExecutionFeatureCoverage,
+    maximumExecutionTimingErrorMinutes: metrics.dataset.maximumExecutionTimingErrorMinutes,
+  };
 }
 
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>) {
@@ -111,7 +193,7 @@ async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper:
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
-  return results as R[];
+  return results;
 }
 
 function toResult(run: ModelEvaluationRun, metrics: ModelEvaluationMetrics | null): ModelEvaluationResult {

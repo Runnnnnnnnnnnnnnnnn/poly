@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { evaluateCombinedTrading } from "@/src/lib/model-evaluation/combined-trading";
+import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
 import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
-export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v6";
+export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v8";
 export const HORIZON_HOURS = 24;
 export const MIN_TRAIN_EVENTS = 20;
 export const MIN_HOLDOUT_EVENTS = 15;
@@ -26,7 +27,8 @@ const slippage = 0.005;
 const entryEdge = 0.03;
 const takerFeeRate = 0.07;
 
-export function evaluateChronologicalModel(input: EvaluationSample[]): ModelEvaluationMetrics {
+export function evaluateChronologicalModel(input: EvaluationSample[], options: { horizonHours?: number } = {}): ModelEvaluationMetrics {
+  const horizonHours = options.horizonHours ?? HORIZON_HOURS;
   const samples = [...input].sort((a, b) => new Date(a.endAt).getTime() - new Date(b.endAt).getTime() || a.marketId.localeCompare(b.marketId));
   const events = groupByEvent(samples);
   if (events.length < MIN_TRAIN_EVENTS + 10) throw new Error(`at least ${MIN_TRAIN_EVENTS + 10} fixed-horizon events are required`);
@@ -71,29 +73,47 @@ export function evaluateChronologicalModel(input: EvaluationSample[]): ModelEval
   const structuralFeatureCoverage = samples.length ? structuralFeatureMarkets / samples.length : 0;
   const executionFeatureMarkets = samples.filter(hasExecutionData).length;
   const executionFeatureCoverage = samples.length ? executionFeatureMarkets / samples.length : 0;
+  const testExecutionFeatureMarkets = test.filter(hasExecutionData).length;
+  const testExecutionFeatureCoverage = test.length ? testExecutionFeatureMarkets / test.length : 0;
+  const observationLags = samples.flatMap((sample) => typeof sample.observationLagMinutes === "number" ? [sample.observationLagMinutes] : []);
+  const entryLags = samples.flatMap((sample) => typeof sample.hyperliquidEntryLagMinutes === "number" ? [sample.hyperliquidEntryLagMinutes] : []);
+  const exitLeads = samples.flatMap((sample) => typeof sample.hyperliquidExitLeadMinutes === "number" ? [sample.hyperliquidExitLeadMinutes] : []);
+  const executionTimingErrors = samples.flatMap((sample) => {
+    const values = [sample.hyperliquidEntryLagMinutes, sample.hyperliquidExitLeadMinutes]
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    return values.length ? [Math.max(...values)] : [];
+  });
+  const ladder = probabilityLadderStats(samples);
+  const maximumExecutionTimingErrorMinutes = executionTimingErrors.length ? Math.max(...executionTimingErrors) : null;
   const statisticallyPositive = confidenceInterval95[0] > 0;
   const gates = [
-    { id: "chronology", label: "時系列で訓練とテストを分離", passed: true },
-    { id: "horizon", label: "全市場を決着24時間前で統一", passed: true },
+    { id: "chronology", label: "4期間の順次検証と最終テストを分離", passed: combinedTrading.walkForwardFolds >= 4 },
+    { id: "horizon", label: `全市場を決着${horizonHours}時間前で統一`, passed: true },
     { id: "same-holdout", label: "未使用期間のHyperliquid価格で売買検証", passed: true },
-    { id: "features", label: "売買価格データを90%以上取得", passed: executionFeatureCoverage >= 0.9 },
+    { id: "features", label: "最終テストの売買価格を90%以上取得", passed: testExecutionFeatureCoverage >= 0.9 },
+    { id: "timing", label: "売買時刻の誤差を65分以内に制限", passed: maximumExecutionTimingErrorMinutes !== null && maximumExecutionTimingErrorMinutes <= 65 },
+    { id: "ladder", label: "価格帯の確率矛盾を単調補正", passed: ladder.events > 0 },
     { id: "costs", label: "手数料・滑り・資金調達を控除", passed: true },
     { id: "sample", label: `最終テスト${MIN_HOLDOUT_EVENTS}イベント以上`, passed: testEvents.length >= MIN_HOLDOUT_EVENTS },
     { id: "trades", label: `最終テスト${minimumCombinedTrades}取引以上`, passed: combinedTrading.trades >= minimumCombinedTrades },
-    { id: "benchmark", label: "常時ロングを上回る", passed: combinedTrading.excessReturnPct > 0 },
-    { id: "significance", label: "平均損益の95%区間がプラス", passed: combinedTrading.statisticallyPositive },
+    { id: "benchmark", label: "3つの単純戦略で最良の成績を上回る", passed: combinedTrading.excessReturnPct > 0 },
+    { id: "significance", label: "ブロック再標本化95%区間がプラス", passed: combinedTrading.statisticallyPositive },
+    { id: "selection-bias", label: "試行回数補正後も95%以上", passed: (combinedTrading.deflatedSharpeProbability ?? 0) >= 0.95 },
   ];
   const qualityStatus = combinedTrading.selectedStrategy.id === "no-trade guard"
     ? "inconclusive"
     : combinedTrading.netReturnPct < 0 || combinedTrading.excessReturnPct <= 0
       ? "underperforming"
-      : testEvents.length >= MIN_HOLDOUT_EVENTS && combinedTrading.trades >= minimumCombinedTrades && combinedTrading.statisticallyPositive
+      : testEvents.length >= MIN_HOLDOUT_EVENTS
+        && combinedTrading.trades >= minimumCombinedTrades
+        && combinedTrading.statisticallyPositive
+        && (combinedTrading.deflatedSharpeProbability ?? 0) >= 0.95
       ? "promising"
       : "inconclusive";
 
   return {
-    methodology: "chronological-holdout",
-    horizonHours: HORIZON_HOURS,
+    methodology: "walk-forward-holdout",
+    horizonHours,
     modelVersion: MODEL_VERSION,
     selectedCandidate,
     dataset: {
@@ -113,6 +133,14 @@ export function evaluateChronologicalModel(input: EvaluationSample[]): ModelEval
       structuralFeatureCoverage,
       executionFeatureMarkets,
       executionFeatureCoverage,
+      testExecutionFeatureMarkets,
+      testExecutionFeatureCoverage,
+      medianObservationLagMinutes: median(observationLags),
+      medianEntryLagMinutes: median(entryLags),
+      medianExitLeadMinutes: median(exitLeads),
+      maximumExecutionTimingErrorMinutes,
+      probabilityLadderEvents: ladder.events,
+      probabilityLadderViolationEvents: ladder.violationEvents,
     },
     probability: {
       modelBrierScore,
@@ -329,6 +357,28 @@ function hasExecutionData(sample: EvaluationSample) {
     && Number.isFinite(sample.hyperliquidExitPrice);
 }
 
+function probabilityLadderStats(samples: EvaluationSample[]) {
+  const groups = new Map<string, EvaluationSample[]>();
+  for (const sample of samples) {
+    const key = `${sample.eventId}:${sample.asset}`;
+    groups.set(key, [...(groups.get(key) ?? []), sample]);
+  }
+  let events = 0;
+  let violationEvents = 0;
+  for (const group of groups.values()) {
+    const points = group.flatMap((sample) => {
+      if (sample.thresholdKind !== "above" && sample.thresholdKind !== "below") return [];
+      const threshold = sample.thresholdKind === "above" ? sample.thresholdLower : sample.thresholdUpper;
+      if (typeof threshold !== "number") return [];
+      return [{ id: sample.marketId, kind: sample.thresholdKind, threshold, probability: sample.marketProbability }];
+    });
+    if (points.length < 2) continue;
+    events += 1;
+    if (fitMonotonicProbabilityLadder(points).violations > 0) violationEvents += 1;
+  }
+  return { events, violationEvents };
+}
+
 function logit(probability: number) {
   return Math.log(probability / (1 - probability));
 }
@@ -345,6 +395,13 @@ function dot(left: number[], right: number[]) {
 
 function average(values: number[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function median(values: number[]) {
+  if (!values.length) return null;
+  const ordered = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
 }
 
 function clamp(value: number, min: number, max: number) {

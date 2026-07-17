@@ -5,10 +5,12 @@ import type { CryptoAsset } from "@/src/lib/backtest/types";
 import type { EvaluationSample } from "@/src/lib/model-evaluation/types";
 
 const HYPERLIQUID_INFO_API = "https://api.hyperliquid.xyz/info";
-const candleIntervalHours = 8;
-const minimumReturnCount = 21;
-const volatilityLookbackCandles = 90;
-const volatilityHalfLifeCandles = 21;
+const candleInterval = "1h";
+const candleIntervalHours = 1;
+const minimumReturnCount = 72;
+const volatilityLookbackCandles = 24 * 45;
+const volatilityHalfLifeCandles = 24 * 7;
+const candleChunkMs = 120 * 24 * 60 * 60 * 1_000;
 
 const candleSchema = z.array(z.object({
   t: z.number(),
@@ -98,6 +100,8 @@ export async function addPriceStructureFeatures(samples: EvaluationSample[]): Pr
       hyperliquidEntryPrice: entry?.open ?? null,
       hyperliquidExitAt: exit ? new Date(exit.closedAt).toISOString() : null,
       hyperliquidExitPrice: exit?.close ?? null,
+      hyperliquidEntryLagMinutes: entry ? Math.max(0, entry.openedAt - observedAt) / (60 * 1_000) : null,
+      hyperliquidExitLeadMinutes: exit ? Math.max(0, endAt - exit.closedAt) / (60 * 1_000) : null,
       thresholdKind: condition.kind,
       thresholdLower: condition.lower,
       thresholdUpper: condition.upper,
@@ -117,12 +121,24 @@ export function probabilityForCondition(spot: number, horizonVolatility: number,
 }
 
 async function fetchCandles(asset: CryptoAsset, startTime: number, endTime: number): Promise<Candle[]> {
+  const chunks: Array<{ startTime: number; endTime: number }> = [];
+  for (let chunkStart = startTime; chunkStart < endTime; chunkStart += candleChunkMs) {
+    chunks.push({ startTime: chunkStart, endTime: Math.min(endTime, chunkStart + candleChunkMs) });
+  }
+  const rows: Candle[] = [];
+  for (const chunk of chunks) rows.push(...await fetchCandleChunk(asset, chunk.startTime, chunk.endTime));
+  return Array.from(new Map(rows.map((candle) => [candle.openedAt, candle])).values())
+    .sort((left, right) => left.closedAt - right.closedAt);
+}
+
+async function fetchCandleChunk(asset: CryptoAsset, startTime: number, endTime: number): Promise<Candle[]> {
   const response = await fetchWithTimeout(HYPERLIQUID_INFO_API, {
     method: "POST",
+    cache: "no-store",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       type: "candleSnapshot",
-      req: { coin: asset, interval: "8h", startTime, endTime },
+      req: { coin: asset, interval: candleInterval, startTime, endTime },
     }),
   }, 30_000);
   if (!response.ok) throw new Error(`Hyperliquid candle history ${asset}: ${response.status}`);

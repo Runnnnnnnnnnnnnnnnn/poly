@@ -1,3 +1,4 @@
+import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
 import type { CombinedStrategyCandidate, EvaluationSample, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
 const initialCapital = 10_000;
@@ -5,6 +6,9 @@ const takerFeePerSide = 0.00045;
 const slippagePerSide = 0.0002;
 const fundingPer24h = 0.0003;
 const minimumValidationTrades = 12;
+const walkForwardFolds = 4;
+const minimumProfitableFolds = 3;
+const minimumDeflatedSharpeProbability = 0.95;
 
 const strategyCandidates: CombinedStrategyCandidate[] = [
   { id: "no-trade guard", minimumSignalZ: 0, positionPct: 0.2 },
@@ -27,45 +31,71 @@ type TradeSignal = {
   side: 1 | -1;
 };
 
-type Simulation = Omit<ModelEvaluationMetrics["combinedTrading"], "selectedStrategy" | "eligibleSignals" | "benchmarkReturnPct" | "excessReturnPct">;
+type CombinedMetrics = ModelEvaluationMetrics["combinedTrading"];
+type Simulation = Omit<CombinedMetrics,
+  | "selectedStrategy"
+  | "eligibleSignals"
+  | "benchmarkReturnPct"
+  | "excessReturnPct"
+  | "benchmarks"
+  | "walkForwardFolds"
+  | "profitableValidationFolds"
+  | "minimumRequiredTrades"
+> & { tradeReturns: number[] };
 
 export function evaluateCombinedTrading(
   validationSamples: EvaluationSample[],
   testSamples: EvaluationSample[],
 ): ModelEvaluationMetrics["combinedTrading"] {
   const validationSignals = buildSignals(validationSamples);
-  const selectedStrategy = selectStrategy(validationSignals);
+  const selection = selectStrategy(validationSignals);
+  const selectedStrategy = selection.candidate;
   const testSignals = buildSignals(testSamples);
   const selectedSignals = selectedStrategy.id === "no-trade guard"
     ? []
     : selectNonOverlappingSignals(testSignals, selectedStrategy.minimumSignalZ);
   const strategy = simulate(selectedSignals, selectedStrategy, "signal");
-  const benchmark = simulate(selectedSignals, selectedStrategy, "long");
+  const benchmarks = evaluateBenchmarks(testSignals, selectedStrategy);
+  const { tradeReturns, ...publicStrategy } = strategy;
+  void tradeReturns;
 
   return {
     selectedStrategy,
     eligibleSignals: testSignals.length,
-    ...strategy,
-    benchmarkReturnPct: benchmark.netReturnPct,
-    excessReturnPct: strategy.netReturnPct - benchmark.netReturnPct,
+    ...publicStrategy,
+    benchmarkReturnPct: benchmarks.bestReturnPct,
+    excessReturnPct: strategy.netReturnPct - benchmarks.bestReturnPct,
+    benchmarks,
+    walkForwardFolds,
+    profitableValidationFolds: selection.profitableFolds,
+    minimumRequiredTrades: minimumValidationTrades,
   };
 }
 
 function selectStrategy(validationSignals: TradeSignal[]) {
+  const allEligible = selectNonOverlappingSignals(validationSignals, 0);
   const viable = strategyCandidates.slice(1).flatMap((candidate) => {
     const signals = selectNonOverlappingSignals(validationSignals, candidate.minimumSignalZ);
     const result = simulate(signals, candidate, "signal");
-    const benchmark = simulate(signals, candidate, "long");
-    const excessReturnPct = result.netReturnPct - benchmark.netReturnPct;
-    if (result.trades < minimumValidationTrades || !result.statisticallyPositive || excessReturnPct <= 0) return [];
-    return [{ candidate, result, excessReturnPct }];
+    const benchmark = evaluateBenchmarks(allEligible, candidate);
+    const excessReturnPct = result.netReturnPct - benchmark.bestReturnPct;
+    const folds = splitChronologically(signals, walkForwardFolds).map((fold) => simulate(fold, candidate, "signal"));
+    const profitableFolds = folds.filter((fold) => fold.netReturnPct > 0).length;
+    if (
+      result.trades < minimumValidationTrades
+      || !result.statisticallyPositive
+      || excessReturnPct <= 0
+      || profitableFolds < minimumProfitableFolds
+      || (result.deflatedSharpeProbability ?? 0) < minimumDeflatedSharpeProbability
+    ) return [];
+    return [{ candidate, result, excessReturnPct, profitableFolds }];
   });
 
   return viable.sort((left, right) =>
     right.result.netReturnPct - left.result.netReturnPct
     || right.excessReturnPct - left.excessReturnPct
     || right.candidate.minimumSignalZ - left.candidate.minimumSignalZ,
-  )[0]?.candidate ?? strategyCandidates[0];
+  )[0] ?? { candidate: strategyCandidates[0], profitableFolds: 0 };
 }
 
 function buildSignals(samples: EvaluationSample[]) {
@@ -79,10 +109,24 @@ function buildSignals(samples: EvaluationSample[]) {
     const base = group.find(hasExecutionData);
     if (!base) return [];
     const volatility = clamp(base.realizedVolatility24h as number, 0.002, 1);
+    const ladder = fitMonotonicProbabilityLadder(group.flatMap((sample) => {
+      if (sample.thresholdKind !== "above" && sample.thresholdKind !== "below") return [];
+      const threshold = sample.thresholdKind === "above" ? sample.thresholdLower : sample.thresholdUpper;
+      if (typeof threshold !== "number") return [];
+      return [{
+        id: sample.marketId,
+        kind: sample.thresholdKind,
+        threshold,
+        probability: sample.marketProbability,
+        weight: sample.marketProbability * (1 - sample.marketProbability),
+      }];
+    }));
+    const correctedProbability = new Map(ladder.points.map((point) => [point.id, point.correctedProbability]));
     const estimates = group.flatMap((sample) => {
-      const estimate = impliedTerminalMedian(sample, volatility);
+      const probability = correctedProbability.get(sample.marketId);
+      if (probability === undefined) return [];
+      const estimate = impliedTerminalMedian(sample, volatility, probability);
       if (estimate === null) return [];
-      const probability = clamp(sample.marketProbability, 0.01, 0.99);
       return [{ logTarget: Math.log(estimate), weight: probability * (1 - probability) }];
     });
     if (!estimates.length) return [];
@@ -127,7 +171,28 @@ function selectNonOverlappingSignals(signals: TradeSignal[], minimumSignalZ: num
   return selected;
 }
 
-function simulate(signals: TradeSignal[], candidate: CombinedStrategyCandidate, direction: "signal" | "long"): Simulation {
+function evaluateBenchmarks(signals: TradeSignal[], candidate: CombinedStrategyCandidate): CombinedMetrics["benchmarks"] {
+  const periods = selectNonOverlappingSignals(signals, 0);
+  const results = [
+    { label: "常時ロング" as const, value: simulate(periods, candidate, "long").netReturnPct },
+    { label: "常時ショート" as const, value: simulate(periods, candidate, "short").netReturnPct },
+    { label: "交互売買" as const, value: simulate(periods, candidate, "alternating").netReturnPct },
+  ];
+  const best = [...results].sort((left, right) => right.value - left.value)[0];
+  return {
+    alwaysLongReturnPct: results[0].value,
+    alwaysShortReturnPct: results[1].value,
+    alternatingReturnPct: results[2].value,
+    bestReturnPct: best.value,
+    bestLabel: best.label,
+  };
+}
+
+function simulate(
+  signals: TradeSignal[],
+  candidate: CombinedStrategyCandidate,
+  direction: "signal" | "long" | "short" | "alternating",
+): Simulation {
   let capital = initialCapital;
   let peak = initialCapital;
   let maxDrawdownPct = 0;
@@ -140,8 +205,8 @@ function simulate(signals: TradeSignal[], candidate: CombinedStrategyCandidate, 
   let totalFunding = 0;
   const netTradeReturns: number[] = [];
 
-  for (const signal of signals) {
-    const side = direction === "long" ? 1 : signal.side;
+  signals.forEach((signal, index) => {
+    const side = direction === "long" ? 1 : direction === "short" ? -1 : direction === "alternating" ? (index % 2 === 0 ? 1 : -1) : signal.side;
     const holdingDays = Math.max(0, signal.exitAt - signal.entryAt) / (24 * 60 * 60 * 1_000);
     const grossReturn = side * (signal.exitPrice / signal.entryPrice - 1);
     const feeRate = takerFeePerSide * 2;
@@ -161,9 +226,10 @@ function simulate(signals: TradeSignal[], candidate: CombinedStrategyCandidate, 
     else shortTrades += 1;
     peak = Math.max(peak, capital);
     maxDrawdownPct = Math.max(maxDrawdownPct, peak > 0 ? (peak - capital) / peak : 0);
-  }
+  });
 
-  const returnConfidenceInterval95 = netTradeReturns.length ? meanConfidenceInterval(netTradeReturns) : null;
+  const returnConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(netTradeReturns);
+  const deflatedSharpe = deflatedSharpeProbability(netTradeReturns, strategyCandidates.length - 1);
   return {
     initialCapital,
     endingCapital: capital,
@@ -176,7 +242,8 @@ function simulate(signals: TradeSignal[], candidate: CombinedStrategyCandidate, 
     directionalAccuracy: signals.length ? directionallyCorrect / signals.length : null,
     averageNetTradeReturn: netTradeReturns.length ? average(netTradeReturns) : null,
     returnConfidenceInterval95,
-    statisticallyPositive: returnConfidenceInterval95 !== null && returnConfidenceInterval95[0] > 0,
+    statisticallyPositive: signals.length >= minimumValidationTrades && returnConfidenceInterval95 !== null && returnConfidenceInterval95[0] > 0,
+    deflatedSharpeProbability: deflatedSharpe,
     maxDrawdownPct,
     totalFees,
     totalSlippage,
@@ -184,15 +251,16 @@ function simulate(signals: TradeSignal[], candidate: CombinedStrategyCandidate, 
     assumedTakerFeePerSide: takerFeePerSide,
     assumedSlippagePerSide: slippagePerSide,
     assumedFundingPer24h: fundingPer24h,
+    tradeReturns: netTradeReturns,
   };
 }
 
-function impliedTerminalMedian(sample: EvaluationSample, volatility: number) {
+function impliedTerminalMedian(sample: EvaluationSample, volatility: number, probability = sample.marketProbability) {
   return impliedTerminalMedianForCondition(
     sample.thresholdKind,
     sample.thresholdLower,
     sample.thresholdUpper,
-    sample.marketProbability,
+    probability,
     volatility,
   );
 }
@@ -225,6 +293,64 @@ function hasExecutionData(sample: EvaluationSample) {
     && typeof sample.hyperliquidExitAt === "string";
 }
 
+export function deflatedSharpeProbability(returns: number[], strategyTrials: number) {
+  if (returns.length < minimumValidationTrades) return null;
+  const mean = average(returns);
+  const standardDeviation = sampleStandardDeviation(returns);
+  if (standardDeviation < 1e-12) return mean > 0 ? 1 : 0;
+  const sharpe = mean / standardDeviation;
+  const skewness = average(returns.map((value) => ((value - mean) / standardDeviation) ** 3));
+  const kurtosis = average(returns.map((value) => ((value - mean) / standardDeviation) ** 4));
+  const trials = Math.max(2, strategyTrials);
+  const eulerGamma = 0.5772156649;
+  const expectedMaximumZ = (1 - eulerGamma) * inverseNormalCdf(1 - 1 / trials)
+    + eulerGamma * inverseNormalCdf(1 - 1 / (trials * Math.E));
+  const expectedMaximumSharpe = expectedMaximumZ / Math.sqrt(Math.max(1, returns.length - 1));
+  const denominatorSquared = Math.max(1e-12, 1 - skewness * sharpe + ((kurtosis - 1) / 4) * sharpe ** 2);
+  const statistic = (sharpe - expectedMaximumSharpe) * Math.sqrt(returns.length - 1) / Math.sqrt(denominatorSquared);
+  return clamp(normalCdf(statistic), 0, 1);
+}
+
+function blockBootstrapMeanConfidenceInterval(values: number[]): [number, number] | null {
+  if (values.length < 2) return null;
+  if (values.length < 5) return meanConfidenceInterval(values);
+  const blockLength = Math.max(2, Math.ceil(Math.sqrt(values.length)));
+  const means: number[] = [];
+  let seed = (values.length * 2_654_435_761) >>> 0;
+  const random = () => {
+    seed = (seed * 1_664_525 + 1_013_904_223) >>> 0;
+    return seed / 4_294_967_296;
+  };
+  for (let iteration = 0; iteration < 1_000; iteration += 1) {
+    const sample: number[] = [];
+    while (sample.length < values.length) {
+      const start = Math.floor(random() * values.length);
+      for (let offset = 0; offset < blockLength && sample.length < values.length; offset += 1) {
+        sample.push(values[(start + offset) % values.length]);
+      }
+    }
+    means.push(average(sample));
+  }
+  means.sort((left, right) => left - right);
+  return [means[Math.floor(means.length * 0.025)], means[Math.floor(means.length * 0.975)]];
+}
+
+function meanConfidenceInterval(values: number[]): [number, number] {
+  const mean = average(values);
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
+  const margin = criticalValue95(values.length - 1) * Math.sqrt(variance / values.length);
+  return [mean - margin, mean + margin];
+}
+
+function splitChronologically<T>(values: T[], folds: number) {
+  if (!values.length) return Array.from({ length: folds }, () => [] as T[]);
+  return Array.from({ length: folds }, (_, index) => {
+    const start = Math.floor(index * values.length / folds);
+    const end = Math.floor((index + 1) * values.length / folds);
+    return values.slice(start, end);
+  });
+}
+
 // Peter J. Acklam's rational approximation for the inverse normal CDF.
 function inverseNormalCdf(probability: number) {
   const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
@@ -249,12 +375,13 @@ function inverseNormalCdf(probability: number) {
     / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
 }
 
-function meanConfidenceInterval(values: number[]): [number, number] {
-  const mean = average(values);
-  if (values.length < 2) return [mean, mean];
-  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
-  const margin = criticalValue95(values.length - 1) * Math.sqrt(variance / values.length);
-  return [mean - margin, mean + margin];
+function normalCdf(value: number) {
+  const sign = value < 0 ? -1 : 1;
+  const x = Math.abs(value) / Math.sqrt(2);
+  const t = 1 / (1 + 0.3275911 * x);
+  const polynomial = (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
+  const erf = sign * (1 - polynomial * Math.exp(-x * x));
+  return 0.5 * (1 + erf);
 }
 
 function criticalValue95(degreesOfFreedom: number) {
@@ -264,6 +391,11 @@ function criticalValue95(degreesOfFreedom: number) {
   if (degreesOfFreedom <= 19) return 2.093;
   if (degreesOfFreedom <= 29) return 2.045;
   return 1.96;
+}
+
+function sampleStandardDeviation(values: number[]) {
+  const mean = average(values);
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, values.length - 1));
 }
 
 function average(values: number[]) {

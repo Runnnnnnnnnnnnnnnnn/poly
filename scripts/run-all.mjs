@@ -49,6 +49,11 @@ const processes = [
     command: process.execPath,
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-monitoring.mts")],
   },
+  {
+    name: "encrypted-backup",
+    command: process.execPath,
+    args: [join(root, "scripts/run-encrypted-backup.mjs")],
+  },
 ];
 const children = new Map();
 

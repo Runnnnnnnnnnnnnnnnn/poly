@@ -19,6 +19,7 @@ export type CryptoMarket = {
   minOrderSize: number;
   tickSize: number;
   feesEnabled: boolean;
+  referenceSource: "BINANCE" | "CHAINLINK" | "UNKNOWN";
 };
 
 export type HistoricalProbability = {

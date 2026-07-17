@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 
+import { prisma } from "@/src/lib/server/prisma";
+
 type TestnetOrderRequest = {
   action: "open" | "close";
   asset: "BTC" | "ETH" | "SOL" | "XRP";
@@ -17,6 +19,10 @@ type ExecutorResponse = {
   environment: "testnet";
   accountValue?: number;
   result?: unknown;
+  positions?: Array<{ coin?: string; size?: number; entryPrice?: number; positionValue?: number; unrealizedPnl?: number; liquidationPrice?: number }>;
+  openOrders?: unknown[];
+  recentFills?: unknown[];
+  orderStatuses?: Array<{ clientOrderId?: string; exchangeCloid?: string; result?: unknown }>;
   error?: string;
 };
 
@@ -62,6 +68,43 @@ export async function executeHyperliquidTestnetOrder(request: TestnetOrderReques
   return response;
 }
 
+export async function reconcileHyperliquidTestnetOrders() {
+  const readiness = getHyperliquidExecutionReadiness();
+  if (!readiness.installed || !readiness.accountConfigured) {
+    return { ...readiness, connected: false, checkedOrders: 0, updatedOrders: 0, positions: [], openOrders: [], recentFills: [] };
+  }
+  const orders = await prisma.combinedExecutionOrder.findMany({
+    where: { environment: "TESTNET", status: { in: ["PENDING", "ACCEPTED", "OPEN"] } },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+  const response = await runExecutor({ action: "reconcile", clientOrderIds: orders.map((order) => order.clientOrderId) });
+  if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet reconciliation failed");
+
+  let updatedOrders = 0;
+  for (const status of response.orderStatuses ?? []) {
+    if (!status.clientOrderId) continue;
+    const normalized = normalizeExchangeOrderStatus(status.result);
+    if (!normalized) continue;
+    const result = await prisma.combinedExecutionOrder.updateMany({
+      where: { clientOrderId: status.clientOrderId, environment: "TESTNET" },
+      data: { status: normalized, responseJson: JSON.stringify(status) },
+    });
+    updatedOrders += result.count;
+  }
+
+  return {
+    ...readiness,
+    connected: true,
+    accountValue: response.accountValue ?? null,
+    checkedOrders: orders.length,
+    updatedOrders,
+    positions: response.positions ?? [],
+    openOrders: response.openOrders ?? [],
+    recentFills: response.recentFills ?? [],
+  };
+}
+
 function runExecutor(payload: Record<string, unknown>) {
   return new Promise<ExecutorResponse>((resolvePromise, reject) => {
     const child = spawn(executorPython(), [executorScript()], {
@@ -101,4 +144,14 @@ function executorScript() {
 function maximumTestnetNotional() {
   const configured = Number(process.env.HYPERLIQUID_TESTNET_MAX_NOTIONAL_USD ?? 25);
   return Number.isFinite(configured) ? Math.max(1, Math.min(100, configured)) : 25;
+}
+
+export function normalizeExchangeOrderStatus(value: unknown) {
+  const serialized = JSON.stringify(value ?? "").toLowerCase();
+  if (/query_error|unknownoid|unknown oid|not found/.test(serialized)) return null;
+  if (/\bfilled\b/.test(serialized)) return "FILLED";
+  if (/\b(open|resting)\b/.test(serialized)) return "OPEN";
+  if (/\b(cancelled|canceled|margin_canceled)\b/.test(serialized)) return "CANCELLED";
+  if (/\b(rejected|error)\b/.test(serialized)) return "REJECTED";
+  return null;
 }

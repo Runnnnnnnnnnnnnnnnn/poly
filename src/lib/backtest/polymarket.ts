@@ -25,6 +25,8 @@ const marketSchema = z
     minimumOrderSize: z.union([z.string(), z.number()]).optional(),
     minimum_tick_size: z.union([z.string(), z.number()]).optional(),
     feesEnabled: z.boolean().optional(),
+    description: z.string().nullable().optional(),
+    resolutionSource: z.string().nullable().optional(),
     events: z.array(z.object({ id: z.union([z.string(), z.number()]) }).passthrough()).optional(),
   })
   .passthrough();
@@ -90,7 +92,7 @@ export async function discoverActiveCryptoPriceMarkets(limit = 300) {
   url.searchParams.set("order", "volume24hr");
   url.searchParams.set("ascending", "false");
   url.searchParams.set("end_date_min", now.toISOString());
-  const response = await fetchWithTimeout(url.toString(), {}, 20_000);
+  const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 20_000);
   if (!response.ok) throw new Error(`active crypto price events ${response.status}`);
   const events = z.array(historicalEventSchema).parse(await response.json());
   const markets = events.flatMap((event) => event.markets
@@ -121,7 +123,7 @@ export async function discoverHistoricalCryptoEvents(options: { maxEvents?: numb
     url.searchParams.set("end_date_max", endDateMax.toISOString());
     if (cursor) url.searchParams.set("after_cursor", cursor);
 
-    const response = await fetchWithTimeout(url.toString(), {}, 30_000);
+    const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 30_000);
     if (!response.ok) throw new Error(`historical events ${response.status}`);
     const parsed = eventKeysetSchema.parse(await response.json());
 
@@ -145,7 +147,7 @@ export async function discoverHistoricalCryptoEvents(options: { maxEvents?: numb
     url.searchParams.set("title_search", titleSearch);
     url.searchParams.set("end_date_min", "2025-01-01T00:00:00Z");
     url.searchParams.set("end_date_max", endDateMax.toISOString());
-    const response = await fetchWithTimeout(url.toString(), {}, 30_000);
+    const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 30_000);
     if (!response.ok) throw new Error(`recent historical events ${response.status}`);
     return eventKeysetSchema.parse(await response.json()).events
       .map((event) => toHistoricalEvent(event, horizonHours, endDateMax))
@@ -169,7 +171,7 @@ export async function fetchHistoricalProbability(tokenId: string, options: { fid
   if (options.endTs) url.searchParams.set("endTs", String(options.endTs));
   if (!options.startTs && !options.endTs) url.searchParams.set("interval", "max");
 
-  const response = await fetchWithTimeout(url.toString(), {}, 20_000);
+  const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 20_000);
   if (!response.ok) throw new Error(`prices-history ${response.status}`);
   const parsed = historySchema.parse(await response.json());
   return parsed.history
@@ -181,7 +183,7 @@ async function searchMarkets(query: string) {
   const url = new URL(`${GAMMA_API}/public-search`);
   url.searchParams.set("q", query);
   url.searchParams.set("limit", "50");
-  const response = await fetchWithTimeout(url.toString(), {}, 15_000);
+  const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 15_000);
   if (!response.ok) throw new Error(`public-search ${query}: ${response.status}`);
   return searchSchema
     .parse(await response.json())
@@ -193,7 +195,7 @@ async function fetchTopMarkets() {
   url.searchParams.set("limit", "200");
   url.searchParams.set("order", "volume24hr");
   url.searchParams.set("ascending", "false");
-  const response = await fetchWithTimeout(url.toString(), {}, 15_000);
+  const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 15_000);
   if (!response.ok) throw new Error(`markets ${response.status}`);
   return marketsSchema.parse(await response.json());
 }
@@ -230,6 +232,7 @@ function toCryptoMarket(market: z.infer<typeof marketSchema>, explicitEventId?: 
     minOrderSize: Math.max(0, toNumber(market.minimumOrderSize)),
     tickSize: toNumber(market.minimum_tick_size) || 0.01,
     feesEnabled: market.feesEnabled ?? true,
+    referenceSource: inferReferenceSource(`${market.resolutionSource ?? ""} ${market.description ?? ""}`),
   };
 }
 
@@ -274,7 +277,7 @@ function parseDate(value: string | null | undefined) {
 export async function fetchCurrentBook(tokenId: string) {
   const url = new URL(`${CLOB_API}/book`);
   url.searchParams.set("token_id", tokenId);
-  const response = await fetchWithTimeout(url.toString(), {}, 15_000);
+  const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 15_000);
   if (!response.ok) throw new Error(`book ${response.status}`);
   const book = bookSchema.parse(await response.json());
   const bids = book.bids.map((level) => ({ price: toNumber(level.price), size: toNumber(level.size) })).filter((level) => level.price > 0 && level.size > 0);
@@ -294,6 +297,12 @@ function inferAsset(text: string): CryptoAsset | null {
   if (/\b(xrp|ripple)\b/.test(text)) return "XRP";
   if (/\b(crypto|cryptocurrency|token)\b/.test(text)) return "OTHER";
   return null;
+}
+
+function inferReferenceSource(text: string): CryptoMarket["referenceSource"] {
+  if (/binance/i.test(text)) return "BINANCE";
+  if (/chainlink/i.test(text)) return "CHAINLINK";
+  return "UNKNOWN";
 }
 
 function resolveResult(market: z.infer<typeof marketSchema>, yesPrice: number | undefined, noPrice: number | undefined): 0 | 1 | null {

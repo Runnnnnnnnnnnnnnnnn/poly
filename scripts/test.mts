@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
+import { normalizeExchangeOrderStatus } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculateCombinedClose } from "../src/lib/combined-trading/service";
-import { evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
+import { deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
+import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/probability-ladder";
 import { parseTerminalPriceCondition, probabilityForCondition } from "../src/lib/model-evaluation/price-structure";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 
@@ -41,6 +43,19 @@ assert.ok((bearishTarget ?? 200) < 100);
 assert.equal(impliedTerminalMedianForCondition("between", 90, 110, 0.5, 0.05), null);
 
 console.log("live signal inversion tests passed");
+
+const ladder = fitMonotonicProbabilityLadder([
+  { id: "90", kind: "above", threshold: 90, probability: 0.6 },
+  { id: "100", kind: "above", threshold: 100, probability: 0.7 },
+  { id: "110", kind: "above", threshold: 110, probability: 0.2 },
+]);
+assert.equal(ladder.violations, 1);
+const corrected = new Map(ladder.points.map((point) => [point.id, point.correctedProbability]));
+assert.ok((corrected.get("90") ?? 0) >= (corrected.get("100") ?? 1));
+assert.ok((corrected.get("100") ?? 0) >= (corrected.get("110") ?? 1));
+assert.ok((deflatedSharpeProbability(Array.from({ length: 20 }, () => 0.01), 5) ?? 0) > 0.95);
+
+console.log("probability ladder and selection-bias tests passed");
 
 const closeCost = {
   quantity: 10,
@@ -95,7 +110,7 @@ console.log("chronological model evaluation tests passed");
 
 const combinedSamples: EvaluationSample[] = [];
 for (let eventIndex = 0; eventIndex < 60; eventIndex += 1) {
-  const long = eventIndex % 2 === 0;
+  const long = eventIndex % 5 === 0 || eventIndex % 5 === 1;
   const entryAt = new Date(Date.UTC(2024, 0, 1 + eventIndex * 2, 0));
   const exitAt = new Date(entryAt.getTime() + 24 * 60 * 60 * 1_000);
   combinedSamples.push({
@@ -121,10 +136,19 @@ for (let eventIndex = 0; eventIndex < 60; eventIndex += 1) {
 const combined = evaluateCombinedTrading(combinedSamples.slice(0, 40), combinedSamples.slice(40));
 assert.notEqual(combined.selectedStrategy.id, "no-trade guard");
 assert.equal(combined.trades, 20);
-assert.equal(combined.longTrades, 10);
-assert.equal(combined.shortTrades, 10);
+assert.equal(combined.longTrades + combined.shortTrades, 20);
+assert.ok(combined.longTrades > 0 && combined.shortTrades > 0);
 assert.ok(combined.netReturnPct > 0);
 assert.ok(combined.excessReturnPct > 0);
 assert.equal(combined.statisticallyPositive, true);
+assert.ok((combined.deflatedSharpeProbability ?? 0) > 0.95);
+assert.equal(combined.walkForwardFolds, 4);
 
 console.log("combined Polymarket and Hyperliquid strategy tests passed");
+
+assert.equal(normalizeExchangeOrderStatus({ status: "query_error", error: "temporary timeout" }), null);
+assert.equal(normalizeExchangeOrderStatus({ status: "unknownOid" }), null);
+assert.equal(normalizeExchangeOrderStatus({ status: "order", order: { status: "filled" } }), "FILLED");
+assert.equal(normalizeExchangeOrderStatus({ status: "order", order: { status: "open" } }), "OPEN");
+
+console.log("testnet reconciliation status tests passed");

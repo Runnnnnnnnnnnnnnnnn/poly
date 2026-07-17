@@ -293,6 +293,8 @@ model CombinedShadowPosition {
   markPrice      Float
   impliedTarget  Float
   signalZ        Float
+  horizonHours   Int?
+  priceBasisPct  Float?
   entryFee       Float
   accruedFunding Float                    @default(0)
   realizedPnl    Float?
@@ -321,11 +323,26 @@ model CombinedShadowDecision {
   targetPrice Float?
   signalZ     Float?
   threshold   Float
+  horizonHours            Int?
+  scannedMarkets          Int       @default(0)
+  structuredMarkets       Int       @default(0)
+  horizonEligibleMarkets  Int       @default(0)
+  groupedEvents           Int       @default(0)
+  priceReadyEvents        Int       @default(0)
+  marketBestBid           Float?
+  marketBestAsk           Float?
+  marketSpread            Float?
+  polymarketReferencePrice Float?
+  referenceSource         String?
+  priceBasisPct           Float?
+  ladderViolations        Int?
+  nextWindowAt            DateTime?
   observedAt  DateTime          @default(now())
   run         CombinedShadowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId, observedAt])
   @@index([action, observedAt])
+  @@index([horizonHours, observedAt])
 }
 
 model CombinedShadowEquitySnapshot {

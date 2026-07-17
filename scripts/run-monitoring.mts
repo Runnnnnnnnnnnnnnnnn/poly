@@ -1,4 +1,5 @@
 import { collectCryptoSnapshots } from "../src/lib/backtest/service";
+import { getHyperliquidExecutionReadiness, reconcileHyperliquidTestnetOrders } from "../src/lib/combined-trading/hyperliquid-execution";
 import { runModelEvaluation } from "../src/lib/model-evaluation/service";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
 import { collectHyperliquidSnapshots } from "../src/lib/monitoring/hyperliquid";
@@ -29,6 +30,20 @@ async function collectCycle() {
       console.log(JSON.stringify({ type: "hyperliquid-snapshot", ...hyperliquid.value }));
     } else {
       console.error(hyperliquid.reason);
+    }
+    const execution = getHyperliquidExecutionReadiness();
+    if (execution.accountConfigured && execution.installed) {
+      await markPipelineAttempt("testnet-reconcile", "テストネット口座を照合中");
+      try {
+        const reconciliation = await reconcileHyperliquidTestnetOrders();
+        await markPipelineSuccess(
+          "testnet-reconcile",
+          reconciliation.checkedOrders,
+          `注文${reconciliation.checkedOrders}件 / 保有${reconciliation.positions.length}件を照合`,
+        );
+      } catch (error) {
+        await markPipelineError("testnet-reconcile", error);
+      }
     }
   } finally {
     collecting = false;
