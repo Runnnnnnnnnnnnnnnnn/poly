@@ -35,6 +35,14 @@ export function middleware(request: NextRequest) {
     });
   }
 
+  const publicReadOnlyPath = request.method === "GET"
+    && (request.nextUrl.pathname === "/api/health" || request.nextUrl.pathname === "/api/public-dashboard");
+  if (publicReadOnlyPath) {
+    const response = NextResponse.next();
+    Object.entries(headers).forEach(([key, value]) => response.headers.set(key, value));
+    return response;
+  }
+
   const expectedToken = process.env.API_ACCESS_TOKEN?.trim();
   const authorization = request.headers.get("authorization") ?? "";
   const suppliedToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";

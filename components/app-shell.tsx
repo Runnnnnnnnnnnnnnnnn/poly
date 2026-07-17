@@ -9,7 +9,7 @@ import { Activity, BookOpen, HelpCircle, Menu, Newspaper, Search, X } from "luci
 import { BrandLogo } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
 import { ConciergeDrawer } from "@/src/components/ai/ConciergeDrawer";
-import { initializeLocalApiBaseFromUrl } from "@/src/lib/localApiClient";
+import { discoverLiveApiBase, initializeLocalApiBaseFromUrl } from "@/src/lib/localApiClient";
 
 const navItems = [
   { href: "/paper-trading", label: "モデル開発", icon: Activity },
@@ -34,6 +34,7 @@ export function AppShell({ children, className }: { children: React.ReactNode; c
 
   useEffect(() => {
     initializeLocalApiBaseFromUrl();
+    void discoverLiveApiBase();
   }, []);
 
   return (

@@ -3,6 +3,12 @@
 const LOCAL_API_STORAGE_KEY = "jmw.localApiBase";
 const LOCAL_API_TOKEN_STORAGE_KEY = "jmw.localApiToken";
 const DEFAULT_STATIC_LOCAL_API_BASE = process.env.NEXT_PUBLIC_LOCAL_API_BASE ?? "";
+const LIVE_CONNECTION_URL = process.env.NEXT_PUBLIC_LIVE_CONNECTION_URL
+  ?? "https://api.github.com/repos/Runnnnnnnnnnnnnnnnn/poly/contents/connection.json?ref=live";
+const LIVE_CONNECTION_REFRESH_MS = 120_000;
+
+let liveConnectionPromise: Promise<string> | null = null;
+let liveConnectionCheckedAt = 0;
 
 export function initializeLocalApiBaseFromUrl() {
   if (typeof window === "undefined") return "";
@@ -38,6 +44,36 @@ export function setLocalApiBase(value: string) {
     window.localStorage.removeItem(LOCAL_API_STORAGE_KEY);
   }
   window.dispatchEvent(new Event("local-api-base-changed"));
+}
+
+export async function discoverLiveApiBase() {
+  if (typeof window === "undefined") return "";
+  const explicit = getUrlApiBase();
+  if (explicit || process.env.NEXT_PUBLIC_STATIC_EXPORT !== "1") return getLocalApiBase();
+
+  if (liveConnectionPromise && Date.now() - liveConnectionCheckedAt < LIVE_CONNECTION_REFRESH_MS) {
+    return liveConnectionPromise;
+  }
+
+  liveConnectionCheckedAt = Date.now();
+  const separator = LIVE_CONNECTION_URL.includes("?") ? "&" : "?";
+  liveConnectionPromise = fetch(`${LIVE_CONNECTION_URL}${separator}v=${liveConnectionCheckedAt}`, {
+    cache: "no-store",
+    headers: { accept: "application/vnd.github.raw+json" },
+  })
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`connection registry returned ${response.status}`);
+      const payload = await response.json() as { apiBase?: unknown };
+      if (typeof payload.apiBase !== "string") throw new Error("connection registry is invalid");
+      const url = new URL(payload.apiBase);
+      if (url.protocol !== "https:") throw new Error("connection registry must use HTTPS");
+      const normalized = url.toString().replace(/\/$/, "");
+      if (getLocalApiBase() !== normalized) setLocalApiBase(normalized);
+      return normalized;
+    })
+    .catch(() => getLocalApiBase());
+
+  return liveConnectionPromise;
 }
 
 export function initializeLocalApiTokenFromUrl() {

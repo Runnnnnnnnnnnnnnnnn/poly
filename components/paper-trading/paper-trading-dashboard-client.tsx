@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { fetchLocalApi, isSnapshotMode } from "@/src/lib/localApiClient";
+import { discoverLiveApiBase, fetchLocalApi, getLocalApiToken, isSnapshotMode } from "@/src/lib/localApiClient";
 
 type RunMetrics = {
   totalReturnPct?: number;
@@ -83,31 +83,6 @@ type BacktestRun = {
   error: string | null;
 };
 
-type Forecast = {
-  asset: string;
-  targetDate: string | null;
-  marketCount: number;
-  impliedMedian: number | null;
-  quantiles: { p10: number | null; p25: number | null; p75: number | null; p90: number | null };
-};
-
-type AiHistorySummary = {
-  total: number;
-  pending: number;
-  resolved: number;
-  averageBrierScore: number | null;
-  averageMarketBrierScore: number | null;
-  improvementVsMarket: number | null;
-  latestRecordedAt: string | null;
-};
-
-type AiEvaluationsResponse = {
-  status: string;
-  updatedAt: string;
-  model: string;
-  historySummary: AiHistorySummary;
-};
-
 type MonitoringSnapshot = {
   status: "live" | "delayed" | "offline";
   generatedAt: string;
@@ -157,7 +132,13 @@ type MonitoringSnapshot = {
   pipelines: Array<{ id: string; label: string; cadence: string; status: "healthy" | "waiting" | "error"; lastSuccessAt: string | null; records: number }>;
 };
 
-const price = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+type PublicDashboardResponse = {
+  generatedAt: string;
+  monitoring: MonitoringSnapshot;
+  runs: Run[];
+  backtests: BacktestRun[];
+};
+
 const assets = ["BTC", "ETH", "SOL", "XRP"] as const;
 type Tone = "good" | "watch" | "bad" | "neutral";
 
@@ -175,8 +156,6 @@ export function PaperTradingDashboardClient() {
   const [maxMarkets, setMaxMarkets] = useState("20");
   const [runs, setRuns] = useState<Run[]>([]);
   const [backtests, setBacktests] = useState<BacktestRun[]>([]);
-  const [forecast, setForecast] = useState<Forecast | null>(null);
-  const [aiEvaluations, setAiEvaluations] = useState<AiEvaluationsResponse | null>(null);
   const [monitoring, setMonitoring] = useState<MonitoringSnapshot | null>(null);
   const [selectedPaperRun, setSelectedPaperRun] = useState<PaperRunDetail | null>(null);
   const [selectedBacktest, setSelectedBacktest] = useState<BacktestRun | null>(null);
@@ -185,55 +164,69 @@ export function PaperTradingDashboardClient() {
   const [message, setMessage] = useState("準備完了");
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState(false);
+  const [readOnly, setReadOnly] = useState(true);
   const refreshingRef = useRef(false);
-  const lastAiFetchAtRef = useRef(0);
 
   const activeRun = useMemo(() => runs.find((run) => run.asset === asset && run.status === "running") ?? null, [asset, runs]);
   const refresh = useCallback(async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     try {
+      await discoverLiveApiBase();
       const staticMode = isSnapshotMode();
+      const operatorAccess = Boolean(getLocalApiToken());
       setSnapshot(staticMode);
+      setReadOnly(staticMode || !operatorAccess);
       if (staticMode) {
         const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-        const [aiResponse, monitoringResponse] = await Promise.all([
-          fetch(`${base}/ai-evaluations.json`, { cache: "no-store" }),
-          fetch(`${base}/monitoring-snapshot.json`, { cache: "no-store" }),
-        ]);
-        if (aiResponse.ok) setAiEvaluations(await aiResponse.json());
+        const monitoringResponse = await fetch(`${base}/monitoring-snapshot.json`, { cache: "no-store" });
         if (monitoringResponse.ok) setMonitoring(await monitoringResponse.json());
-        setMessage("公開版は保存データの閲覧専用です。仮想売買を実行するにはAPIへ接続してください。");
+        setMessage("保存時点の結果を表示しています");
         setUpdatedAt(new Date().toISOString());
         return;
       }
-      const shouldFetchAi = !aiEvaluations || Date.now() - lastAiFetchAtRef.current >= 60_000;
-      const aiRequest = shouldFetchAi
-        ? fetchLocalApi<AiEvaluationsResponse>("/api/ai/evaluations").catch(() => null)
-        : Promise.resolve(null);
-      const [runsPayload, forecastPayload, backtestsPayload, monitoringPayload] = await Promise.all([
+
+      if (!operatorAccess) {
+        const payload = await fetchLocalApi<PublicDashboardResponse>("/api/public-dashboard");
+        setRuns(payload.runs ?? []);
+        setBacktests(payload.backtests ?? []);
+        setMonitoring(payload.monitoring);
+        setUpdatedAt(payload.generatedAt);
+        setMessage("30秒ごとに自動更新");
+        return;
+      }
+
+      const [runsPayload, backtestsPayload, monitoringPayload] = await Promise.all([
         fetchLocalApi<{ items: Run[] }>("/api/paper-trading/runs"),
-        fetchLocalApi<Forecast>(`/api/backtests/forecast?asset=${asset}`),
         fetchLocalApi<{ items: BacktestRun[] }>("/api/backtests?limit=20"),
         fetchLocalApi<MonitoringSnapshot>("/api/monitoring"),
       ]);
       setRuns(runsPayload.items ?? []);
-      setForecast(forecastPayload);
       setBacktests(backtestsPayload.items ?? []);
       setMonitoring(monitoringPayload);
       setUpdatedAt(new Date().toISOString());
-
-      const aiPayload = await aiRequest;
-      if (aiPayload) {
-        setAiEvaluations(aiPayload);
-        lastAiFetchAtRef.current = Date.now();
-      }
     } catch (error) {
-      setMessage(error instanceof Error && /401/.test(error.message) ? "APIの接続キーが確認できません。接続URLを発行し直してください。" : "最新データを取得できませんでした。少し待ってから「画面を最新にする」を押してください。");
+      let usingFallback = false;
+      if (process.env.NEXT_PUBLIC_STATIC_EXPORT === "1") {
+        const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+        const fallback = await fetch(`${base}/monitoring-snapshot.json`, { cache: "no-store" }).catch(() => null);
+        if (fallback?.ok) {
+          setMonitoring(await fallback.json());
+          setSnapshot(true);
+          setReadOnly(true);
+          setUpdatedAt(new Date().toISOString());
+          usingFallback = true;
+        }
+      }
+      setMessage(usingFallback
+        ? "接続確認中・保存時点の結果"
+        : error instanceof Error && /401/.test(error.message)
+          ? "管理用の接続キーを確認してください"
+          : "接続を確認しています");
     } finally {
       refreshingRef.current = false;
     }
-  }, [aiEvaluations, asset]);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -392,12 +385,12 @@ export function PaperTradingDashboardClient() {
       <details className="rounded-lg border border-border bg-white shadow-sm">
         <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 sm:px-5">
           <span className="flex items-center gap-2 text-sm font-bold text-slate-950"><Gauge className="h-4 w-4 text-primary" />運用操作</span>
-          <span className="max-w-[60%] truncate text-xs text-muted-foreground">{snapshot ? "公開版では閲覧のみ" : message}</span>
+          <span className="max-w-[60%] truncate text-xs text-muted-foreground">{readOnly ? message : "管理者用"}</span>
         </summary>
         <div className="grid gap-4 border-t p-4 sm:p-5">
           <div className="grid gap-2 sm:grid-cols-3">
-            <Button onClick={() => void runModelEvaluation()} disabled={loading || snapshot}><Target className="h-4 w-4" />モデルを再検証</Button>
-            <Button variant="secondary" onClick={() => void collectSnapshot()} disabled={loading || snapshot}><Database className="h-4 w-4" />市場データを保存</Button>
+            <Button onClick={() => void runModelEvaluation()} disabled={loading || readOnly}><Target className="h-4 w-4" />モデルを再検証</Button>
+            <Button variant="secondary" onClick={() => void collectSnapshot()} disabled={loading || readOnly}><Database className="h-4 w-4" />市場データを保存</Button>
             <Button variant="outline" onClick={() => void refresh()} disabled={loading}><RefreshCw className="h-4 w-4" />画面を更新</Button>
           </div>
           <details className="border-t pt-4">
@@ -405,49 +398,35 @@ export function PaperTradingDashboardClient() {
             <div className="mt-4 grid gap-4">
               <div className="grid grid-cols-4 gap-1 rounded-lg bg-slate-100 p-1 sm:max-w-80">
                 {assets.map((item) => (
-                  <button key={item} type="button" onClick={() => setAsset(item)} disabled={snapshot} className={`h-9 rounded-md text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${asset === item ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-slate-950"}`}>{item}</button>
+                  <button key={item} type="button" onClick={() => setAsset(item)} className={`h-9 rounded-md text-sm font-bold transition ${asset === item ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-slate-950"}`}>{item}</button>
                 ))}
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
-                <Button variant="outline" onClick={() => void runBaselineBacktest()} disabled={loading || snapshot}><BarChart3 className="h-4 w-4" />市場基準を確認</Button>
-                <Button variant="outline" onClick={() => void startRun("historical")} disabled={loading || snapshot || Boolean(activeRun)}><Play className="h-4 w-4" />仮想売買</Button>
-                <Button variant="outline" onClick={() => void startRun("live")} disabled={loading || snapshot || Boolean(activeRun)}><Activity className="h-4 w-4" />継続観察</Button>
+                <Button variant="outline" onClick={() => void runBaselineBacktest()} disabled={loading || readOnly}><BarChart3 className="h-4 w-4" />市場基準を確認</Button>
+                <Button variant="outline" onClick={() => void startRun("historical")} disabled={loading || readOnly || Boolean(activeRun)}><Play className="h-4 w-4" />仮想売買</Button>
+                <Button variant="outline" onClick={() => void startRun("live")} disabled={loading || readOnly || Boolean(activeRun)}><Activity className="h-4 w-4" />継続観察</Button>
               </div>
               {activeRun ? (
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => void tickRun()} disabled={loading || snapshot}><Target className="h-4 w-4" />今すぐ更新</Button>
-                  <Button variant="outline" size="sm" onClick={() => void stopRun()} disabled={loading || snapshot}><Square className="h-4 w-4" />停止</Button>
+                  <Button variant="secondary" size="sm" onClick={() => void tickRun()} disabled={loading || readOnly}><Target className="h-4 w-4" />今すぐ更新</Button>
+                  <Button variant="outline" size="sm" onClick={() => void stopRun()} disabled={loading || readOnly}><Square className="h-4 w-4" />停止</Button>
                 </div>
               ) : null}
               <div className="grid gap-3 sm:grid-cols-3">
-                <label className="grid gap-1.5 text-xs font-semibold">初期資金<input disabled={snapshot} value={initialCash} onChange={(event) => setInitialCash(event.target.value)} inputMode="decimal" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
-                <label className="grid gap-1.5 text-xs font-semibold">売買に必要な差<input disabled={snapshot} value={entryEdge} onChange={(event) => setEntryEdge(event.target.value)} inputMode="decimal" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
-                <label className="grid gap-1.5 text-xs font-semibold">市場数<input disabled={snapshot} value={maxMarkets} onChange={(event) => setMaxMarkets(event.target.value)} inputMode="numeric" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
+                <label className="grid gap-1.5 text-xs font-semibold">初期資金<input disabled={readOnly} value={initialCash} onChange={(event) => setInitialCash(event.target.value)} inputMode="decimal" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
+                <label className="grid gap-1.5 text-xs font-semibold">売買に必要な差<input disabled={readOnly} value={entryEdge} onChange={(event) => setEntryEdge(event.target.value)} inputMode="decimal" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
+                <label className="grid gap-1.5 text-xs font-semibold">市場数<input disabled={readOnly} value={maxMarkets} onChange={(event) => setMaxMarkets(event.target.value)} inputMode="numeric" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
               </div>
             </div>
           </details>
         </div>
       </details>
 
-      <details className="rounded-lg border border-border bg-white shadow-sm">
-        <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3">
-          <span className="text-sm font-bold text-slate-950">{asset} 市場の予想レンジ</span>
-          <span className="text-base font-bold text-primary">{formatPrice(forecast?.impliedMedian)}</span>
-        </summary>
-        <div className="border-t p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>{forecast?.marketCount ?? 0}市場</span>
-            <span>{forecast?.targetDate ? `対象日 ${forecast.targetDate}` : "対象日なし"}</span>
-          </div>
-          <ForecastRangeTrack forecast={forecast} />
-        </div>
-      </details>
-
       <MonitoringDetails snapshot={monitoring} />
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <ScoreboardCard asset={asset} backtests={backtests} onSelect={(id) => void loadBacktest(id)} />
-        <PaperRunsCard asset={asset} runs={runs} updatedAt={updatedAt} onSelect={(id) => void loadPaperRun(id)} />
+        <ScoreboardCard asset={asset} backtests={backtests} onSelect={readOnly ? undefined : (id) => void loadBacktest(id)} />
+        <PaperRunsCard asset={asset} runs={runs} updatedAt={updatedAt} onSelect={readOnly ? undefined : (id) => void loadPaperRun(id)} />
       </section>
 
       <DetailPanel paperRun={selectedPaperRun} backtest={selectedBacktest} loading={detailLoading} />
@@ -597,14 +576,14 @@ function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | nu
         <div className="grid grid-cols-3 divide-x divide-border">
           <ResultMetric
             icon={Target}
-            label="Polymarket比"
+            label="市場との差"
             value={formatImprovement(model?.brierImprovement)}
-            note={`同じ${model?.testedEvents ?? 0}イベントで比較`}
+            note={`${model?.testedEvents ?? 0}イベント比較`}
             tone={comparisonTone}
           />
           <ResultMetric
             icon={profitSignal.icon}
-            label="コスト控除後"
+            label="検証損益"
             value={formatPct(model?.latestReturnPct)}
             note={`${model?.trades ?? 0}回の仮想売買`}
             tone={profitSignal.tone}
@@ -677,7 +656,7 @@ function ResultMetric({
   );
 }
 
-function ScoreboardCard({ asset, backtests, onSelect }: { asset: string; backtests: BacktestRun[]; onSelect: (id: string) => void }) {
+function ScoreboardCard({ asset, backtests, onSelect }: { asset: string; backtests: BacktestRun[]; onSelect?: (id: string) => void }) {
   const filtered = backtests.filter((run) => run.asset === asset);
   const sorted = [...filtered].sort((a, b) => scoreBacktest(a) - scoreBacktest(b)).slice(0, 8);
   return (
@@ -690,7 +669,7 @@ function ScoreboardCard({ asset, backtests, onSelect }: { asset: string; backtes
         {sorted.map((run, index) => {
           const signal = getModelSignal(run.metrics?.brierScore);
           return (
-            <button key={run.id} type="button" onClick={() => onSelect(run.id)} className="grid gap-3 rounded-md border border-border p-3 text-left hover:border-primary/40 hover:bg-accent">
+            <button key={run.id} type="button" disabled={!onSelect} onClick={() => onSelect?.(run.id)} className="grid gap-3 rounded-md border border-border p-3 text-left enabled:hover:border-primary/40 enabled:hover:bg-accent disabled:cursor-default">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-2 font-bold text-slate-950">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">{index + 1}</span>
@@ -714,7 +693,7 @@ function ScoreboardCard({ asset, backtests, onSelect }: { asset: string; backtes
   );
 }
 
-function PaperRunsCard({ asset, runs, updatedAt, onSelect }: { asset: string; runs: Run[]; updatedAt: string | null; onSelect: (id: string) => void }) {
+function PaperRunsCard({ asset, runs, updatedAt, onSelect }: { asset: string; runs: Run[]; updatedAt: string | null; onSelect?: (id: string) => void }) {
   const filtered = runs.filter((run) => run.asset === asset);
   return (
     <details className="rounded-lg border border-border bg-white shadow-sm">
@@ -726,7 +705,7 @@ function PaperRunsCard({ asset, runs, updatedAt, onSelect }: { asset: string; ru
         {filtered.slice(0, 8).map((run) => {
           const signal = getProfitSignal(run.metrics?.totalReturnPct);
           return (
-          <button key={run.id} type="button" onClick={() => onSelect(run.id)} className={`grid gap-3 rounded-md border p-3 text-left hover:border-primary/40 hover:bg-accent ${toneBorderClass(signal.tone)}`}>
+          <button key={run.id} type="button" disabled={!onSelect} onClick={() => onSelect?.(run.id)} className={`grid gap-3 rounded-md border p-3 text-left enabled:hover:border-primary/40 enabled:hover:bg-accent disabled:cursor-default ${toneBorderClass(signal.tone)}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-bold text-slate-950">{run.asset} / {modeLabel(run.mode)}</span>
               <span className={run.status === "running" ? "rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700" : "rounded-full bg-secondary px-2 py-1 text-xs font-semibold"}>{statusLabel(run.status)}</span>
@@ -797,49 +776,6 @@ function DetailPanel({ paperRun, backtest, loading }: { paperRun: PaperRunDetail
         </div>
       ) : null}
     </section>
-  );
-}
-
-function ForecastRangeTrack({ forecast }: { forecast: Forecast | null }) {
-  const p10 = forecast?.quantiles.p10;
-  const p25 = forecast?.quantiles.p25;
-  const median = forecast?.impliedMedian;
-  const p90 = forecast?.quantiles.p90;
-  const values = [p10, p25, median, p90].filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-  if (values.length < 3) {
-    return (
-      <div className="rounded-lg bg-slate-50 p-3 text-sm text-muted-foreground">
-        予想レンジを描画するには、もう少し市場データが必要です。
-      </div>
-    );
-  }
-
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const marker = percentBetween(median ?? min, min, max);
-  const low = percentBetween(p10 ?? min, min, max);
-  const high = percentBetween(p90 ?? max, min, max);
-
-  return (
-    <div className="rounded-lg bg-slate-50 p-4">
-      <div className="flex items-center justify-between gap-3 text-xs font-semibold text-muted-foreground">
-        <span>弱気</span>
-        <span>市場の中心</span>
-        <span>強気</span>
-      </div>
-      <div className="relative mt-4 h-4 rounded-full bg-slate-200">
-        <div
-          className="absolute top-0 h-4 rounded-full bg-gradient-to-r from-sky-300 via-primary to-emerald-300"
-          style={{ left: `${low}%`, width: `${Math.max(6, high - low)}%` }}
-        />
-        <div className="absolute -top-2 h-8 w-1.5 rounded-full bg-slate-950 shadow" style={{ left: `calc(${marker}% - 3px)` }} />
-      </div>
-      <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span>{formatPrice(min)}</span>
-        <span className="rounded-full bg-primary px-3 py-1 font-bold text-primary-foreground">中央値 {formatPrice(median)}</span>
-        <span>{formatPrice(max)}</span>
-      </div>
-    </div>
   );
 }
 
@@ -1039,15 +975,6 @@ function statusLabel(status: string) {
     closed: "決済済み",
   };
   return labels[status] ?? status;
-}
-
-function formatPrice(value: number | null | undefined) {
-  return value ? `$${price.format(value)}` : "-";
-}
-
-function percentBetween(value: number, min: number, max: number) {
-  if (max <= min) return 50;
-  return clamp(((value - min) / (max - min)) * 100, 0, 100);
 }
 
 function clamp(value: number, min: number, max: number) {
