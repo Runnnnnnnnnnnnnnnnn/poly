@@ -74,6 +74,9 @@ DEEPSEEK_MODEL="deepseek-v4-flash"
 API_ACCESS_TOKEN="generate-a-long-random-token"
 HYPERLIQUID_TESTNET_ENABLED="0"
 HYPERLIQUID_TESTNET_AUTO_MIRROR="0"
+CLOUDFLARED_TUNNEL_TOKEN=""
+CLOUDFLARED_PUBLIC_URL=""
+POLYMARKET_ALERT_WEBHOOK_URL=""
 ```
 
 `API_ACCESS_TOKEN` protects every runtime `/api/*` route. Use a long random value, keep it in `.env`, and regenerate it if a shared URL is exposed. The GitHub Pages version is read-only and displays a static snapshot when the local server is unavailable.
@@ -96,12 +99,12 @@ Runnnnnnnnnnnnnnnnn/poly
 
 GitHub Pages is a static host and cannot run Next.js route handlers at runtime. This app currently uses server route handlers and server-side adapters so it can fetch live data safely without client-side direct API calls.
 
-For GitHub Pages, `npm run build:pages` generates a static UI snapshot in `out/`. For real-time remote demos, keep the local Next.js API server running on your PC and connect Pages to it through an HTTPS tunnel using the `?api=` bridge described above.
+For GitHub Pages, `npm run build:pages` generates a static UI snapshot in `out/`. The macOS service publishes its verified tunnel URL to the repository's `live` branch, and the Pages UI discovers it automatically. A named Cloudflare Tunnel can be enabled with `CLOUDFLARED_TUNNEL_TOKEN` and `CLOUDFLARED_PUBLIC_URL`; without them, a checked Quick Tunnel is used and its rotating URL is republished automatically.
 
 ## Compliance Notes
 
 - This is not investment advice.
-- No order placement endpoints are used.
+- Mainnet order placement is disabled. Hyperliquid testnet orders remain disabled until the dedicated testnet credentials and both enable flags are configured.
 - No wallet connection or signature flow is implemented.
 - No VPN or geographic restriction bypass is implemented.
 - API failures fall back to sample data and display natural Japanese status labels in the UI.
@@ -152,7 +155,7 @@ ASSET=BTC npm run paper:trade
 
 ## Polymarket → Hyperliquid 組み合わせ検証
 
-常駐workerは、終了約24時間前のPolymarket価格帯を一つのテーマに束ね、暗黙の将来価格とHyperliquid現値の差からロング・ショート・見送りを判定します。仮想残高、手数料、スリッページ、資金調達コスト、最大下落、日次損失、注文判断をSQLiteへ保存します。
+常駐workerは、終了6・12・24・48時間前のPolymarket価格帯を一つのテーマに束ね、暗黙の将来価格とHyperliquid現値の差からロング・ショート・見送りを判定します。仮想残高、手数料、スリッページ、資金調達コスト、最大下落、日次損失、注文判断をSQLiteへ保存します。
 
 Hyperliquid公式Python SDKをテストネット専用環境へ導入する場合:
 
@@ -163,9 +166,13 @@ python3 -m venv ~/.polymarket-watch/hyperliquid-venv
 
 テストネット連動には、`.env`の`HYPERLIQUID_ACCOUNT_ADDRESS`と専用APIウォレットの`HYPERLIQUID_API_WALLET_PRIVATE_KEY`を設定します。さらに`HYPERLIQUID_TESTNET_ENABLED=1`と`HYPERLIQUID_TESTNET_AUTO_MIRROR=1`が必要です。バックテストの品質判定が合格していない場合は、これらを設定しても新規注文は出ません。メインネット接続はコード上で無効です。
 
+固定公開URLを使う場合は、CloudflareでNamed Tunnelを作成し、`http://127.0.0.1:3001`へ向けた公開ホスト名を登録してから、`.env`へ`CLOUDFLARED_TUNNEL_TOKEN`と`CLOUDFLARED_PUBLIC_URL`を設定します。外部ヘルスチェックが失敗した場合はQuick Tunnelへ自動退避します。
+
+常駐監視は、データ停止、パイプラインエラー、最大下落、緊急停止、HyperliquidとDBのポジション不一致を検知します。Mac通知は既定で有効です。`POLYMARKET_ALERT_WEBHOOK_URL`へHTTPS Webhookを設定すると、同じ通知をリモートにも送信します。通知は新規・6時間ごとの再通知・復旧に分かれ、連投を抑制します。
+
 ## 統合起動
 
-画面、Polymarket・Hyperliquidの5分間隔データ収集、6時間間隔の自動バックテスト、Polymarket単体の仮想運用、組み合わせ仮想売買workerを一つのコマンドで起動できます。二重起動はロックファイルで防止されます。
+画面、Polymarket・Hyperliquidの5分間隔データ収集、6時間間隔の自動バックテスト、Polymarket単体の仮想運用、組み合わせ仮想売買、異常通知、暗号化バックアップを一つのコマンドで起動できます。二重起動はロックファイルで防止されます。
 
 ```sh
 npm run db:push
