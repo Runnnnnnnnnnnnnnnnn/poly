@@ -133,6 +133,16 @@ type RealtimeReplayMetric = {
   polymarketAverageReturnPct: number | null;
   polymarketNetReturnPct: number;
   maximumDrawdownPct: number;
+  marketBrierScore: number | null;
+  modelBrierScore: number | null;
+  brierImprovement: number | null;
+  brierSkillScore: number | null;
+  brierImprovementConfidenceInterval95: [number, number] | null;
+  marketLogLoss: number | null;
+  modelLogLoss: number | null;
+  logLossImprovement: number | null;
+  logLossImprovementConfidenceInterval95: [number, number] | null;
+  probabilityEdgePassed: boolean;
   bestBenchmarkId: "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median" | null;
   bestBenchmarkNetReturnPct: number | null;
   excessReturnPct: number | null;
@@ -620,6 +630,15 @@ type MonitoringSnapshot = {
           holdoutBestBenchmarkNetReturnPct?: number | null;
           holdoutExcessReturnPct?: number | null;
           holdoutExcessConfidenceLowerPct?: number | null;
+          holdoutMarketBrierScore?: number | null;
+          holdoutModelBrierScore?: number | null;
+          holdoutBrierImprovement?: number | null;
+          holdoutBrierSkillScore?: number | null;
+          holdoutBrierImprovementConfidenceLower?: number | null;
+          holdoutMarketLogLoss?: number | null;
+          holdoutModelLogLoss?: number | null;
+          holdoutLogLossImprovement?: number | null;
+          holdoutProbabilityEdgePassed?: boolean;
           profitableFolds: number;
           benchmarkBeatingFolds?: number;
           totalFolds: number;
@@ -2325,12 +2344,17 @@ function RealtimeShortTermBacktest({
 }) {
   const selected = research.selectedCandidate;
   const holdout = selected?.holdout ?? null;
-  const calibration = selected?.calibration ?? null;
   const sampleReady = research.holdoutCoverage.passed;
   const directionReady = research.holdoutCoverage.long.passed && research.holdoutCoverage.short.passed;
   const promising = research.status === "promising" && sampleReady;
-  const tone: Tone = promising ? "watch" : "bad";
-  const Icon = promising ? Clock3 : TrendingDown;
+  const probabilityEdgePassed = holdout?.probabilityEdgePassed ?? false;
+  const tone: Tone = research.status === "rejected" ? "bad" : "watch";
+  const Icon = research.status === "rejected" ? TrendingDown : Clock3;
+  const statusLabel = promising ? "次期検証候補" : research.status === "insufficient" ? "検証中" : "採用不可";
+  const publicBase = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const reportHref = downloadsAvailable
+    ? localApiUrl("/api/realtime-short-term-backtests/latest")
+    : `${publicBase}/realtime-short-term-research.json`;
 
   return (
     <div className="border-t" aria-label="5秒板を使った実約定リプレイ">
@@ -2338,7 +2362,7 @@ function RealtimeShortTermBacktest({
         <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-md ${toneIconClass(tone)}`}><Icon className="h-6 w-6" /></span>
         <div className="min-w-0">
           <p className="text-[11px] font-bold text-slate-500">5秒板の実約定リプレイ</p>
-          <p className="mt-1 text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{promising ? "次期検証候補" : "採用不可"}</p>
+          <p className="mt-1 text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{statusLabel}</p>
           <p className="mt-1 text-xs font-semibold text-slate-600">
             {selected
               ? `${realtimeStrategyLabel(selected.strategy)}・開始${selected.entryOffsetSeconds}秒後 / 50枠の前向き検証とは別管理`
@@ -2350,20 +2374,18 @@ function RealtimeShortTermBacktest({
             <p>{formatCompact(research.replayableMarkets)}市場・独立{research.independentWindows}枠</p>
             <p>{formatJapanDateTime(research.generatedAt)} 実行</p>
           </div>
-          {downloadsAvailable ? (
-            <div className="flex gap-1">
-              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/realtime-short-term-backtests/latest")} title="実板リプレイの最新レポート" aria-label="実板リプレイの最新レポート"><FileJson className="h-4 w-4" /></a>
-              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/realtime-short-term-backtests/latest?format=trades")} title="実板リプレイの全取引" aria-label="実板リプレイの全取引"><Download className="h-4 w-4" /></a>
-            </div>
-          ) : null}
+          <div className="flex gap-1">
+            <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={reportHref} title="実板リプレイの最新レポート" aria-label="実板リプレイの最新レポート"><FileJson className="h-4 w-4" /></a>
+            {downloadsAvailable ? <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/realtime-short-term-backtests/latest?format=trades")} title="実板リプレイの全取引" aria-label="実板リプレイの全取引"><Download className="h-4 w-4" /></a> : null}
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-6 lg:divide-y-0">
-        <BacktestMetric label="独立データ" value={`${research.independentWindows}枠`} tone={research.independentWindows >= research.minimumHoldoutWindows ? "good" : "watch"} />
-        <BacktestMetric label="学習側・単純比" value={calibration?.excessReturnPct === null || calibration?.excessReturnPct === undefined ? "未判定" : formatSignedPct(calibration.excessReturnPct)} tone={signedMetricTone(calibration?.excessReturnPct, Boolean(calibration))} />
+        <BacktestMetric label="収集済み" value={`${research.independentWindows}枠`} tone="neutral" />
         <BacktestMetric label="直近40%診断" value={`${holdout?.independentWindows ?? 0} / ${research.minimumHoldoutWindows}`} tone={sampleReady ? "good" : "bad"} />
         <BacktestMetric label="上昇・下落の検証" value={`上 ${holdout?.longIndependentWindows ?? 0} / 下 ${holdout?.shortIndependentWindows ?? 0}`} tone={directionReady ? "good" : "bad"} />
+        <BacktestMetric label="市場確率より改善" value={formatProbabilitySkill(holdout?.brierSkillScore)} tone={sampleReady ? probabilityEdgePassed ? "good" : "bad" : "watch"} />
         <BacktestMetric label="複合モデル損益" value={holdout?.trades ? formatSignedPct(holdout.equalWeightNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.equalWeightNetReturnPct, true) : "watch"} />
         <BacktestMetric label="最良単純との差" value={holdout?.excessReturnPct === null || holdout?.excessReturnPct === undefined ? "未判定" : formatSignedPct(holdout.excessReturnPct)} tone={signedMetricTone(holdout?.excessReturnPct, Boolean(holdout))} />
       </div>
@@ -2376,7 +2398,11 @@ function RealtimeShortTermBacktest({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-        <span>単純戦略との差の95%下限 {holdout?.excessConfidenceInterval95 ? formatSignedPct(holdout.excessConfidenceInterval95[0]) : "未判定"}</span>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <span>Brier誤差 モデル {formatScore(holdout?.modelBrierScore)} / 市場 {formatScore(holdout?.marketBrierScore)}</span>
+          <span>改善幅の95%下限 {formatSignedScore(holdout?.brierImprovementConfidenceInterval95?.[0])}</span>
+          <span>損益差の95%下限 {holdout?.excessConfidenceInterval95 ? formatSignedPct(holdout.excessConfidenceInterval95[0]) : "-"}</span>
+        </div>
         <span className="font-bold text-rose-700">{sampleReady ? "診断通過後も新しい50枠検証が必要" : `診断あと${Math.max(0, research.minimumHoldoutWindows - (holdout?.independentWindows ?? 0))}枠・上昇/下落を各${research.minimumHoldoutWindowsPerSide}枠必要`}</span>
       </div>
 
@@ -2391,7 +2417,7 @@ function RealtimeShortTermBacktest({
               <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 text-xs sm:px-5" key={item.runId}>
                 <div className="min-w-0">
                   <p className="font-bold text-slate-800">{formatJapanDateTime(item.generatedAt)}</p>
-                  <p className="truncate text-[10px] font-semibold text-slate-500">独立{item.independentWindows}枠・直近診断{item.holdoutWindows}枠（上{item.holdoutLongWindows ?? 0}/下{item.holdoutShortWindows ?? 0}）・{item.holdoutTrades}取引</p>
+                  <p className="truncate text-[10px] font-semibold text-slate-500">独立{item.independentWindows}枠・直近{item.holdoutWindows}枠（上{item.holdoutLongWindows ?? 0}/下{item.holdoutShortWindows ?? 0}）・確率改善 {formatProbabilitySkill(item.holdoutBrierSkillScore)}</p>
                 </div>
                 <span className={`font-bold ${(item.holdoutExcessReturnPct ?? item.holdoutEqualWeightNetReturnPct) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.holdoutExcessReturnPct ?? item.holdoutEqualWeightNetReturnPct)}</span>
                 <span className={`rounded-sm px-2 py-1 text-[10px] font-bold ${tonePillClass(item.status === "promising" ? "watch" : "bad")}`}>{item.status === "promising" ? "探索通過" : item.status === "rejected" ? "未達" : "不足"}</span>
@@ -3372,6 +3398,22 @@ function formatSignedPct(value: number | null | undefined) {
 
 function formatPct(value: number | null | undefined) {
   return value === null || value === undefined || !Number.isFinite(value) ? "-" : `${(value * 100).toFixed(2)}%`;
+}
+
+function formatScore(value: number | null | undefined) {
+  return value === null || value === undefined || !Number.isFinite(value) ? "-" : value.toFixed(4);
+}
+
+function formatProbabilitySkill(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "未判定";
+  if (Math.abs(value) < 0.00005) return "0.00%";
+  return formatSignedPct(value);
+}
+
+function formatSignedScore(value: number | null | undefined) {
+  return value === null || value === undefined || !Number.isFinite(value)
+    ? "-"
+    : `${value > 0 ? "+" : ""}${value.toFixed(4)}`;
 }
 
 function formatUsd(value: number | null | undefined) {

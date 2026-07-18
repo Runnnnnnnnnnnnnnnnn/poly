@@ -7,7 +7,7 @@ import {
 import { calculatePolymarketTakerFee } from "@/src/lib/realtime-market-data/execution-audit";
 
 export const realtimeShortTermReplaySpecification = Object.freeze({
-  version: 5,
+  version: 6,
   purpose: "diagnostic_only",
   promotionPolicy: "new_forward_cohort_required",
   synchronizationVersion: "websocket-v6-near-term-discovery",
@@ -130,6 +130,11 @@ export type RealtimeReplayTrade = {
   endReferencePrice: number;
   marketProbability: number;
   fairProbability: number;
+  forecastProbability: number;
+  marketBrierScore: number;
+  modelBrierScore: number;
+  marketLogLoss: number;
+  modelLogLoss: number;
   probabilityEdge: number;
   trendLogReturn: number;
   volatility24h: number;
@@ -224,6 +229,10 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
         trendLogReturn,
       });
       for (const candidate of candidates) {
+        const marketBrierScore = binaryBrierScore(marketProbability, officialResult);
+        const modelBrierScore = binaryBrierScore(candidate.forecastProbability, officialResult);
+        const marketLogLoss = binaryLogLoss(marketProbability, officialResult);
+        const modelLogLoss = binaryLogLoss(candidate.forecastProbability, officialResult);
         const longPolymarket = calculatePolymarketReplayReturn({
           price: entry.polymarketBestAsk,
           correct: officialResult === 1,
@@ -275,6 +284,11 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
           endReferencePrice: endBoundary.price,
           marketProbability,
           fairProbability,
+          forecastProbability: candidate.forecastProbability,
+          marketBrierScore,
+          modelBrierScore,
+          marketLogLoss,
+          modelLogLoss,
           probabilityEdge: candidate.probabilityEdge,
           trendLogReturn,
           volatility24h,
@@ -328,12 +342,14 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
     ))[0] ?? null;
   const selectedHoldout = selectedExploratoryCandidate?.holdout ?? null;
   const holdoutCoverage = replayHoldoutCoverage(selectedHoldout);
+  const probabilityEdgePassed = selectedHoldout?.probabilityEdgePassed ?? false;
   const status = !selectedHoldout || !holdoutCoverage.passed
     ? "insufficient" as const
     : selectedHoldout.equalWeightNetReturnPct > 0
       && (selectedHoldout.excessReturnPct ?? 0) > 0
       && (selectedHoldout.excessConfidenceInterval95?.[0] ?? 0) > 0
       && (selectedHoldout.excessDeflatedSharpeProbability ?? 0) >= 0.95
+      && probabilityEdgePassed
       && walkForwardSelection.benchmarkBeatingFolds >= 3
       ? "promising" as const
       : "rejected" as const;
@@ -374,6 +390,7 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       split: "rolling chronological 60% calibration / 40% diagnostic" as const,
       walkForwardSelection: "expanding calibration; each next block uses a candidate selected only from earlier windows" as const,
       directionCoverage: `rolling diagnostic requires at least ${realtimeShortTermReplaySpecification.minimumHoldoutWindowsPerSide} independent long and short windows` as const,
+      probabilityScoring: "model and Polymarket probabilities scored against the same official outcomes with Brier score and log loss; confidence intervals use independent 15-minute windows" as const,
       execution: "first complete synchronized 5-second executable book after each fixed entry offset" as const,
       settlement: "official Polymarket result with Chainlink boundary audit" as const,
       costs: {
@@ -405,6 +422,7 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       selectedExploratoryCandidateId: selectedExploratoryCandidate?.id ?? null,
       strategyTrials: realtimeShortTermReplaySpecification.strategyTrials,
       holdoutCoverage,
+      probabilityEdgePassed,
     },
     variants,
     walkForwardSelection,
@@ -491,6 +509,7 @@ function buildStrategyCandidates(input: {
     side: "LONG" | "SHORT";
     signalStrength: number;
     probabilityEdge: number;
+    forecastProbability: number;
     polymarketEntryPrice: number;
   }> = [];
   if (confidence >= realtimeShortTermReplaySpecification.marketProbabilityThreshold) {
@@ -499,6 +518,7 @@ function buildStrategyCandidates(input: {
       side: marketSide,
       signalStrength: confidence - 0.5,
       probabilityEdge: marketSide === "LONG" ? yesEdge : noEdge,
+      forecastProbability: input.marketProbability,
       polymarketEntryPrice: marketEntryPrice,
     });
     const trendSide = input.trendLogReturn >= realtimeShortTermReplaySpecification.trendMinimumLogReturn ? "LONG" : "SHORT";
@@ -508,6 +528,7 @@ function buildStrategyCandidates(input: {
         side: marketSide,
         signalStrength: confidence - 0.5 + Math.abs(input.trendLogReturn),
         probabilityEdge: marketSide === "LONG" ? yesEdge : noEdge,
+        forecastProbability: input.marketProbability,
         polymarketEntryPrice: marketEntryPrice,
       });
     }
@@ -518,6 +539,7 @@ function buildStrategyCandidates(input: {
       side: fairSide,
       signalStrength: fairEdge,
       probabilityEdge: fairEdge,
+      forecastProbability: input.fairProbability,
       polymarketEntryPrice: fairEntryPrice,
     });
   }
@@ -530,6 +552,7 @@ function summarizeReplayTrades(trades: RealtimeReplayTrade[]) {
   const polymarketWindowReturns = groupedWindowReturns(trades, (trade) => trade.polymarketReturnPct);
   const benchmark = buildRealtimeReplayBenchmarkSummary(trades);
   const directionCoverage = summarizeReplayDirectionCoverage(trades);
+  const probabilityScores = summarizeRealtimeProbabilityScores(trades);
   return {
     independentWindows: windowReturns.length,
     ...directionCoverage,
@@ -546,8 +569,62 @@ function summarizeReplayTrades(trades: RealtimeReplayTrade[]) {
     polymarketAverageReturnPct: average(trades.map((trade) => trade.polymarketReturnPct)),
     polymarketNetReturnPct: sum(polymarketWindowReturns),
     maximumDrawdownPct: maximumDrawdown(windowReturns),
+    ...probabilityScores,
     ...benchmark,
   };
+}
+
+export function summarizeRealtimeProbabilityScores(trades: Array<Pick<
+  RealtimeReplayTrade,
+  "windowAt" | "officialResult" | "marketProbability" | "forecastProbability"
+>>) {
+  const scored = trades.map((trade) => {
+    const marketBrierScore = binaryBrierScore(trade.marketProbability, trade.officialResult);
+    const modelBrierScore = binaryBrierScore(trade.forecastProbability, trade.officialResult);
+    const marketLogLoss = binaryLogLoss(trade.marketProbability, trade.officialResult);
+    const modelLogLoss = binaryLogLoss(trade.forecastProbability, trade.officialResult);
+    return {
+      ...trade,
+      marketBrierScore,
+      modelBrierScore,
+      marketLogLoss,
+      modelLogLoss,
+      brierImprovement: marketBrierScore - modelBrierScore,
+      logLossImprovement: marketLogLoss - modelLogLoss,
+    };
+  });
+  const marketBrierScore = average(scored.map((trade) => trade.marketBrierScore));
+  const modelBrierScore = average(scored.map((trade) => trade.modelBrierScore));
+  const brierImprovement = average(scored.map((trade) => trade.brierImprovement));
+  const brierImprovementConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(
+    groupedWindowAverages(scored, (trade) => trade.brierImprovement),
+  );
+  const logLossImprovementConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(
+    groupedWindowAverages(scored, (trade) => trade.logLossImprovement),
+  );
+  return {
+    marketBrierScore,
+    modelBrierScore,
+    brierImprovement,
+    brierSkillScore: marketBrierScore !== null && marketBrierScore > 0 && brierImprovement !== null
+      ? brierImprovement / marketBrierScore
+      : null,
+    brierImprovementConfidenceInterval95,
+    marketLogLoss: average(scored.map((trade) => trade.marketLogLoss)),
+    modelLogLoss: average(scored.map((trade) => trade.modelLogLoss)),
+    logLossImprovement: average(scored.map((trade) => trade.logLossImprovement)),
+    logLossImprovementConfidenceInterval95,
+    probabilityEdgePassed: (brierImprovementConfidenceInterval95?.[0] ?? 0) > 0,
+  };
+}
+
+export function binaryBrierScore(forecastProbability: number, result: 0 | 1) {
+  return (clamp(forecastProbability, 0, 1) - result) ** 2;
+}
+
+export function binaryLogLoss(forecastProbability: number, result: 0 | 1) {
+  const value = clamp(forecastProbability, 1e-12, 1 - 1e-12);
+  return -(result * Math.log(value) + (1 - result) * Math.log(1 - value));
 }
 
 export function summarizeReplayDirectionCoverage(trades: Array<Pick<RealtimeReplayTrade, "windowAt" | "side">>) {
@@ -705,6 +782,12 @@ export function buildExpandingReplayFolds(windows: string[], foldCount = 4, init
 
 function groupedWindowReturns(trades: RealtimeReplayTrade[], valueFor: (trade: RealtimeReplayTrade) => number) {
   return groupedWindowReturnEntries(trades, valueFor).map((row) => row.value);
+}
+
+function groupedWindowAverages<T extends { windowAt: string }>(trades: T[], valueFor: (trade: T) => number) {
+  return [...groupBy(trades, (trade) => trade.windowAt).entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, rows]) => sum(rows.map(valueFor)) / rows.length);
 }
 
 function groupedWindowReturnEntries<T extends { windowAt: string }>(trades: T[], valueFor: (trade: T) => number) {

@@ -277,6 +277,22 @@ def import_realtime_short_term_runs(args):
                     "excess_confidence_lower_pct": values.get("excessConfidenceInterval95", [None])[0]
                     if values.get("excessConfidenceInterval95") else None,
                     "excess_deflated_sharpe_probability": values.get("excessDeflatedSharpeProbability"),
+                    "market_brier_score": values.get("marketBrierScore"),
+                    "model_brier_score": values.get("modelBrierScore"),
+                    "brier_improvement": values.get("brierImprovement"),
+                    "brier_skill_score": values.get("brierSkillScore"),
+                    "brier_improvement_confidence_lower": values.get(
+                        "brierImprovementConfidenceInterval95", [None]
+                    )[0]
+                    if values.get("brierImprovementConfidenceInterval95") else None,
+                    "market_log_loss": values.get("marketLogLoss"),
+                    "model_log_loss": values.get("modelLogLoss"),
+                    "log_loss_improvement": values.get("logLossImprovement"),
+                    "log_loss_improvement_confidence_lower": values.get(
+                        "logLossImprovementConfidenceInterval95", [None]
+                    )[0]
+                    if values.get("logLossImprovementConfidenceInterval95") else None,
+                    "probability_edge_passed": 1.0 if values.get("probabilityEdgePassed") else 0.0,
                 }
                 metrics.update({
                     f"{split}_{key}": float(value)

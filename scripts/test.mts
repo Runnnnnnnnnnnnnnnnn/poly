@@ -69,11 +69,14 @@ import { selectProspectiveExecutionTriplet } from "../src/lib/model-evaluation/p
 import {
   buildExpandingReplayFolds,
   buildRealtimeReplayBenchmarkSummary,
+  binaryBrierScore,
+  binaryLogLoss,
   calculateDigitalFairProbability,
   calculateHyperliquidReplayReturn,
   calculatePolymarketReplayReturn,
   selectCausalReferenceBoundary,
   summarizeReplayDirectionCoverage,
+  summarizeRealtimeProbabilityScores,
 } from "../src/lib/model-evaluation/realtime-short-term-replay";
 import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
@@ -803,6 +806,27 @@ const flatHyperliquidReplay = calculateHyperliquidReplayReturn({
   holdingHours: 0.2,
 });
 assert.equal((flatHyperliquidReplay?.returnPct ?? 0) < -0.001, true);
+assert.equal(binaryBrierScore(0.5, 1), 0.25);
+assert.ok(Math.abs(binaryLogLoss(0.5, 1) - Math.log(2)) < 1e-12);
+const marketMatchedProbabilityScores = summarizeRealtimeProbabilityScores(Array.from({ length: 6 }, (_, index) => ({
+  windowAt: `2026-01-01T0${index}:00:00Z`,
+  officialResult: index % 2 as 0 | 1,
+  marketProbability: index % 2 ? 0.6 : 0.4,
+  forecastProbability: index % 2 ? 0.6 : 0.4,
+})));
+assert.equal(marketMatchedProbabilityScores.brierImprovement, 0);
+assert.equal(marketMatchedProbabilityScores.brierSkillScore, 0);
+assert.equal(marketMatchedProbabilityScores.probabilityEdgePassed, false);
+const improvedProbabilityScores = summarizeRealtimeProbabilityScores(Array.from({ length: 6 }, (_, index) => ({
+  windowAt: `2026-01-02T0${index}:00:00Z`,
+  officialResult: index % 2 as 0 | 1,
+  marketProbability: index % 2 ? 0.6 : 0.4,
+  forecastProbability: index % 2 ? 0.8 : 0.2,
+})));
+assert.ok(Math.abs((improvedProbabilityScores.brierImprovement ?? 0) - 0.12) < 1e-12);
+assert.ok(Math.abs((improvedProbabilityScores.brierSkillScore ?? 0) - 0.75) < 1e-12);
+assert.ok((improvedProbabilityScores.brierImprovementConfidenceInterval95?.[0] ?? 0) > 0);
+assert.equal(improvedProbabilityScores.probabilityEdgePassed, true);
 assert.deepEqual(summarizeReplayDirectionCoverage([
   { windowAt: "2026-01-01T00:00:00Z", side: "LONG" },
   { windowAt: "2026-01-01T00:00:00Z", side: "LONG" },

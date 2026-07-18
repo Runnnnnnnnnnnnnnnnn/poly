@@ -177,7 +177,13 @@ Parquet becomes worthwhile when repeated CSV scans or the SQLite runtime databas
 The synchronized 5-second replay compares every candidate with the same execution timestamps and the
 same 5% capital budget against five fixed baselines: Polymarket-only, Hyperliquid-only, always long,
 always short, and the median of 200 seeded-random direction trials. Candidate selection uses calibration
-excess return rather than raw profit. A replay can only become exploratory-promising when its holdout
+excess return rather than raw profit. On those same official outcomes and selected trades, it also scores
+the candidate probability and the contemporaneous Polymarket probability with Brier score and log loss.
+The dashboard reports Brier skill as `(market error - model error) / market error`; positive is better.
+Its 95% interval is calculated from per-window averages so simultaneous assets cannot inflate confidence.
+A market-direction candidate correctly reports zero probability improvement because it copies the market
+probability; direction accuracy is not presented as independent model skill. A replay can only become
+exploratory-promising when its Brier-improvement 95% lower bound is above zero and its holdout
 return and excess return are positive, the 95% lower bound of excess return is positive, the deflated
 Sharpe probability is at least 95%, and at least three of four walk-forward folds beat the best simple
 baseline. Even then, it must start a new frozen forward cohort and cannot modify the active 50-window run.
