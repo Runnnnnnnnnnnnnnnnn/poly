@@ -59,13 +59,16 @@ async function collectCycle() {
       await markPipelineAttempt("testnet-reconcile", "テストネット口座を照合中");
       try {
         const reconciliation = await reconcileHyperliquidTestnetOrders();
+        if (reconciliation.orderMismatches.length) {
+          throw new Error(`注文不一致: ${reconciliation.orderMismatches.map((item) => `${item.asset ?? "不明"} ${item.kind === "orphan" ? "取引所のみ" : "DBのみ"}`).join(", ")}`);
+        }
         if (reconciliation.positionMismatches.length) {
           throw new Error(`ポジション不一致: ${reconciliation.positionMismatches.map((item) => `${item.asset} DB ${item.expectedSize} / 取引所 ${item.actualSize}`).join(", ")}`);
         }
         await markPipelineSuccess(
           "testnet-reconcile",
           reconciliation.checkedOrders,
-          `注文${reconciliation.checkedOrders}件 / 保有${reconciliation.positions.length}件を照合`,
+          `注文${reconciliation.checkedOrders}件 / 未約定${reconciliation.openOrders.length}件 / 保有${reconciliation.positions.length}件を照合`,
         );
       } catch (error) {
         await markPipelineError("testnet-reconcile", error);

@@ -4,7 +4,9 @@ import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
 import { calculateCaptureSkewMs } from "../src/lib/backtest/service";
 import {
   aggregateHyperliquidFills,
+  compareTestnetOpenOrders,
   compareTestnetPositions,
+  deriveHyperliquidCloid,
   normalizeExchangeOrderStatus,
   parseHyperliquidOrderEvidence,
 } from "../src/lib/combined-trading/hyperliquid-execution";
@@ -1087,6 +1089,24 @@ assert.ok(Math.abs((aggregatedTestnetFill?.averageFillPrice ?? 0) - 101.2) < 1e-
 assert.ok(Math.abs((aggregatedTestnetFill?.feePaid ?? 0) - 0.03) < 1e-12);
 
 console.log("testnet reconciliation status tests passed");
+
+const knownTestnetCloid = deriveHyperliquidCloid("paper-order-1");
+assert.match(knownTestnetCloid, /^0x[0-9a-f]{32}$/);
+assert.deepEqual(compareTestnetOpenOrders(
+  [{ coin: "BTC", oid: 42, cloid: knownTestnetCloid }],
+  [{ asset: "BTC", clientOrderId: "paper-order-1", exchangeOrderId: null, status: "OPEN" }],
+), []);
+assert.deepEqual(compareTestnetOpenOrders(
+  [{ coin: "ETH", oid: 99, cloid: "0x00000000000000000000000000000000" }],
+  [{ asset: "BTC", clientOrderId: "paper-order-1", exchangeOrderId: "42", status: "PARTIALLY_FILLED" }],
+), [
+  { kind: "missing", asset: "BTC", clientOrderId: "paper-order-1", exchangeOrderId: "42" },
+  { kind: "orphan", asset: "ETH", clientOrderId: null, exchangeOrderId: "99" },
+]);
+assert.deepEqual(compareTestnetOpenOrders(
+  [],
+  [{ asset: "BTC", clientOrderId: "paper-order-2", exchangeOrderId: null, status: "PENDING" }],
+), []);
 
 assert.deepEqual(compareTestnetPositions(
   [{ coin: "BTC", size: 0.1 }, { coin: "ETH", size: -0.2 }],

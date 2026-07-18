@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 
 import { prisma } from "@/src/lib/server/prisma";
 
@@ -25,6 +26,13 @@ export type HyperliquidOrderEvidence = {
   averageFillPrice: number | null;
   feePaid: number;
   reason: string | null;
+};
+
+export type TestnetOrderMismatch = {
+  kind: "missing" | "orphan";
+  asset: string | null;
+  clientOrderId: string | null;
+  exchangeOrderId: string | null;
 };
 
 type ExecutorResponse = {
@@ -66,7 +74,7 @@ export function getHyperliquidExecutionReadiness() {
 export async function checkHyperliquidTestnetConnection() {
   const readiness = getHyperliquidExecutionReadiness();
   if (!readiness.installed || !readiness.accountConfigured) return { ...readiness, connected: false };
-  const response = await runExecutor({ action: "readiness" });
+  const response = await runReadOnlyExecutor({ action: "readiness" });
   return { ...readiness, connected: response.ok, accountValue: response.accountValue ?? null };
 }
 
@@ -194,14 +202,24 @@ export async function flattenHyperliquidTestnetPositions() {
 export async function reconcileHyperliquidTestnetOrders() {
   const readiness = getHyperliquidExecutionReadiness();
   if (!readiness.installed || !readiness.accountConfigured) {
-    return { ...readiness, connected: false, checkedOrders: 0, updatedOrders: 0, positions: [], openOrders: [], recentFills: [] };
+    return {
+      ...readiness,
+      connected: false,
+      checkedOrders: 0,
+      updatedOrders: 0,
+      positions: [],
+      openOrders: [],
+      recentFills: [],
+      orderMismatches: [],
+      positionMismatches: [],
+    };
   }
   const orders = await prisma.combinedExecutionOrder.findMany({
     where: { environment: "TESTNET", status: { in: ["SUBMITTED", "PENDING", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] } },
-    orderBy: { createdAt: "desc" },
-    take: 100,
+    orderBy: [{ lastReconciledAt: "asc" }, { createdAt: "asc" }],
+    take: 25,
   });
-  const response = await runExecutor({ action: "reconcile", clientOrderIds: orders.map((order) => order.clientOrderId) });
+  const response = await runReadOnlyExecutor({ action: "reconcile", clientOrderIds: orders.map((order) => order.clientOrderId) });
   if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet reconciliation failed");
 
   const fillsByOrder = aggregateHyperliquidFills(response.recentFills ?? []);
@@ -232,6 +250,12 @@ export async function reconcileHyperliquidTestnetOrders() {
     updatedOrders += result.count;
   }
 
+  const activeOrders = await prisma.combinedExecutionOrder.findMany({
+    where: { environment: "TESTNET", status: { in: ["SUBMITTED", "PENDING", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] } },
+    select: { asset: true, clientOrderId: true, exchangeOrderId: true, status: true },
+  });
+  const orderMismatches = compareTestnetOpenOrders(response.openOrders ?? [], activeOrders);
+
   const filledOrders = await prisma.combinedExecutionOrder.findMany({
     where: {
       environment: "TESTNET",
@@ -251,8 +275,58 @@ export async function reconcileHyperliquidTestnetOrders() {
     positions: response.positions ?? [],
     openOrders: response.openOrders ?? [],
     recentFills: response.recentFills ?? [],
+    orderMismatches,
     positionMismatches,
   };
+}
+
+export function deriveHyperliquidCloid(clientOrderId: string) {
+  return `0x${createHash("sha256").update(clientOrderId).digest("hex").slice(0, 32)}`;
+}
+
+export function compareTestnetOpenOrders(
+  actualOpenOrders: unknown[],
+  databaseOrders: Array<{ asset: string; clientOrderId: string; exchangeOrderId?: string | null; status: string }>,
+) {
+  const actual = actualOpenOrders.flatMap((value) => {
+    if (!isRecord(value)) return [];
+    return [{
+      asset: typeof value.coin === "string" ? value.coin : null,
+      cloid: typeof value.cloid === "string" ? value.cloid.toLowerCase() : null,
+      exchangeOrderId: stringIdentifier(value.oid),
+    }];
+  });
+  const matchedActual = new Set<number>();
+  const missing: TestnetOrderMismatch[] = [];
+
+  for (const order of databaseOrders) {
+    const expectedCloid = deriveHyperliquidCloid(order.clientOrderId).toLowerCase();
+    const matchIndex = actual.findIndex((candidate, index) => (
+      !matchedActual.has(index)
+      && ((order.exchangeOrderId && candidate.exchangeOrderId === order.exchangeOrderId)
+        || candidate.cloid === expectedCloid)
+    ));
+    if (matchIndex >= 0) {
+      matchedActual.add(matchIndex);
+      continue;
+    }
+    if (order.status === "OPEN" || order.status === "PARTIALLY_FILLED") {
+      missing.push({
+        kind: "missing",
+        asset: order.asset,
+        clientOrderId: order.clientOrderId,
+        exchangeOrderId: order.exchangeOrderId ?? null,
+      });
+    }
+  }
+
+  const orphan: TestnetOrderMismatch[] = actual.flatMap((order, index) => matchedActual.has(index) ? [] : [{
+    kind: "orphan" as const,
+    asset: order.asset,
+    clientOrderId: null,
+    exchangeOrderId: order.exchangeOrderId,
+  }]);
+  return [...missing, ...orphan];
 }
 
 export function compareTestnetPositions(
@@ -315,6 +389,23 @@ function runExecutor(payload: Record<string, unknown>) {
     });
     child.stdin.end(JSON.stringify(payload));
   });
+}
+
+async function runReadOnlyExecutor(payload: Record<string, unknown>, attempts = 3) {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await runExecutor(payload);
+      if (response.ok) return response;
+      lastError = new Error(response.error ?? "Hyperliquid testnet read request failed");
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Hyperliquid testnet read request failed");
+    }
+    if (attempt < attempts) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 250 * 2 ** (attempt - 1)));
+    }
+  }
+  throw lastError ?? new Error("Hyperliquid testnet read request failed");
 }
 
 function executorPython() {

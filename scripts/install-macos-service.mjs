@@ -10,8 +10,13 @@ const runtimeLabel = "com.polymarket-watch.runtime";
 const tunnelLabel = "com.polymarket-watch.tunnel";
 const agentsDir = resolve(homedir(), "Library/LaunchAgents");
 const domain = `gui/${process.getuid()}`;
-const userNode = resolve(homedir(), ".nvm/versions/node/v24.14.0/bin/node");
-const runtimeNode = process.env.POLYMARKET_RUNTIME_NODE || (existsSync(userNode) ? userNode : process.execPath);
+const runtimeNode = [
+  process.env.POLYMARKET_RUNTIME_NODE,
+  resolve(homedir(), ".nvm/versions/node/v22.22.2/bin/node"),
+  resolve(homedir(), ".nvm/versions/node/v20.20.2/bin/node"),
+  process.execPath,
+].filter(Boolean).find((candidate) => existsSync(candidate));
+if (!runtimeNode) throw new Error("Node.js runtime was not found");
 const deployedRoot = resolve(homedir(), ".polymarket-watch/runtime");
 
 if (process.argv.includes("--uninstall")) {
@@ -92,6 +97,7 @@ function buildRuntime() {
   delete buildEnv.GITHUB_PAGES;
   delete buildEnv.GITHUB_PAGES_REPO;
   console.log("building the runtime app with API routes");
+  rmSync(resolve(root, ".next"), { recursive: true, force: true });
   execFileSync(runtimeNode, [resolve(root, "node_modules/next/dist/bin/next"), "build"], {
     cwd: root,
     env: buildEnv,
