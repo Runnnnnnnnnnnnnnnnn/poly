@@ -343,6 +343,22 @@ type MonitoringSnapshot = {
         strategyTrials: number;
         randomBenchmarkTrials: number;
         maxDrawdownPct: number;
+        attribution: {
+          byAsset: Array<{
+            asset: string;
+            trades: number;
+            wins: number;
+            netPnl: number;
+            returnContributionPct: number;
+          }>;
+          bySide: Array<{
+            side: string;
+            trades: number;
+            wins: number;
+            netPnl: number;
+            returnContributionPct: number;
+          }>;
+        };
         controlComparablePositions: number;
         comparableEvents: number;
         comparableIndependentEvents: number;
@@ -1300,6 +1316,16 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
     { label: "板を取得", value: model?.priceReadyMarkets ?? 0, note: "直近" },
     { label: "仮想発注", value: model?.opened ?? 0, note: "累計" },
   ];
+  const attributionGroups = [
+    {
+      title: "資産別",
+      items: audit?.attribution.byAsset.map((item) => ({ ...item, label: item.asset })) ?? [],
+    },
+    {
+      title: "売買方向別",
+      items: audit?.attribution.bySide.map((item) => ({ ...item, label: item.side === "LONG" ? "ロング" : item.side === "SHORT" ? "ショート" : item.side })) ?? [],
+    },
+  ];
 
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="15分方向モデルの前向き検証">
@@ -1353,6 +1379,32 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
           <p className="mt-1 text-[10px] font-semibold text-sky-700">{model?.nextDecisionAt ? `次回 ${formatJapanDateTime(model.nextDecisionAt)}` : model?.observedAt ? relativeTime(model.observedAt) : "開始待ち"}</p>
         </div>
       </div>
+      {attributionGroups.some((group) => group.items.length) ? (
+        <details className="group border-t">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-800 sm:px-5">
+            <span>資産別・方向別の成績</span>
+            <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="grid border-t bg-slate-50 sm:grid-cols-2 sm:divide-x">
+            {attributionGroups.map((group) => (
+              <div key={group.title} className="min-w-0 px-4 py-3 sm:px-5">
+                <p className="text-[10px] font-bold text-slate-500">{group.title}</p>
+                <div className="mt-1 divide-y">
+                  {group.items.map((item) => (
+                    <div key={item.label} className="grid grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-2 py-2 text-[11px]">
+                      <span className="font-bold text-slate-950">{item.label}</span>
+                      <span className="truncate font-semibold text-slate-500">{item.trades}件・勝率 {formatPct(item.trades ? item.wins / item.trades : null)}</span>
+                      <span className={`text-right font-bold ${item.returnContributionPct >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                        {formatSignedPct(item.returnContributionPct)}<span className="ml-1 text-[9px] text-slate-400">{formatUsd(item.netPnl)}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
         <span>{research
           ? `完全監査条件 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 9}・過去 ${formatCompact(research.completeMarkets)}市場・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用`

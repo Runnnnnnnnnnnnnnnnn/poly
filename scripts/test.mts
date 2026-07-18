@@ -417,6 +417,15 @@ assert.equal(exactAudit.comparableEvents, 2);
 assert.equal(exactAudit.comparableIndependentEvents, 1);
 assert.equal(exactAudit.controlCoverage, 1);
 assert.equal(exactAudit.totalReadinessGates, 9);
+assert.deepEqual(exactAudit.attribution.byAsset.map((item) => ({ asset: item.asset, trades: item.trades })), [
+  { asset: "BTC", trades: 1 },
+  { asset: "ETH", trades: 1 },
+]);
+assert.deepEqual(exactAudit.attribution.bySide.map((item) => ({ side: item.side, trades: item.trades })), [
+  { side: "LONG", trades: 1 },
+  { side: "SHORT", trades: 1 },
+]);
+assert.ok(Math.abs(exactAudit.attribution.byAsset.reduce((total, item) => total + item.returnContributionPct, 0) - (exactAudit.portfolioNetReturnPct ?? 0)) < 1e-12);
 assert.equal(calculatePolymarketTakerFee(100, 0.5), 1.75);
 const incompleteAudit = evaluateExactExecutionAudit({
   ...auditConfig,

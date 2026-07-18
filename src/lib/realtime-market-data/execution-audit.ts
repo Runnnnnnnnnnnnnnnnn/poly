@@ -217,6 +217,12 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   ));
   const meanTradeReturnConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(tradeReturns);
   const maxDrawdown = maximumDrawdownFromPnl(verifiedResults, initialEquity);
+  const attribution = {
+    byAsset: summarizeExactAttribution(verifiedResults, initialEquity, (result) => result.position.asset)
+      .map(({ key, ...slice }) => ({ asset: key, ...slice })),
+    bySide: summarizeExactAttribution(verifiedResults, initialEquity, (result) => result.position.side)
+      .map(({ key, ...slice }) => ({ side: key, ...slice })),
+  };
   const controlCoverage = benchmark.comparableEvents
     ? benchmark.controlComparablePositions / benchmark.comparableEvents
     : 0;
@@ -268,6 +274,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     strategyTrials,
     randomBenchmarkTrials,
     maxDrawdownPct: maxDrawdown,
+    attribution,
     controlComparablePositions: benchmark.controlComparablePositions,
     comparableEvents: benchmark.comparableEvents,
     comparableIndependentEvents: benchmark.comparableIndependentEvents,
@@ -304,6 +311,28 @@ type ExactResult = {
   storedPnl: number;
   notional: number;
 };
+
+function summarizeExactAttribution(
+  results: ExactResult[],
+  initialEquity: number,
+  keyFor: (result: ExactResult) => string,
+) {
+  const grouped = new Map<string, ExactResult[]>();
+  for (const result of results) {
+    const key = keyFor(result);
+    grouped.set(key, [...(grouped.get(key) ?? []), result]);
+  }
+  return Array.from(grouped, ([key, rows]) => {
+    const netPnl = sum(rows.map((row) => row.exactPnl));
+    return {
+      key,
+      trades: rows.length,
+      wins: rows.filter((row) => row.exactPnl > 0).length,
+      netPnl,
+      returnContributionPct: netPnl / initialEquity,
+    };
+  }).sort((left, right) => left.key.localeCompare(right.key));
+}
 
 function eligibleAuditPositions(positions: ExactExecutionAuditPosition[], collectionStartedAt: Date | null) {
   return positions.filter((position) => (
