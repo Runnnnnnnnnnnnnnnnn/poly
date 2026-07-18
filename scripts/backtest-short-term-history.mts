@@ -7,6 +7,7 @@ import {
   blockBootstrapMeanConfidenceInterval,
   deflatedSharpeProbability,
 } from "../src/lib/model-evaluation/combined-trading";
+import { annualizeRealizedVolatility } from "../src/lib/model-evaluation/volatility";
 
 const GAMMA_API = "https://gamma-api.polymarket.com";
 const CLOB_API = "https://clob.polymarket.com";
@@ -33,6 +34,9 @@ const impliedRequireTrend = process.env.SHORT_TERM_IMPLIED_REQUIRE_TREND === "1"
 const leadLagMinimumProbabilityChange = boundedNumber(process.env.SHORT_TERM_LEAD_LAG_MIN_CHANGE, 0.1, 0.01, 0.5);
 const leadLagRequireTrend = process.env.SHORT_TERM_LEAD_LAG_REQUIRE_TREND === "1";
 const strategyTrials = Math.round(boundedNumber(process.env.SHORT_TERM_STRATEGY_TRIALS, 8, 1, 100));
+const randomBenchmarkTrials = Math.round(boundedNumber(process.env.SHORT_TERM_RANDOM_TRIALS, 200, 20, 1_000));
+const walkForwardFolds = Math.round(boundedNumber(process.env.SHORT_TERM_WALK_FORWARD_FOLDS, 4, 3, 8));
+const minimumProfitableFolds = Math.ceil(walkForwardFolds * 0.75);
 
 const marketSchema = z.object({
   id: z.union([z.string(), z.number()]),
@@ -211,6 +215,7 @@ const calibrationSummary = summarizePeriod(calibration);
 const holdoutSummary = summarizePeriod(holdout);
 const calibrationCrossSectional = summarizeCrossSectional(calibrationCrossSections);
 const holdoutCrossSectional = summarizeCrossSectional(holdoutCrossSections);
+const walkForward = buildWalkForwardValidation(observationTimes, observations, crossSections);
 const report = {
   generatedAt: generatedAt.toISOString(),
   methodology: {
@@ -218,6 +223,7 @@ const report = {
     warning: "Aggregated price history has no executable order book and cannot authorize testnet or real trading.",
     period: { startAt: startAt.toISOString(), endAt: endAt.toISOString(), lookbackHours },
     split: "chronological 60% calibration / 40% holdout",
+    walkForward: `anchored expanding window / ${walkForwardFolds} non-overlapping validation folds`,
     marketDuration: marketDuration.slug,
     hyperliquidCandleInterval: marketDuration.candleInterval,
     entry: `first actionable one-minute observation in [${marketDuration.decisionStartMs / 60_000}m, ${marketDuration.decisionEndMs / 60_000}m)`,
@@ -231,16 +237,19 @@ const report = {
       minimumTrendZ: impliedMinimumTrendZ,
       requireTrend: impliedRequireTrend,
       strategyTrials,
+      randomBenchmarkTrials,
     },
     leadLagRule: {
       minimumOneMinuteProbabilityChange: leadLagMinimumProbabilityChange,
       requireTrend: leadLagRequireTrend,
       strategyTrials,
+      randomBenchmarkTrials,
     },
     crossSectionalRule: {
       construction: "50% long highest implied residual / 50% short lowest implied residual",
       minimumExpectedPairReturnPct: roundTripCost,
       strategyTrials,
+      randomBenchmarkTrials,
     },
   },
   coverage: {
@@ -258,10 +267,11 @@ const report = {
   },
   calibration: { ...calibrationSummary, crossSectional: calibrationCrossSectional },
   holdout: { ...holdoutSummary, crossSectional: holdoutCrossSectional },
+  walkForward,
   screening: {
-    implied: screeningVerdict(holdoutSummary.implied),
-    leadLag: screeningVerdict(holdoutSummary.leadLag),
-    crossSectional: screeningVerdict(holdoutCrossSectional),
+    implied: screeningVerdict(holdoutSummary.implied, walkForward.stability.implied),
+    leadLag: screeningVerdict(holdoutSummary.leadLag, walkForward.stability.leadLag),
+    crossSectional: screeningVerdict(holdoutCrossSectional, walkForward.stability.crossSectional),
   },
 };
 const serializedReport = `${JSON.stringify(report, null, 2)}\n`;
@@ -300,6 +310,13 @@ function buildCrossSectionalTrades(rows: typeof observations) {
       benchmarks: {
         polymarketProbabilityRank: pairReturn(probabilityRank[0], probabilityRank.at(-1)!) ?? 0,
         hyperliquidMomentumRank: pairReturn(trendRank[0], trendRank.at(-1)!) ?? 0,
+        randomPairReturns: Array.from({ length: randomBenchmarkTrials }, (_, trial) => {
+          const random = createSeededRandom(stableHash(startAt) + trial + 1);
+          const longIndex = Math.floor(random() * group.length);
+          let shortIndex = Math.floor(random() * (group.length - 1));
+          if (shortIndex >= longIndex) shortIndex += 1;
+          return pairReturn(group[longIndex], group[shortIndex]) ?? 0;
+        }),
       },
     };
   }).filter((row): row is NonNullable<typeof row> => Boolean(row));
@@ -314,15 +331,16 @@ function pairReturn(long: (typeof observations)[number], short: (typeof observat
 function summarizeCrossSectional(rows: ReturnType<typeof buildCrossSectionalTrades>) {
   const selected = rows.filter((row) => row.selected);
   const returns = selected.map((row) => row.returnPct);
+  const randomBenchmark = medianTrial(Array.from({ length: randomBenchmarkTrials }, (_, trial) => (
+    selected.map((row) => row.benchmarks.randomPairReturns[trial])
+  )));
   const benchmarkCandidates = [
-    { label: "Polymarket probability rank", key: "polymarketProbabilityRank" as const },
-    { label: "Hyperliquid momentum rank", key: "hyperliquidMomentumRank" as const },
-  ].map((candidate) => ({
-    ...candidate,
-    returnPct: sum(selected.map((row) => row.benchmarks[candidate.key])),
-  }));
+    { label: "Polymarket probability rank", returns: selected.map((row) => row.benchmarks.polymarketProbabilityRank) },
+    { label: "Hyperliquid momentum rank", returns: selected.map((row) => row.benchmarks.hyperliquidMomentumRank) },
+    { label: `Random pair median (${randomBenchmarkTrials} trials)`, returns: randomBenchmark },
+  ].map((candidate) => ({ ...candidate, returnPct: sum(candidate.returns) }));
   const best = [...benchmarkCandidates].sort((left, right) => right.returnPct - left.returnPct)[0];
-  const excess = selected.map((row) => row.returnPct - row.benchmarks[best.key]);
+  const excess = selected.map((row, index) => row.returnPct - best.returns[index]);
   return {
     intervals: rows.length,
     trades: selected.length,
@@ -338,6 +356,57 @@ function summarizeCrossSectional(rows: ReturnType<typeof buildCrossSectionalTrad
     benchmarkReturnPct: best.returnPct,
     excessReturnPct: sum(excess),
     excessConfidenceInterval95: blockBootstrapMeanConfidenceInterval(excess),
+  };
+}
+
+function buildWalkForwardValidation(
+  times: string[],
+  rows: typeof observations,
+  crossSectionRows: ReturnType<typeof buildCrossSectionalTrades>,
+) {
+  const initialWindow = Math.floor(times.length / (walkForwardFolds + 1));
+  const folds = Array.from({ length: walkForwardFolds }, (_, index) => {
+    const validationStartIndex = initialWindow * (index + 1);
+    const validationEndIndex = index === walkForwardFolds - 1
+      ? times.length
+      : initialWindow * (index + 2);
+    const validationTimes = new Set(times.slice(validationStartIndex, validationEndIndex));
+    const validationRows = rows.filter((row) => validationTimes.has(row.startAt));
+    const validationCrossSections = crossSectionRows.filter((row) => validationTimes.has(row.startAt));
+    const summary = summarizePeriod(validationRows);
+    return {
+      fold: index + 1,
+      calibration: {
+        startAt: times[0] ?? null,
+        endAt: times[validationStartIndex - 1] ?? null,
+        intervals: validationStartIndex,
+      },
+      validation: {
+        startAt: times[validationStartIndex] ?? null,
+        endAt: times[validationEndIndex - 1] ?? null,
+        intervals: validationTimes.size,
+        ...summary,
+        crossSectional: summarizeCrossSectional(validationCrossSections),
+      },
+    };
+  });
+  return {
+    folds,
+    minimumProfitableFolds,
+    stability: {
+      implied: summarizeFoldStability(folds.map((fold) => fold.validation.implied)),
+      leadLag: summarizeFoldStability(folds.map((fold) => fold.validation.leadLag)),
+      crossSectional: summarizeFoldStability(folds.map((fold) => fold.validation.crossSectional)),
+    },
+  };
+}
+
+function summarizeFoldStability(folds: Array<{ trades: number; netReturnPct: number }>) {
+  return {
+    folds: folds.length,
+    tradedFolds: folds.filter((fold) => fold.trades > 0).length,
+    profitableFolds: folds.filter((fold) => fold.trades > 0 && fold.netReturnPct > 0).length,
+    requiredProfitableFolds: minimumProfitableFolds,
   };
 }
 
@@ -382,7 +451,7 @@ function screeningVerdict(model: {
   excessConfidenceInterval95: [number, number] | null;
   deflatedSharpeProbability: number | null;
   maxDrawdownPct: number;
-}) {
+}, stability: ReturnType<typeof summarizeFoldStability>) {
   const gates = [
     { id: "trades", label: "50 holdout trades", passed: model.trades >= 50 },
     { id: "net", label: "positive after costs", passed: model.netReturnPct > 0 },
@@ -390,6 +459,7 @@ function screeningVerdict(model: {
     { id: "benchmark", label: "95% benchmark-excess lower bound above zero", passed: (model.excessConfidenceInterval95?.[0] ?? 0) > 0 },
     { id: "selection", label: "deflated Sharpe probability at least 95%", passed: (model.deflatedSharpeProbability ?? 0) >= 0.95 },
     { id: "drawdown", label: "maximum drawdown at or below 5%", passed: model.trades >= 50 && model.maxDrawdownPct <= 0.05 },
+    { id: "walk-forward", label: `${stability.requiredProfitableFolds}/${stability.folds} sequential validation periods positive`, passed: stability.profitableFolds >= stability.requiredProfitableFolds },
   ];
   return {
     status: model.trades < 50 ? "insufficient" : gates.every((gate) => gate.passed) ? "promising" : "rejected",
@@ -404,16 +474,18 @@ function summarizeBenchmarks(rows: typeof observations, key: "implied" | "leadLa
     model: row[key].returnPct,
     ...row[key].benchmarks,
   }] : []);
-  const candidates = [
-    { label: "Polymarket direction", key: "polymarketDirection" as const },
-    { label: "Always long", key: "alwaysLong" as const },
-    { label: "Always short", key: "alwaysShort" as const },
-  ].map((candidate) => ({
-    ...candidate,
-    returnPct: sum(comparable.map((row) => row[candidate.key])),
+  const randomBenchmark = medianTrial(Array.from({ length: randomBenchmarkTrials }, (_, trial) => {
+    const random = createSeededRandom(trial + 1);
+    return comparable.map((row) => random() < 0.5 ? row.alwaysLong : row.alwaysShort);
   }));
+  const candidates = [
+    { label: "Polymarket direction", returns: comparable.map((row) => row.polymarketDirection) },
+    { label: "Always long", returns: comparable.map((row) => row.alwaysLong) },
+    { label: "Always short", returns: comparable.map((row) => row.alwaysShort) },
+    { label: `Random median (${randomBenchmarkTrials} trials)`, returns: randomBenchmark },
+  ].map((candidate) => ({ ...candidate, returnPct: sum(candidate.returns) }));
   const best = [...candidates].sort((left, right) => right.returnPct - left.returnPct)[0];
-  const excess = comparable.map((row) => row.model - row[best.key]);
+  const excess = comparable.map((row, index) => row.model - best.returns[index]);
   return {
     label: best.label,
     returnPct: best.returnPct,
@@ -516,7 +588,7 @@ function estimateVolatility24h(candles: Candle[]) {
     return previous && current ? [Math.log(current / previous)] : [];
   });
   if (!returns.length) return 0.02;
-  return clamp(Math.sqrt(sum(returns.map((value) => value ** 2)) * (1_440 / returns.length)), 0.005, 0.25);
+  return clamp(annualizeRealizedVolatility(returns, marketDuration.candleMs) ?? 0.02, 0.005, 0.25);
 }
 
 function calculateCandleReturn(side: "LONG" | "SHORT", entry: Candle, exit: Candle, candles: Candle[]) {
@@ -632,6 +704,32 @@ function quantile(sorted: number[], probability: number) {
   const upper = Math.ceil(index);
   if (lower === upper) return sorted[lower];
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
+}
+
+function medianTrial(trials: number[][]) {
+  if (!trials.length) return [];
+  return [...trials]
+    .sort((left, right) => sum(left) - sum(right))[Math.floor((trials.length - 1) / 2)];
+}
+
+function createSeededRandom(seed: number) {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6D2B79F5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+function stableHash(value: string) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return hash >>> 0;
 }
 
 function boundedNumber(value: string | undefined, fallback: number, minimum: number, maximum: number) {

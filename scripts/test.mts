@@ -42,6 +42,7 @@ import { parseTerminalPriceCondition, probabilityForCondition, summarizeFundingA
 import { selectProspectiveExecutionTriplet } from "../src/lib/model-evaluation/prospective-synchronized";
 import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
+import { annualizeRealizedVolatility } from "../src/lib/model-evaluation/volatility";
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
 import { buildRealtimeMarketTick, isRealtimeCaptureWindow, shouldReconnectManagedSocket } from "../src/lib/realtime-market-data/collector";
 import { calculatePolymarketTakerFee, evaluateExactExecutionAudit } from "../src/lib/realtime-market-data/execution-audit";
@@ -69,6 +70,13 @@ assert.equal(metrics.totalPnl, 15);
 assert.equal(metrics.markets, 2);
 assert.equal(metrics.calibration.reduce((sum, bucket) => sum + bucket.count, 0), 3);
 assert.ok(Math.abs((metrics.brierScore ?? 0) - 0.1366666667) < 1e-9);
+
+const oneMinuteVolatility = annualizeRealizedVolatility([0.001, -0.001], 60_000);
+const fifteenMinuteVolatility = annualizeRealizedVolatility([0.001, -0.001], 15 * 60_000);
+assert.ok(oneMinuteVolatility !== null && fifteenMinuteVolatility !== null);
+assert.ok(Math.abs(oneMinuteVolatility / fifteenMinuteVolatility - Math.sqrt(15)) < 1e-12);
+assert.equal(annualizeRealizedVolatility([], 60_000), null);
+assert.equal(annualizeRealizedVolatility([0.001], 0), null);
 
 console.log("backtest metric tests passed");
 

@@ -346,6 +346,8 @@ type MonitoringSnapshot = {
         marketDuration: string;
         executionMode: string;
         completeMarkets: number;
+        walkForwardFolds: number;
+        minimumProfitableFolds: number;
         acceptedCandidates: number;
         totalCandidates: number;
         candidates: Array<{
@@ -358,6 +360,8 @@ type MonitoringSnapshot = {
           confidenceLowerPct: number | null;
           excessReturnPct: number | null;
           maxDrawdownPct: number;
+          profitableFolds: number;
+          totalFolds: number;
           passedGates: number;
           totalGates: number;
         }>;
@@ -1008,7 +1012,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${dataReady ? "text-emerald-600" : "text-amber-600"}`} />5秒板 {formatCompact(snapshot?.collection.realtimePrices?.records)}件・完全監査 {verifiedTrades}/{minimumTrades}件{research ? `・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用` : ""}</span>
+        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${dataReady ? "text-emerald-600" : "text-amber-600"}`} />5秒板 {formatCompact(snapshot?.collection.realtimePrices?.records)}件・完全監査 {verifiedTrades}/{minimumTrades}{research ? `・採用 ${research.acceptedCandidates}/${research.totalCandidates}・順次 ${research.walkForwardFolds}期間` : ""}</span>
         <span>{savedSnapshot ? "公開保存値" : "自動更新"}・{latestAt ? `${relativeTime(latestAt)}に更新` : "更新待ち"}</span>
       </div>
     </section>
@@ -1297,7 +1301,7 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
         <span>{research
-          ? `過去検証 ${formatCompact(research.completeMarkets)}市場・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用`
+          ? `過去検証 ${formatCompact(research.completeMarkets)}市場・順次${research.walkForwardFolds}期間・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用`
           : "売買時刻に最も近い5秒板で約定を再現中"}</span>
         <span className="font-bold text-rose-700">実取引 OFF</span>
       </div>

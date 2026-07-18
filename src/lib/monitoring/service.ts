@@ -34,6 +34,12 @@ const researchMetricSchema = z.object({
   excessReturnPct: z.number().nullable(),
   maxDrawdownPct: z.number(),
 });
+const researchFoldStabilitySchema = z.object({
+  folds: z.number(),
+  tradedFolds: z.number(),
+  profitableFolds: z.number(),
+  requiredProfitableFolds: z.number(),
+});
 const shortTermResearchSchema = z.object({
   generatedAt: z.string(),
   methodology: z.object({ marketDuration: z.string(), executionMode: z.string() }),
@@ -42,6 +48,15 @@ const shortTermResearchSchema = z.object({
     implied: researchMetricSchema,
     leadLag: researchMetricSchema,
     crossSectional: researchMetricSchema,
+  }),
+  walkForward: z.object({
+    folds: z.array(z.object({ fold: z.number() })),
+    minimumProfitableFolds: z.number(),
+    stability: z.object({
+      implied: researchFoldStabilitySchema,
+      leadLag: researchFoldStabilitySchema,
+      crossSectional: researchFoldStabilitySchema,
+    }),
   }),
   screening: z.object({
     implied: z.object({ status: z.enum(["insufficient", "promising", "rejected"]), passedGates: z.number(), totalGates: z.number() }),
@@ -912,15 +927,17 @@ function loadShortTermResearchSummary() {
   try {
     const parsed = shortTermResearchSchema.parse(JSON.parse(readFileSync(path, "utf8")));
     const definitions = [
-      { id: "implied", label: "暗黙終値", metrics: parsed.holdout.implied, screening: parsed.screening.implied },
-      { id: "leadLag", label: "確率変化", metrics: parsed.holdout.leadLag, screening: parsed.screening.leadLag },
-      { id: "crossSectional", label: "資産間比較", metrics: parsed.holdout.crossSectional, screening: parsed.screening.crossSectional },
+      { id: "implied", label: "暗黙終値", metrics: parsed.holdout.implied, screening: parsed.screening.implied, stability: parsed.walkForward.stability.implied },
+      { id: "leadLag", label: "確率変化", metrics: parsed.holdout.leadLag, screening: parsed.screening.leadLag, stability: parsed.walkForward.stability.leadLag },
+      { id: "crossSectional", label: "資産間比較", metrics: parsed.holdout.crossSectional, screening: parsed.screening.crossSectional, stability: parsed.walkForward.stability.crossSectional },
     ];
     return {
       generatedAt: parsed.generatedAt,
       marketDuration: parsed.methodology.marketDuration,
       executionMode: parsed.methodology.executionMode,
       completeMarkets: parsed.coverage.completeMarkets,
+      walkForwardFolds: parsed.walkForward.folds.length,
+      minimumProfitableFolds: parsed.walkForward.minimumProfitableFolds,
       acceptedCandidates: definitions.filter((item) => item.screening.status === "promising").length,
       totalCandidates: definitions.length,
       candidates: definitions.map((item) => ({
@@ -933,6 +950,8 @@ function loadShortTermResearchSummary() {
         confidenceLowerPct: item.metrics.meanConfidenceInterval95?.[0] ?? null,
         excessReturnPct: item.metrics.excessReturnPct,
         maxDrawdownPct: item.metrics.maxDrawdownPct,
+        profitableFolds: item.stability.profitableFolds,
+        totalFolds: item.stability.folds,
         passedGates: item.screening.passedGates,
         totalGates: item.screening.totalGates,
       })),
