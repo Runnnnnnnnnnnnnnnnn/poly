@@ -1,6 +1,30 @@
 {
   "items": [
     {
+      "runId": "2026-07-18T12-52-31.076Z",
+      "generatedAt": "2026-07-18T12:52:31.076Z",
+      "codeRevision": "4a070950ed52f556",
+      "datasetSha256": "c83ed8c90fae60822fc1a31353a0ff784f320af546d58171fb3faa4d88a92c40",
+      "specificationSha256": "6565d7e509fde502309a624e776434297855a1d488217935607c871661f59ce0",
+      "status": "insufficient",
+      "selectedCandidateId": "market_direction-30s",
+      "completeMarkets": 100,
+      "replayableMarkets": 52,
+      "independentWindows": 18,
+      "holdoutWindows": 4,
+      "holdoutTrades": 9,
+      "holdoutEqualWeightNetReturnPct": 0.11715172064174117,
+      "holdoutHyperliquidNetReturnPct": -0.00013154829756584257,
+      "holdoutPolymarketNetReturnPct": 0.2344349895810482,
+      "holdoutBestBenchmarkId": "polymarket_only",
+      "holdoutBestBenchmarkNetReturnPct": 0.2344349895810482,
+      "holdoutExcessReturnPct": -0.11728326893930702,
+      "holdoutExcessConfidenceLowerPct": -0.044975065824715305,
+      "profitableFolds": 2,
+      "benchmarkBeatingFolds": 0,
+      "totalFolds": 4
+    },
+    {
       "runId": "2026-07-18T12-22-18.850Z",
       "generatedAt": "2026-07-18T12:22:18.850Z",
       "codeRevision": "4b0342724986967ab37281bd4df78dd4e2797724",
