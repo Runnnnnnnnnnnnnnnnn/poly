@@ -2169,11 +2169,11 @@ function ShortTermBacktestDiagnosis({
       <div className="grid grid-cols-2 divide-x border-t bg-white">
         <div className="px-4 py-3 sm:px-5">
           <p className="text-[10px] font-bold text-slate-500">予測後の平均値幅（コスト前）</p>
-          <p className={`mt-1 text-lg font-bold ${signedMetricTone(diagnosis.estimatedBeforeCostAverageReturnPct, true) === "good" ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPctPrecise(diagnosis.estimatedBeforeCostAverageReturnPct)}</p>
+          <p className={`mt-1 text-lg font-bold ${signedMetricTone(diagnosis.estimatedBeforeCostAverageReturnPct, true) === "good" ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedBasisBps(diagnosis.estimatedBeforeCostAverageReturnPct)}</p>
         </div>
         <div className="px-4 py-3 sm:px-5">
           <p className="text-[10px] font-bold text-slate-500">想定する往復コスト</p>
-          <p className="mt-1 text-lg font-bold text-slate-800">{formatPct(diagnosis.assumedRoundTripCostPct)}</p>
+          <p className="mt-1 text-lg font-bold text-slate-800">{formatBasisBps(diagnosis.assumedRoundTripCostPct)}</p>
         </div>
       </div>
       <details className="border-t">
@@ -3039,7 +3039,14 @@ function formatDurationHours(value: number | null | undefined) {
 function formatBasisBps(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   const basisPoints = value * 10_000;
-  return `${basisPoints.toFixed(Math.abs(basisPoints) < 10 ? 1 : 0)}bp`;
+  const digits = Math.abs(basisPoints) < 0.1 ? 2 : Math.abs(basisPoints) < 10 ? 1 : 0;
+  return `${basisPoints.toFixed(digits)}bp`;
+}
+
+function formatSignedBasisBps(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  const formatted = formatBasisBps(value);
+  return `${value >= 0 ? "+" : ""}${formatted}`;
 }
 
 function formatCompact(value: number | null | undefined) {
@@ -3076,12 +3083,6 @@ function formatUsdCompact(value: number) {
 function formatSignedPct(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
-}
-
-function formatSignedPctPrecise(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  const digits = Math.abs(value) < 0.001 ? 3 : 2;
-  return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
 }
 
 function formatPct(value: number | null | undefined) {
