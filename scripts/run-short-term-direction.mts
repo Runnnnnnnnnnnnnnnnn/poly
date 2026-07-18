@@ -3,6 +3,7 @@ import {
   isShortTermDirectionFamilyKey,
   shortTermDirectionControlKey,
   shortTermDirectionHorizonKey,
+  shortTermDirectionSpecificationHash,
   shortTermDirectionStrategyKey,
 } from "../src/lib/combined-trading/short-term-direction";
 import { ensureCombinedShadowRun, loadCombinedMarkPrices, tickCombinedShadowRun, type CombinedShadowConfig } from "../src/lib/combined-trading/service";
@@ -27,6 +28,7 @@ const sharedConfig: Partial<CombinedShadowConfig> = {
   takerFeePerSide: 0.00045,
   slippagePerSide: 0.0002,
   fundingPer24h: 0.0003,
+  specificationHash: shortTermDirectionSpecificationHash,
 };
 
 const strategyConfig: Partial<CombinedShadowConfig> = {
@@ -34,7 +36,7 @@ const strategyConfig: Partial<CombinedShadowConfig> = {
   experimentKey: shortTermDirectionStrategyKey,
   experimentLabel: "15分Up/Down × Hyperliquid開始後トレンド一致",
   signalRule: "trend-confirmed",
-  modelVersion: "Short Direction v3 2026-07-18 / exact 5s audit / official resolution / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
+  modelVersion: "Short Direction v4 2026-07-18 / exact 5s audit / independent 15m windows / 11 trials / official resolution / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
 };
 
 const controlConfig: Partial<CombinedShadowConfig> = {
@@ -43,7 +45,7 @@ const controlConfig: Partial<CombinedShadowConfig> = {
   experimentLabel: "15分Up/Downの方向のみ（同時対照）",
   minimumTrendZ: 0,
   signalRule: "polymarket-only",
-  modelVersion: "Short Direction Control v3 2026-07-18 / exact 5s audit / official resolution / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
+  modelVersion: "Short Direction Control v4 2026-07-18 / exact 5s audit / independent 15m windows / 11 trials / official resolution / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
 };
 
 let runs = await ensureRuns();

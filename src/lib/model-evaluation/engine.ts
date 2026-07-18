@@ -99,14 +99,28 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
   const maximumExecutionTimingErrorMinutes = executionTimingErrors.length ? Math.max(...executionTimingErrors) : null;
   const statisticallyPositive = confidenceInterval95[0] > 0;
   const gates = [
-    { id: "chronology", label: "4期間の順次検証と最終テストを分離", passed: combinedTrading.walkForwardFolds >= 4 },
-    { id: "horizon", label: `全市場を決着${horizonHours}時間前で統一`, passed: true },
-    { id: "same-holdout", label: "未使用期間のHyperliquid価格で売買検証", passed: true },
+    { id: "chronology", label: "取引ルールのウォークフォワード選択を実施", passed: false },
+    {
+      id: "horizon",
+      label: `全市場を決着${horizonHours}時間前で統一`,
+      passed: samples.every((sample) => sample.horizonHours === horizonHours),
+    },
+    {
+      id: "same-holdout",
+      label: "未使用期間の同期板価格で売買検証",
+      passed: testSynchronizedExecutionCoverage >= 0.9 && combinedTrading.eligibleSignals >= MIN_HOLDOUT_EVENTS,
+    },
     { id: "features", label: "最終テストの売買価格を90%以上取得", passed: testExecutionFeatureCoverage >= 0.9 },
     { id: "synchronized-prices", label: "最終テストの1分同期板価格を90%以上取得", passed: testSynchronizedExecutionCoverage >= 0.9 },
-    { id: "timing", label: "売買時刻の誤差を65分以内に制限", passed: maximumExecutionTimingErrorMinutes !== null && maximumExecutionTimingErrorMinutes <= 65 },
+    { id: "timing", label: "売買時刻の誤差を5分以内に制限", passed: maximumExecutionTimingErrorMinutes !== null && maximumExecutionTimingErrorMinutes <= 5 },
     { id: "ladder", label: "価格帯の確率矛盾を単調補正", passed: ladder.events > 0 },
-    { id: "costs", label: "手数料・滑り・資金調達を控除", passed: true },
+    {
+      id: "costs",
+      label: "同期板・手数料・滑り・実期間の資金調達を反映",
+      passed: combinedTrading.trades >= minimumCombinedTrades
+        && testSynchronizedExecutionCoverage >= 0.9
+        && testFundingCostCoverage >= 0.9,
+    },
     { id: "funding", label: "最終テストの資金調達率を90%以上取得", passed: testFundingFeatureCoverage >= 0.9 && testFundingCostCoverage >= 0.9 },
     { id: "sample", label: `売買可能な最終テスト${MIN_HOLDOUT_EVENTS}イベント以上`, passed: combinedTrading.eligibleSignals >= MIN_HOLDOUT_EVENTS },
     { id: "trades", label: `最終テスト${minimumCombinedTrades}取引以上`, passed: combinedTrading.trades >= minimumCombinedTrades },

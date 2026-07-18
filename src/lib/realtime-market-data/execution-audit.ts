@@ -8,6 +8,7 @@ const defaultMaximumTimingErrorMs = 15_000;
 const defaultMaximumPolymarketQuoteAgeMs = 2 * 60_000;
 const defaultInitialEquity = 10_000;
 const defaultRandomBenchmarkTrials = 200;
+const defaultStrategyTrials = 11;
 const minimumDeflatedSharpeProbability = 0.95;
 const maximumDrawdownPct = 0.05;
 const cryptoTakerFeeRate = 0.07;
@@ -78,7 +79,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   const initialEquity = positiveNumber(input.initialEquity ?? defaultInitialEquity)
     ? input.initialEquity ?? defaultInitialEquity
     : defaultInitialEquity;
-  const strategyTrials = Math.max(1, Math.round(input.strategyTrials ?? 1));
+  const strategyTrials = Math.max(1, Math.round(input.strategyTrials ?? defaultStrategyTrials));
   const randomBenchmarkTrials = Math.max(20, Math.round(input.randomBenchmarkTrials ?? defaultRandomBenchmarkTrials));
   const eligiblePositions = eligibleAuditPositions(input.positions, input.collectionStartedAt);
   const eligibleControlPositions = eligibleAuditPositions(input.controlPositions ?? [], input.collectionStartedAt);
@@ -198,7 +199,8 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   const verifiedCoverage = eligiblePositions.length ? verifiedPositions / eligiblePositions.length : 0;
   const maximumObservedTimingErrorMs = timingErrors.length ? Math.max(...timingErrors) : null;
   const maximumObservedPolymarketQuoteAgeMs = polymarketQuoteAges.length ? Math.max(...polymarketQuoteAges) : null;
-  const enoughData = verifiedPositions >= minimumAuditedPositions;
+  const verifiedIndependentEvents = independentAuditWindows(verifiedResults).length;
+  const enoughData = verifiedIndependentEvents >= minimumAuditedPositions;
   const qualityPassed = verifiedCoverage >= 0.95
     && maximumObservedTimingErrorMs !== null
     && maximumObservedTimingErrorMs <= maximumTimingErrorMs
@@ -210,14 +212,16 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   const storedPortfolioReturnPct = verifiedResults.length
     ? sum(verifiedResults.map((result) => result.storedPnl)) / initialEquity
     : null;
-  const tradeReturns = verifiedResults.map((result) => result.exactPnl / result.notional);
+  const tradeReturns = independentAuditWindows(verifiedResults).map((window) => (
+    sum(window.map((result) => result.exactPnl)) / sum(window.map((result) => result.notional))
+  ));
   const meanTradeReturnConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(tradeReturns);
   const maxDrawdown = maximumDrawdownFromPnl(verifiedResults, initialEquity);
   const controlCoverage = benchmark.comparableEvents
     ? benchmark.controlComparablePositions / benchmark.comparableEvents
     : 0;
   const readinessGates = [
-    { id: "trades" as const, label: `${minimumAuditedPositions}件の完全監査`, passed: enoughData },
+    { id: "trades" as const, label: `${minimumAuditedPositions}件の独立時間枠を完全監査`, passed: enoughData },
     { id: "execution" as const, label: "実板・時刻・決着の監査率95%以上", passed: enoughData && qualityPassed },
     { id: "control" as const, label: "同時対照の再現率95%以上", passed: enoughData && controlCoverage >= 0.95 },
     { id: "net-positive" as const, label: "全コスト控除後プラス", passed: enoughData && (portfolioNetReturnPct ?? 0) > 0 },
@@ -238,10 +242,12 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     readinessStatus,
     collectionStartedAt: input.collectionStartedAt?.toISOString() ?? null,
     minimumAuditedPositions,
+    minimumIndependentEvents: minimumAuditedPositions,
     eligiblePositions: eligiblePositions.length,
     auditedPositions: exactResults.length,
     coverage,
     verifiedPositions,
+    verifiedIndependentEvents,
     verifiedCoverage,
     resolvedPredictions: predictionResults.length,
     predictionAccuracy: predictionResults.length
@@ -264,6 +270,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     maxDrawdownPct: maxDrawdown,
     controlComparablePositions: benchmark.controlComparablePositions,
     comparableEvents: benchmark.comparableEvents,
+    comparableIndependentEvents: benchmark.comparableIndependentEvents,
     controlCoverage,
     benchmarks: benchmark.returns,
     passedReadinessGates: readinessGates.filter((gate) => gate.passed).length,
@@ -355,22 +362,18 @@ function buildExactBenchmarks(input: {
   randomBenchmarkTrials: number;
   strategyTrials: number;
 }) {
-  const strategyByMarket = new Map(input.strategyResults.map((result) => [result.marketId, result]));
   const controlByMarket = new Map(input.controlResults.map((result) => [result.marketId, result]));
-  const comparableResults = Array.from(new Set([
-    ...strategyByMarket.keys(),
-    ...controlByMarket.keys(),
-  ])).map((marketId) => {
-    const strategy = strategyByMarket.get(marketId);
+  const comparableResults = input.strategyResults.map((strategy) => {
+    const marketId = strategy.marketId;
     const control = controlByMarket.get(marketId);
     return {
       marketId,
       strategy,
       control,
-      reference: strategy ?? control as ExactResult,
+      reference: strategy,
     };
   });
-  const strategyReturns = comparableResults.map(({ strategy }) => strategy ? strategy.exactPnl / strategy.notional : 0);
+  const strategyReturns = comparableResults.map(({ strategy }) => strategy.exactPnl / strategy.notional);
   const controlReturns = comparableResults.map(({ control }) => control ? control.exactPnl / control.notional : 0);
   const longReturns = comparableResults.map(({ reference }) => exactSideReturn(reference, "LONG", input));
   const shortReturns = comparableResults.map(({ reference }) => exactSideReturn(reference, "SHORT", input));
@@ -390,16 +393,38 @@ function buildExactBenchmarks(input: {
   }));
   const best = [...candidates].sort((left, right) => right.returnPct - left.returnPct)[0];
   const excessReturns = strategyReturns.map((value, index) => value - (best?.returns[index] ?? 0));
+  const excessWindowReturns = independentAuditWindows(comparableResults.map(({ reference }) => reference)).map((window) => {
+    const marketIds = new Set(window.map((result) => result.marketId));
+    const positions = comparableResults.filter((result) => marketIds.has(result.marketId));
+    const notional = sum(positions.map((result) => result.reference.notional));
+    return notional > 0
+      ? sum(positions.map((result) => {
+          const index = comparableResults.indexOf(result);
+          return excessReturns[index] * result.reference.notional;
+        })) / notional
+      : 0;
+  });
+  const excessPortfolioContributions = independentAuditWindows(comparableResults.map(({ reference }) => reference)).map((window) => {
+    const marketIds = new Set(window.map((result) => result.marketId));
+    return sum(comparableResults.flatMap((result, index) => marketIds.has(result.marketId)
+      ? [excessReturns[index] * result.reference.notional / input.initialEquity]
+      : []));
+  });
+  const contributionInterval = blockBootstrapMeanConfidenceInterval(excessPortfolioContributions);
+  const excessConfidenceInterval95 = contributionInterval
+    ? contributionInterval.map((value) => value * excessPortfolioContributions.length) as [number, number]
+    : null;
   const strategyReturnPct = portfolioReturn(strategyReturns, comparableResults.map((result) => result.reference), input.initialEquity);
   const bestReturnPct = comparableResults.length ? best.returnPct : null;
   return {
     bestLabel: comparableResults.length ? best.label : null,
     bestReturnPct,
     excessReturnPct: bestReturnPct === null ? null : strategyReturnPct - bestReturnPct,
-    excessConfidenceInterval95: blockBootstrapMeanConfidenceInterval(excessReturns),
-    deflatedSharpeProbability: deflatedSharpeProbability(excessReturns, input.strategyTrials),
+    excessConfidenceInterval95,
+    deflatedSharpeProbability: deflatedSharpeProbability(excessWindowReturns, input.strategyTrials),
     controlComparablePositions: comparableResults.filter((result) => Boolean(result.control)).length,
     comparableEvents: comparableResults.length,
+    comparableIndependentEvents: independentAuditWindows(comparableResults.map(({ reference }) => reference)).length,
     returns: {
       polymarketOnlyReturnPct: candidates[0].returnPct,
       alwaysLongReturnPct: candidates[1].returnPct,
@@ -433,12 +458,25 @@ function maximumDrawdownFromPnl(results: ExactResult[], initialEquity: number) {
   let equity = initialEquity;
   let peak = initialEquity;
   let maximumDrawdown = 0;
-  for (const result of [...results].sort((left, right) => left.openedAt.getTime() - right.openedAt.getTime())) {
-    equity += result.exactPnl;
+  for (const window of independentAuditWindows(results)) {
+    equity += sum(window.map((result) => result.exactPnl));
     peak = Math.max(peak, equity);
     maximumDrawdown = Math.max(maximumDrawdown, peak > 0 ? (peak - equity) / peak : 1);
   }
   return maximumDrawdown;
+}
+
+function independentAuditWindows(results: ExactResult[]) {
+  const windowMs = 15 * 60_000;
+  const grouped = new Map<number, ExactResult[]>();
+  for (const result of results) {
+    const timestamp = result.position.exitAt.getTime();
+    const key = Math.round(timestamp / windowMs) * windowMs;
+    grouped.set(key, [...(grouped.get(key) ?? []), result]);
+  }
+  return Array.from(grouped.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([, window]) => window);
 }
 
 function medianTrial(trials: number[][]) {

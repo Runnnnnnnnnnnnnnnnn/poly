@@ -19,7 +19,7 @@ type TestnetCancelRequest = Pick<TestnetOrderRequest, "asset" | "clientOrderId">
 
 export type HyperliquidOrderEvidence = {
   recognized: boolean;
-  status: "ACCEPTED" | "OPEN" | "PARTIALLY_FILLED" | "FILLED" | "CANCELLED" | "REJECTED";
+  status: "UNKNOWN" | "ACCEPTED" | "OPEN" | "PARTIALLY_FILLED" | "FILLED" | "CANCELLED" | "REJECTED";
   exchangeStatus: string | null;
   exchangeOrderId: string | null;
   filledQuantity: number;
@@ -93,7 +93,10 @@ export async function executeHyperliquidTestnetOrder(request: TestnetOrderReques
   }
   const response = await runExecutor({ ...request, slippage: 0.01 });
   if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet order failed");
-  const evidence = parseHyperliquidOrderEvidence(response.result, "order");
+  const evidence = normalizeHyperliquidFillAgainstRequestedQuantity(
+    parseHyperliquidOrderEvidence(response.result, "order"),
+    request.size,
+  );
   if (evidence.status === "REJECTED") throw new Error(evidence.reason ?? "Hyperliquid testnet order was rejected");
   return { ...response, evidence };
 }
@@ -111,7 +114,7 @@ export async function cancelHyperliquidTestnetOrder(request: TestnetCancelReques
 export async function cancelOutstandingHyperliquidTestnetOrders() {
   const readiness = getHyperliquidExecutionReadiness();
   if (!readiness.ready) {
-    return { ...readiness, attempted: 0, cancelled: 0, failed: 0, remainingOpenOrders: [] };
+    return { ...readiness, verified: false, attempted: 0, cancelled: 0, failed: 0, remainingOpenOrders: [] };
   }
   const response = await runExecutor({ action: "cancel_all" });
   if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet cancellation failed");
@@ -128,6 +131,9 @@ export async function cancelOutstandingHyperliquidTestnetOrders() {
   const reconciliation = await reconcileHyperliquidTestnetOrders();
   return {
     ...readiness,
+    verified: reconciliation.connected
+      && reconciliation.openOrders.length === 0
+      && reconciliation.orderMismatches.length === 0,
     attempted: response.cancelResults?.length ?? 0,
     cancelled,
     failed,
@@ -138,7 +144,7 @@ export async function cancelOutstandingHyperliquidTestnetOrders() {
 export async function flattenHyperliquidTestnetPositions() {
   const readiness = getHyperliquidExecutionReadiness();
   if (!readiness.ready) {
-    return { ...readiness, attempted: 0, flattened: 0, failed: 0, remainingPositions: [] };
+    return { ...readiness, verified: false, attempted: 0, flattened: 0, failed: 0, remainingPositions: [] };
   }
   const response = await runExecutor({
     action: "flatten",
@@ -192,6 +198,9 @@ export async function flattenHyperliquidTestnetPositions() {
   ));
   return {
     ...readiness,
+    verified: reconciliation.connected
+      && remainingPositions.length === 0
+      && reconciliation.positionMismatches.length === 0,
     attempted: response.flattenResults?.length ?? 0,
     flattened,
     failed,
@@ -215,7 +224,7 @@ export async function reconcileHyperliquidTestnetOrders() {
     };
   }
   const orders = await prisma.combinedExecutionOrder.findMany({
-    where: { environment: "TESTNET", status: { in: ["SUBMITTED", "PENDING", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] } },
+    where: { environment: "TESTNET", status: { in: ["SUBMITTED", "PENDING", "UNKNOWN", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] } },
     orderBy: [{ lastReconciledAt: "asc" }, { createdAt: "asc" }],
     take: 25,
   });
@@ -251,7 +260,7 @@ export async function reconcileHyperliquidTestnetOrders() {
   }
 
   const activeOrders = await prisma.combinedExecutionOrder.findMany({
-    where: { environment: "TESTNET", status: { in: ["SUBMITTED", "PENDING", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] } },
+    where: { environment: "TESTNET", status: { in: ["SUBMITTED", "PENDING", "UNKNOWN", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] } },
     select: { asset: true, clientOrderId: true, exchangeOrderId: true, status: true },
   });
   const orderMismatches = compareTestnetOpenOrders(response.openOrders ?? [], activeOrders);
@@ -519,6 +528,22 @@ export function aggregateHyperliquidFills(fills: unknown[]) {
     });
   }
   return grouped;
+}
+
+export function normalizeHyperliquidFillAgainstRequestedQuantity(
+  evidence: HyperliquidOrderEvidence,
+  requestedQuantity: number,
+) {
+  if (
+    evidence.status !== "FILLED"
+    || !Number.isFinite(requestedQuantity)
+    || requestedQuantity <= 0
+    || evidence.filledQuantity <= 0
+  ) return evidence;
+  const tolerance = Math.max(1e-10, requestedQuantity * 1e-6);
+  return evidence.filledQuantity + tolerance < requestedQuantity
+    ? { ...evidence, status: "PARTIALLY_FILLED" as const }
+    : evidence;
 }
 
 function emptyEvidence(recognized: boolean): HyperliquidOrderEvidence {

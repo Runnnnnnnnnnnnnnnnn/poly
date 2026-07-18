@@ -549,7 +549,8 @@ export function impliedTerminalMedianForCondition(
 }
 
 function hasExecutionData(sample: EvaluationSample) {
-  return typeof sample.realizedVolatility24h === "number"
+  return sample.executionPriceSource === "synchronized-1m"
+    && typeof sample.realizedVolatility24h === "number"
     && Number.isFinite(sample.realizedVolatility24h)
     && typeof sample.hyperliquidEntryPrice === "number"
     && Number.isFinite(sample.hyperliquidEntryPrice)

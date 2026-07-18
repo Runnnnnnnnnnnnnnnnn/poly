@@ -5,6 +5,7 @@ import {
   executeHyperliquidTestnetOrder,
   flattenHyperliquidTestnetPositions,
   getHyperliquidExecutionReadiness,
+  reconcileHyperliquidTestnetOrders,
 } from "@/src/lib/combined-trading/hyperliquid-execution";
 import {
   scanCombinedLiveSignal,
@@ -33,6 +34,7 @@ export type CombinedShadowConfig = {
   minimumFunding24h: number;
   signalRule: "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum" | "polymarket-funding-consensus";
   modelVersion: string | null;
+  specificationHash: string | null;
   positionPct: number;
   maxPositionNotional: number;
   maxConcurrentPositions: number;
@@ -54,6 +56,7 @@ const defaultConfig: CombinedShadowConfig = {
   minimumFunding24h: 0.0003,
   signalRule: "polymarket-only",
   modelVersion: null,
+  specificationHash: null,
   positionPct: 0.1,
   maxPositionNotional: 1_000,
   maxConcurrentPositions: 1,
@@ -91,7 +94,11 @@ export async function ensureCombinedShadowRun(configOverride: Partial<CombinedSh
   const existing = runningRuns.find((run) => (
     normalizeConfig(parseJson<Partial<CombinedShadowConfig>>(run.configJson) ?? {}).experimentKey === config.experimentKey
   ));
-  if (existing) return existing;
+  if (existing) {
+    const existingConfig = normalizeConfig(parseJson<Partial<CombinedShadowConfig>>(existing.configJson) ?? {});
+    validateFrozenExperimentConfig(existingConfig, config);
+    return existing;
+  }
   return prisma.combinedShadowRun.create({
     data: {
       id: crypto.randomUUID(),
@@ -312,16 +319,36 @@ export async function getCombinedShadowStatus(runId?: string) {
 export async function setCombinedShadowEmergencyStop(stopped: boolean) {
   const runs = await findActiveForwardRuns();
   if (!runs.length) throw new Error("固定フォワード検証が起動していません");
+  const readiness = getHyperliquidExecutionReadiness();
+  const trackedTestnetOrders = await prisma.combinedExecutionOrder.count({ where: { environment: "TESTNET" } });
+  const testnetVerificationRequired = readiness.accountConfigured
+    || readiness.apiWalletConfigured
+    || readiness.enabled
+    || trackedTestnetOrders > 0;
+  if (!stopped && testnetVerificationRequired) {
+    if (!readiness.ready) {
+      throw new Error("テストネットを確認できないため再開できません。口座・APIウォレット・有効化設定を復元してください");
+    }
+    const reconciliation = await reconcileHyperliquidTestnetOrders();
+    const hasExposure = reconciliation.openOrders.length > 0
+      || reconciliation.positions.some((position) => Math.abs(position.size ?? 0) > 1e-8)
+      || reconciliation.orderMismatches.length > 0
+      || reconciliation.positionMismatches.length > 0;
+    if (hasExposure) throw new Error("テストネットに未約定注文、建玉、または照合不一致があるため再開できません");
+  }
   await prisma.combinedShadowRun.updateMany({
     where: { id: { in: runs.map((run) => run.id) } },
     data: { emergencyStopped: stopped },
   });
-  if (stopped) {
+  if (stopped && testnetVerificationRequired) {
+    if (!readiness.ready) {
+      throw new Error("緊急停止は有効ですが、テストネット口座を確認できません。資格情報を復元して取消と建玉解消を確認してください");
+    }
     let cancellationIssue: string | null = null;
     let flattenIssue: string | null = null;
     try {
       const cancellation = await cancelOutstandingHyperliquidTestnetOrders();
-      if (cancellation.failed > 0 || cancellation.remainingOpenOrders.length > 0) {
+      if (!cancellation.verified || cancellation.failed > 0 || cancellation.remainingOpenOrders.length > 0) {
         cancellationIssue = `未約定注文: 取消失敗${cancellation.failed}件・残存${cancellation.remainingOpenOrders.length}件`;
       }
     } catch (error) {
@@ -329,7 +356,7 @@ export async function setCombinedShadowEmergencyStop(stopped: boolean) {
     }
     try {
       const flatten = await flattenHyperliquidTestnetPositions();
-      if (flatten.failed > 0 || flatten.remainingPositions.length > 0) {
+      if (!flatten.verified || flatten.failed > 0 || flatten.remainingPositions.length > 0) {
         flattenIssue = `保有: 解消失敗${flatten.failed}件・残存${flatten.remainingPositions.length}件`;
       }
     } catch (error) {
@@ -694,7 +721,14 @@ async function maybeMirrorTestnetOrder(run: CombinedShadowRun, position: Combine
       },
     });
   } catch (error) {
-    await prisma.combinedExecutionOrder.update({ where: { id: order.id }, data: { status: "REJECTED", reason: error instanceof Error ? error.message : "testnet order failed" } });
+    await prisma.combinedExecutionOrder.update({
+      where: { id: order.id },
+      data: {
+        status: "UNKNOWN",
+        reason: error instanceof Error ? error.message : "testnet order result is unknown",
+        lastReconciledAt: null,
+      },
+    });
   }
 }
 
@@ -790,6 +824,9 @@ function normalizeConfig(override: Partial<CombinedShadowConfig>) {
     minimumFunding24h: clamp(override.minimumFunding24h ?? defaultConfig.minimumFunding24h, 0, 0.01),
     signalRule: isExecutableSignalRule(override.signalRule) ? override.signalRule : "polymarket-only",
     modelVersion: typeof override.modelVersion === "string" && override.modelVersion.trim() ? override.modelVersion.trim() : null,
+    specificationHash: typeof override.specificationHash === "string" && override.specificationHash.trim()
+      ? override.specificationHash.trim()
+      : null,
     positionPct: clamp(override.positionPct ?? defaultConfig.positionPct, 0.01, 0.2),
     maxPositionNotional: positive(override.maxPositionNotional, defaultConfig.maxPositionNotional),
     maxConcurrentPositions: Math.max(1, Math.min(3, Math.floor(override.maxConcurrentPositions ?? defaultConfig.maxConcurrentPositions))),
@@ -799,6 +836,25 @@ function normalizeConfig(override: Partial<CombinedShadowConfig>) {
     slippagePerSide: clamp(override.slippagePerSide ?? defaultConfig.slippagePerSide, 0, 0.02),
     fundingPer24h: clamp(override.fundingPer24h ?? defaultConfig.fundingPer24h, 0, 0.02),
   } satisfies CombinedShadowConfig;
+}
+
+export function validateFrozenExperimentConfig(existing: CombinedShadowConfig, expected: CombinedShadowConfig) {
+  if (!expected.specificationHash) return "compatible" as const;
+  if (existing.experimentKey !== expected.experimentKey) {
+    throw new Error("frozen experiment keys do not match");
+  }
+  const existingWithoutHash = { ...existing, specificationHash: null };
+  const expectedWithoutHash = { ...expected, specificationHash: null };
+  if (JSON.stringify(existingWithoutHash) !== JSON.stringify(expectedWithoutHash)) {
+    throw new Error(`fixed experiment ${expected.experimentKey} configuration changed; use a new experiment key`);
+  }
+  if (!existing.specificationHash) {
+    throw new Error(`fixed experiment ${expected.experimentKey} has no specification hash; use a new experiment key`);
+  }
+  if (existing.specificationHash !== expected.specificationHash) {
+    throw new Error(`fixed experiment ${expected.experimentKey} specification changed; use a new experiment key`);
+  }
+  return "compatible" as const;
 }
 
 function isExecutableSignalRule(rule: unknown): rule is CombinedShadowConfig["signalRule"] {

@@ -8,19 +8,21 @@ import {
   compareTestnetPositions,
   deriveHyperliquidCloid,
   normalizeExchangeOrderStatus,
+  normalizeHyperliquidFillAgainstRequestedQuantity,
   parseHyperliquidOrderEvidence,
 } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
 import { calculateShortTermImpliedSignal } from "../src/lib/combined-trading/short-term-implied-signal";
 import { authorizeApiRequest, requiredApiAccess, resolveViewerAccessToken } from "../src/lib/server/api-access";
 import { selectCombinedSignalScan, type CombinedSignalScan } from "../src/lib/combined-trading/live-signal";
-import { applyCombinedSignalRule, calculateCombinedClose, selectCombinedSignalCandidate } from "../src/lib/combined-trading/service";
+import { applyCombinedSignalRule, calculateCombinedClose, selectCombinedSignalCandidate, type CombinedShadowConfig, validateFrozenExperimentConfig } from "../src/lib/combined-trading/service";
 import {
   isShortTermDecisionWindow,
   isShortTermDirectionControlKey,
   isShortTermDirectionFamilyKey,
   isShortTermDirectionStrategyKey,
   shortTermDirectionControlKey,
+  shortTermDirectionSpecificationHash,
   shortTermDirectionStrategyKey,
 } from "../src/lib/combined-trading/short-term-direction";
 import {
@@ -393,6 +395,7 @@ assert.equal(exactAudit.eligiblePositions, 2);
 assert.equal(exactAudit.auditedPositions, 2);
 assert.equal(exactAudit.coverage, 1);
 assert.equal(exactAudit.verifiedPositions, 2);
+assert.equal(exactAudit.verifiedIndependentEvents, 1);
 assert.equal(exactAudit.verifiedCoverage, 1);
 assert.equal(exactAudit.resolvedPredictions, 2);
 assert.equal(exactAudit.predictionAccuracy, 0.5);
@@ -405,6 +408,7 @@ assert.ok(Math.abs((exactAudit.storedNetReturnPct ?? 0) - 1 / (10 * 100.12 + 5 *
 assert.ok((exactAudit.portfolioNetReturnPct ?? 1) < 0);
 assert.equal(exactAudit.controlComparablePositions, 2);
 assert.equal(exactAudit.comparableEvents, 2);
+assert.equal(exactAudit.comparableIndependentEvents, 1);
 assert.equal(exactAudit.controlCoverage, 1);
 assert.equal(exactAudit.totalReadinessGates, 9);
 assert.equal(calculatePolymarketTakerFee(100, 0.5), 1.75);
@@ -424,13 +428,16 @@ const filteredAudit = evaluateExactExecutionAudit({
   positions: [auditPositions[0]],
 });
 assert.equal(filteredAudit.verifiedPositions, 1);
-assert.equal(filteredAudit.comparableEvents, 2);
-assert.equal(filteredAudit.controlComparablePositions, 2);
+assert.equal(filteredAudit.verifiedIndependentEvents, 1);
+assert.equal(filteredAudit.comparableEvents, 1);
+assert.equal(filteredAudit.controlComparablePositions, 1);
 assert.equal(filteredAudit.controlCoverage, 1);
 
 const profitableAuditPositions = Array.from({ length: 60 }, (_, index) => {
   const long = index % 2 === 0;
-  const openedAt = new Date(auditStart.getTime() + 2 * 60_000);
+  const windowStart = new Date(auditStart.getTime() + index * 15 * 60_000);
+  const openedAt = new Date(windowStart.getTime() + 2 * 60_000);
+  const exitAt = new Date(windowStart.getTime() + 15 * 60_000);
   return {
     marketId: `profitable-${index}`,
     asset: index % 4 === 0 ? "BTC" : "ETH",
@@ -442,8 +449,8 @@ const profitableAuditPositions = Array.from({ length: 60 }, (_, index) => {
     realizedPnl: 8,
     status: "CLOSED",
     openedAt,
-    exitAt: auditEnd,
-    closedAt: auditEnd,
+    exitAt,
+    closedAt: exitAt,
   };
 });
 const profitableAuditTicks = profitableAuditPositions.flatMap((position, index) => {
@@ -451,8 +458,8 @@ const profitableAuditTicks = profitableAuditPositions.flatMap((position, index) 
   const move = 1.5 + (index % 7) * 0.15;
   const exitMid = long ? 100 + move : 100 - move;
   return [
-    auditTick(position.marketId, "2026-01-01T00:02:00Z", "2026-01-01T00:02:00Z", 100, 99.9, 100.1, long ? 0.62 : 0.4, long ? 0.4 : 0.62),
-    auditTick(position.marketId, "2026-01-01T00:15:00Z", "2026-01-01T00:15:00Z", exitMid, exitMid - 0.1, exitMid + 0.1, long ? 0.98 : 0.02, long ? 0.02 : 0.98),
+    auditTick(position.marketId, position.openedAt.toISOString(), position.openedAt.toISOString(), 100, 99.9, 100.1, long ? 0.62 : 0.4, long ? 0.4 : 0.62),
+    auditTick(position.marketId, position.exitAt.toISOString(), position.exitAt.toISOString(), exitMid, exitMid - 0.1, exitMid + 0.1, long ? 0.98 : 0.02, long ? 0.02 : 0.98),
   ];
 });
 const profitableAudit = evaluateExactExecutionAudit({
@@ -473,6 +480,8 @@ const profitableAudit = evaluateExactExecutionAudit({
 assert.equal(profitableAudit.status, "healthy");
 assert.equal(profitableAudit.readinessStatus, "promising");
 assert.equal(profitableAudit.verifiedPositions, 60);
+assert.equal(profitableAudit.verifiedIndependentEvents, 60);
+assert.equal(profitableAudit.strategyTrials, 11);
 assert.equal(profitableAudit.passedReadinessGates, profitableAudit.totalReadinessGates);
 assert.ok((profitableAudit.portfolioNetReturnPct ?? 0) > 0);
 assert.ok((profitableAudit.excessReturnPct ?? 0) > 0);
@@ -866,6 +875,41 @@ assert.equal(isShortTermDirectionControlKey(shortTermDirectionControlKey), true)
 assert.equal(isShortTermDirectionFamilyKey("poly-updown-hl-trend-forward-v2-m15"), true);
 assert.equal(isShortTermDirectionFamilyKey("poly-updown-forward-control-v1-m15"), true);
 assert.equal(isShortTermDirectionFamilyKey("polymarket-only-forward-control-v2-h24"), false);
+assert.match(shortTermDirectionSpecificationHash, /^[a-f0-9]{16}$/);
+const frozenConfig: CombinedShadowConfig = {
+  experimentKey: shortTermDirectionStrategyKey,
+  experimentLabel: "fixed",
+  forwardOnly: true,
+  observationHorizonHours: 0,
+  initialEquity: 10_000,
+  minimumSignalZ: 1,
+  minimumTrendZ: 0.15,
+  minimumFunding24h: 0,
+  signalRule: "trend-confirmed",
+  modelVersion: "v4",
+  specificationHash: shortTermDirectionSpecificationHash,
+  positionPct: 0.05,
+  maxPositionNotional: 500,
+  maxConcurrentPositions: 3,
+  maxDailyLossPct: 0.02,
+  maxDrawdownPct: 0.05,
+  takerFeePerSide: 0.00045,
+  slippagePerSide: 0.0002,
+  fundingPer24h: 0.0003,
+};
+assert.equal(validateFrozenExperimentConfig(frozenConfig, frozenConfig), "compatible");
+assert.throws(
+  () => validateFrozenExperimentConfig({ ...frozenConfig, specificationHash: null }, frozenConfig),
+  /has no specification hash/,
+);
+assert.throws(
+  () => validateFrozenExperimentConfig({ ...frozenConfig, minimumTrendZ: 0.2 }, frozenConfig),
+  /configuration changed/,
+);
+assert.throws(
+  () => validateFrozenExperimentConfig({ ...frozenConfig, specificationHash: "0000000000000000" }, frozenConfig),
+  /specification changed/,
+);
 
 console.log("combined shadow signal-rule tests passed");
 
@@ -933,7 +977,7 @@ assert.equal(evaluation.dataset.validationEvents, 16);
 assert.equal(evaluation.dataset.testEvents, 16);
 assert.equal(evaluation.dataset.testMarkets, 35);
 assert.ok(evaluation.trading.trades <= evaluation.dataset.testEvents);
-assert.equal(evaluation.quality.gates.find((gate) => gate.id === "same-holdout")?.passed, true);
+assert.equal(evaluation.quality.gates.find((gate) => gate.id === "same-holdout")?.passed, false);
 assert.equal(evaluation.combinedTrading.selectedStrategy.id, "no-trade guard");
 assert.equal(evaluation.combinedTrading.excessReturnPct, 0);
 assert.equal(evaluation.quality.gates.find((gate) => gate.id === "benchmark")?.passed, false);
@@ -960,6 +1004,7 @@ for (let eventIndex = 0; eventIndex < 60; eventIndex += 1) {
     hyperliquidEntryPrice: 100,
     hyperliquidExitAt: exitAt.toISOString(),
     hyperliquidExitPrice: long ? 102 : 98,
+    executionPriceSource: "synchronized-1m",
     hyperliquidMomentum6h: long ? 0.01 : -0.01,
     hyperliquidMomentum24h: long ? 0.02 : -0.02,
     thresholdKind: "above",
@@ -999,6 +1044,14 @@ assert.equal(combined.benchmarks.randomTrials, 200);
 assert.ok(Number.isFinite(combined.benchmarks.polymarketDirectionReturnPct));
 assert.ok(Number.isFinite(combined.benchmarks.randomMedianReturnPct));
 assert.deepEqual(combined.benchmarks, evaluateCombinedTrading(combinedSamples).benchmarks);
+
+const hourlyFallbackCombined = evaluateCombinedTrading(combinedSamples.map((sample) => ({
+  ...sample,
+  executionPriceSource: "hyperliquid-1h",
+})));
+assert.equal(hourlyFallbackCombined.totalEligibleSignals, 0);
+assert.equal(hourlyFallbackCombined.trades, 0);
+assert.equal(hourlyFallbackCombined.selectedStrategy.id, "no-trade guard");
 
 const concurrentCombined = evaluateCombinedTrading([
   ...combinedSamples,
@@ -1076,6 +1129,12 @@ assert.equal(parseHyperliquidOrderEvidence({
   status: "order",
   order: { status: "open", order: { oid: 42, origSz: "1", sz: "0.4" } },
 }, "query").status, "PARTIALLY_FILLED");
+const partialIocEvidence = normalizeHyperliquidFillAgainstRequestedQuantity(parseHyperliquidOrderEvidence({
+  status: "ok",
+  response: { data: { statuses: [{ filled: { totalSz: "0.4", avgPx: "100", oid: 43 } }] } },
+}, "order"), 1);
+assert.equal(partialIocEvidence.status, "PARTIALLY_FILLED");
+assert.equal(normalizeHyperliquidFillAgainstRequestedQuantity({ ...partialIocEvidence, status: "FILLED", filledQuantity: 1 }, 1).status, "FILLED");
 assert.equal(parseHyperliquidOrderEvidence({
   status: "ok",
   response: { data: { statuses: ["success"] } },

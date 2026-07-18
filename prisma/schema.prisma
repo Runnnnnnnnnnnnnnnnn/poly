@@ -484,4 +484,5 @@ model CombinedExecutionOrder {
 
   @@index([runId, createdAt])
   @@index([environment, status])
+  @@unique([positionId, environment, action])
 }

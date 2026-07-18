@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   discoverActiveCryptoDirectionMarkets,
   fetchCurrentBooks,
@@ -18,14 +20,43 @@ import { fetchHyperliquidMarketStates } from "@/src/lib/monitoring/hyperliquid";
 import { prisma } from "@/src/lib/server/prisma";
 
 export const shortTermDirectionHorizonKey = 0;
-export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v3-m15";
-export const shortTermDirectionControlKey = "poly-updown-forward-control-v3-m15";
+export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v4-m15";
+export const shortTermDirectionControlKey = "poly-updown-forward-control-v4-m15";
 
-const supportedAssets = ["BTC", "ETH", "SOL", "XRP"] as const;
-const targetDurationMinutes = 15;
-const decisionDelayMinutes = 2;
-const decisionWindowMinutes = 2;
-const maximumSpread = 0.08;
+export const shortTermDirectionSpecification = Object.freeze({
+  version: 4,
+  executionAuditVersion: 2,
+  independentSampleUnit: "15-minute-window",
+  strategyTrials: 11,
+  supportedAssets: ["BTC", "ETH", "SOL", "XRP"] as const,
+  targetDurationMinutes: 15,
+  durationToleranceMinutes: 0.5,
+  decisionDelayMinutes: 2,
+  decisionWindowMinutes: 2,
+  maximumSpread: 0.08,
+  historyLookbackMinutes: 30,
+  startPriceToleranceMs: 90_000,
+  marketProbabilityMinimum: 0.01,
+  marketProbabilityMaximum: 0.99,
+  probabilityCenter: 0.5,
+  probabilityScale: 0.08,
+  projectedMoveLimit: 0.03,
+  fallbackVolatility24h: 0.02,
+  minimumVolatility24h: 0.005,
+  maximumVolatility24h: 0.25,
+  horizonVolatilityFloor: 0.0003,
+  observationsPerDay: 1_440,
+});
+export const shortTermDirectionSpecificationHash = createHash("sha256")
+  .update(JSON.stringify(shortTermDirectionSpecification))
+  .digest("hex")
+  .slice(0, 16);
+
+const supportedAssets = shortTermDirectionSpecification.supportedAssets;
+const targetDurationMinutes = shortTermDirectionSpecification.targetDurationMinutes;
+const decisionDelayMinutes = shortTermDirectionSpecification.decisionDelayMinutes;
+const decisionWindowMinutes = shortTermDirectionSpecification.decisionWindowMinutes;
+const maximumSpread = shortTermDirectionSpecification.maximumSpread;
 
 export function isShortTermDirectionExperimentKey(value: string | null | undefined) {
   return value === shortTermDirectionStrategyKey || value === shortTermDirectionControlKey;
@@ -45,7 +76,7 @@ export function isShortTermDirectionFamilyKey(value: string | null | undefined) 
 }
 
 export function isShortTermDecisionWindow(market: Pick<ActiveCryptoDirectionMarket, "eventStartTime" | "durationMinutes">, now: Date) {
-  if (Math.abs(market.durationMinutes - targetDurationMinutes) > 0.5) return false;
+  if (Math.abs(market.durationMinutes - targetDurationMinutes) > shortTermDirectionSpecification.durationToleranceMinutes) return false;
   const startMs = new Date(market.eventStartTime).getTime();
   if (!Number.isFinite(startMs)) return false;
   const elapsedMinutes = (now.getTime() - startMs) / 60_000;
@@ -57,7 +88,7 @@ export async function scanShortTermDirectionSignal(now = new Date()): Promise<Co
   const markets = await discoverActiveCryptoDirectionMarkets().catch(() => []);
   const structured = markets.filter((market) => (
     supportedAssets.includes(market.asset as (typeof supportedAssets)[number])
-    && Math.abs(market.durationMinutes - targetDurationMinutes) <= 0.5
+    && Math.abs(market.durationMinutes - targetDurationMinutes) <= shortTermDirectionSpecification.durationToleranceMinutes
     && market.eventId
     && market.endDate
   ));
@@ -88,8 +119,8 @@ export async function scanShortTermDirectionSignal(now = new Date()): Promise<Co
   const tokenIds = inWindow.map((market) => market.tokenId);
   const assets = Array.from(new Set(inWindow.map((market) => market.asset))) as SupportedReferenceAsset[];
   const historyStart = new Date(Math.min(
-    now.getTime() - 30 * 60_000,
-    ...inWindow.map((market) => new Date(market.eventStartTime).getTime() - 90_000),
+    now.getTime() - shortTermDirectionSpecification.historyLookbackMinutes * 60_000,
+    ...inWindow.map((market) => new Date(market.eventStartTime).getTime() - shortTermDirectionSpecification.startPriceToleranceMs),
   ));
   const [books, liveStates, referencePrices, history] = await Promise.all([
     fetchCurrentBooks(tokenIds).catch(() => new Map()),
@@ -112,24 +143,37 @@ export async function scanShortTermDirectionSignal(now = new Date()): Promise<Co
     const bestBid = book?.bids[0]?.price ?? null;
     const bestAsk = book?.asks[0]?.price ?? null;
     if (bestBid === null || bestAsk === null || bestAsk < bestBid || bestAsk - bestBid > maximumSpread) return [];
-    const marketProbability = clamp((bestBid + bestAsk) / 2, 0.01, 0.99);
+    const marketProbability = clamp(
+      (bestBid + bestAsk) / 2,
+      shortTermDirectionSpecification.marketProbabilityMinimum,
+      shortTermDirectionSpecification.marketProbabilityMaximum,
+    );
     const state = liveByAsset.get(market.asset);
     if (!state || state.midPrice <= 0) return [];
     const startAt = new Date(market.eventStartTime);
     const endAt = new Date(market.endDate as string);
     const rows = historyByAsset.get(market.asset) ?? [];
-    const startPrice = nearestPrice(rows, startAt, 90_000);
+    const startPrice = nearestPrice(rows, startAt, shortTermDirectionSpecification.startPriceToleranceMs);
     if (startPrice === null) return [];
     const elapsedHours = Math.max((now.getTime() - startAt.getTime()) / 3_600_000, 1 / 60);
     const remainingHours = Math.max((endAt.getTime() - now.getTime()) / 3_600_000, 0);
     const momentum = Math.log(state.midPrice / startPrice);
     const volatility24h = estimateVolatility24h(rows.map((row) => row.midPrice));
-    const horizonVolatility = Math.max(volatility24h * Math.sqrt(elapsedHours / 24), 0.0003);
+    const horizonVolatility = Math.max(
+      volatility24h * Math.sqrt(elapsedHours / 24),
+      shortTermDirectionSpecification.horizonVolatilityFloor,
+    );
     const trendZ = momentum / horizonVolatility;
-    const projectedMove = clamp(momentum * (remainingHours / elapsedHours), -0.03, 0.03);
+    const projectedMove = clamp(
+      momentum * (remainingHours / elapsedHours),
+      -shortTermDirectionSpecification.projectedMoveLimit,
+      shortTermDirectionSpecification.projectedMoveLimit,
+    );
     const asset = market.asset as CombinedLiveSignal["asset"];
     const reference = selectReferencePrice(referencePrices, asset, market.referenceSource);
-    const signalZ = (marketProbability - 0.5) / 0.08;
+    const signalZ = (
+      marketProbability - shortTermDirectionSpecification.probabilityCenter
+    ) / shortTermDirectionSpecification.probabilityScale;
 
     return [{
       eventId: market.eventId as string,
@@ -214,9 +258,16 @@ function nearestPrice(rows: Array<{ capturedAt: Date; midPrice: number }>, at: D
 
 function estimateVolatility24h(prices: number[]) {
   const returns = prices.slice(1).map((price, index) => Math.log(price / prices[index])).filter(Number.isFinite);
-  if (returns.length < 3) return 0.02;
-  const realized = Math.sqrt(returns.reduce((total, value) => total + value ** 2, 0) * (1_440 / returns.length));
-  return clamp(realized, 0.005, 0.25);
+  if (returns.length < 3) return shortTermDirectionSpecification.fallbackVolatility24h;
+  const realized = Math.sqrt(
+    returns.reduce((total, value) => total + value ** 2, 0)
+    * (shortTermDirectionSpecification.observationsPerDay / returns.length),
+  );
+  return clamp(
+    realized,
+    shortTermDirectionSpecification.minimumVolatility24h,
+    shortTermDirectionSpecification.maximumVolatility24h,
+  );
 }
 
 function findNextDecisionAt(markets: ActiveCryptoDirectionMarket[], now: Date) {

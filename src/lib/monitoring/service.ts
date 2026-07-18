@@ -15,6 +15,7 @@ import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
 import { getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
 import {
   shortTermDirectionControlKey,
+  shortTermDirectionSpecification,
   shortTermDirectionStrategyKey,
 } from "@/src/lib/combined-trading/short-term-direction";
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
@@ -440,7 +441,7 @@ export async function getMonitoringSnapshot() {
         fundingPer24h: shortTermConfig.fundingPer24h ?? 0.0003,
         maxDrawdownPct: shortTermStrategyRun.maxDrawdownPct,
         settlementBasisStatus: shortTermSettlementBasis.status,
-        strategyTrials: 1,
+        strategyTrials: shortTermDirectionSpecification.strategyTrials,
       })
     : null;
   const shortTermExecutionAudit = shortTermStrategyRun && shortTermConfig
@@ -459,7 +460,7 @@ export async function getMonitoringSnapshot() {
         fundingPer24h: shortTermConfig.fundingPer24h ?? 0.0003,
         initialEquity: shortTermStrategyRun.initialEquity,
         settlementBasisStatus: shortTermSettlementBasis.status,
-        strategyTrials: 1,
+        strategyTrials: shortTermDirectionSpecification.strategyTrials,
       })
     : null;
   const latestPaperMetrics = parseJson<Record<string, number | null>>(latestCompletedPaper?.metricsJson ?? null);
@@ -479,8 +480,7 @@ export async function getMonitoringSnapshot() {
   );
   const ageMs = newestDataAt ? now.getTime() - newestDataAt.getTime() : Number.POSITIVE_INFINITY;
   const status = ageMs <= freshnessMs ? "live" : ageMs <= 60 * 60 * 1_000 ? "delayed" : "offline";
-  const combinedEdgeConfirmed = shortTermEvaluation?.status === "promising"
-    && shortTermExecutionAudit?.status === "healthy"
+  const combinedEdgeConfirmed = shortTermExecutionAudit?.status === "healthy"
     && shortTermExecutionAudit.readinessStatus === "promising";
   const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
@@ -644,6 +644,7 @@ export async function getMonitoringSnapshot() {
         latestReason: shortTermDecision?.reason ?? "最初の15分市場を確認中",
         nextDecisionAt: shortTermDecision?.nextWindowAt?.toISOString() ?? null,
         observedAt: shortTermDecision?.observedAt.toISOString() ?? null,
+        specificationHash: shortTermConfig?.specificationHash ?? null,
         executionAudit: shortTermExecutionAudit,
         research: shortTermResearch,
         realTradingEnabled: false,
