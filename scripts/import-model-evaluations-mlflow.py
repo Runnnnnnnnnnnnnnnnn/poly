@@ -25,6 +25,14 @@ def parse_args():
         default=os.path.expanduser("~/.polymarket-watch/artifacts/realtime-short-term-backtests"),
     )
     parser.add_argument("--realtime-short-term-experiment", default="polymarket-hyperliquid-5s-replays")
+    parser.add_argument(
+        "--forward-execution-audit-artifact-dir",
+        default=os.path.expanduser("~/.polymarket-watch/artifacts/forward-execution-audits"),
+    )
+    parser.add_argument(
+        "--forward-execution-audit-experiment",
+        default="polymarket-hyperliquid-forward-execution-audits",
+    )
     parser.add_argument("--tracking-uri", default=os.environ.get("MLFLOW_TRACKING_URI", ""))
     parser.add_argument(
         "--mlflow-artifact-root",
@@ -108,10 +116,12 @@ def main():
 
     short_term = import_short_term_runs(args)
     realtime_short_term = import_realtime_short_term_runs(args)
+    forward_execution_audits = import_forward_execution_audits(args)
     print(json.dumps({
         "canonical": {"imported": imported, "skipped": skipped, "artifactDir": str(artifact_dir)},
         "shortTerm": short_term,
         "realtimeShortTerm": realtime_short_term,
+        "forwardExecutionAudits": forward_execution_audits,
     }))
 
 
@@ -292,6 +302,109 @@ def import_realtime_short_term_runs(args):
             mlflow.log_artifacts(str(report_path.parent), artifact_path="realtime-short-term-backtest-report")
         imported += 1
     return {"imported": imported, "skipped": skipped, "artifactDir": str(artifact_dir)}
+
+
+def import_forward_execution_audits(args):
+    artifact_dir = Path(args.forward_execution_audit_artifact_dir).expanduser().resolve()
+    experiment = ensure_experiment(
+        args.forward_execution_audit_experiment,
+        Path(args.mlflow_artifact_root).expanduser().resolve() / "forward-execution-audits",
+    )
+    client = MlflowClient()
+    imported = 0
+    skipped = 0
+    unsupported_schema = 0
+    for report_path in sorted(artifact_dir.glob("*/report.json")):
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        if report.get("schemaVersion") != 3:
+            unsupported_schema += 1
+            continue
+        reproducibility = report["reproducibility"]
+        source_run_id = reproducibility["runId"]
+        existing = client.search_runs(
+            [experiment.experiment_id],
+            filter_string=f'tags."polymarket.forward_execution_audit_run_id" = "{source_run_id}"',
+            max_results=1,
+        )
+        if existing:
+            skipped += 1
+            continue
+
+        result = report["result"]
+        direction = result["directionCoverage"]
+        evidence = report.get("evidence", {})
+        settlement = evidence.get("settlementResolution") or {}
+        synchronized = evidence.get("synchronizedQuality") or {}
+        confidence = result.get("excessConfidenceInterval95") or [None, None]
+        params = {
+            "report_schema_version": report["schemaVersion"],
+            "cohort_id": reproducibility["cohortId"],
+            "model_version": report["cohort"].get("modelVersion") or "unknown",
+            "specification_hash": report["cohort"].get("specificationHash") or "unknown",
+            "code_revision": reproducibility.get("codeRevision") or "unknown",
+            "fingerprint_sha256": reproducibility["fingerprintSha256"],
+            "readiness_status": result["readinessStatus"],
+            "benchmark_label": result.get("benchmarkLabel") or "unknown",
+        }
+        candidates = {
+            "eligible_positions": result["eligiblePositions"],
+            "audited_positions": result["auditedPositions"],
+            "execution_coverage": result["coverage"],
+            "verified_positions": result["verifiedPositions"],
+            "verified_independent_events": result["verifiedIndependentEvents"],
+            "verified_coverage": result["verifiedCoverage"],
+            "long_independent_events": direction["longIndependentEvents"],
+            "short_independent_events": direction["shortIndependentEvents"],
+            "direction_coverage_passed": direction["passed"],
+            "portfolio_net_return_pct": result.get("portfolioNetReturnPct"),
+            "benchmark_return_pct": result.get("benchmarkReturnPct"),
+            "excess_return_pct": result.get("excessReturnPct"),
+            "excess_confidence_lower_pct": confidence[0],
+            "excess_confidence_upper_pct": confidence[1],
+            "deflated_sharpe_probability": result.get("deflatedSharpeProbability"),
+            "max_drawdown_pct": result["maxDrawdownPct"],
+            "control_coverage": result["controlCoverage"],
+            "currently_passing_gates": result["currentlyPassingReadinessGates"],
+            "evaluated_gates": result["evaluatedReadinessGates"],
+            "passed_gates": result["passedReadinessGates"],
+            "total_gates": result["totalReadinessGates"],
+            "missing_entry_ticks": result["missingEntry"],
+            "missing_exit_ticks": result["missingExit"],
+            "missing_resolutions": result["missingResolution"],
+            "minimum_additional_perfect_positions_for_95pct_coverage": result[
+                "minimumAdditionalPerfectPositionsFor95PctCoverage"
+            ],
+            "maximum_timing_error_ms": result.get("maximumTimingErrorMs"),
+            "maximum_polymarket_quote_age_ms": result.get("maximumPolymarketQuoteAgeMs"),
+            "settlement_complete_markets": settlement.get("completeMarkets"),
+            "settlement_missing_boundary_markets": settlement.get("missingBoundaryMarkets"),
+            "settlement_mismatched_markets": settlement.get("mismatchedMarkets"),
+            "settlement_coverage": settlement.get("coverage"),
+            "synchronized_duration_hours": synchronized.get("durationHours"),
+            "synchronized_coverage": synchronized.get("coverage"),
+            "synchronized_p95_skew_ms": synchronized.get("p95SkewMs"),
+        }
+        metrics = {key: float(value) for key, value in candidates.items() if value is not None}
+        with mlflow.start_run(
+            run_name=f"forward-audit-{source_run_id}",
+            tags={
+                "polymarket.forward_execution_audit_run_id": source_run_id,
+                "polymarket.forward_execution_audit_cohort_id": reproducibility["cohortId"],
+                "polymarket.fingerprint_sha256": reproducibility["fingerprintSha256"],
+                "quality_status": result["readinessStatus"],
+                "source": "polymarket-watch-forward-execution-audit",
+            },
+        ):
+            mlflow.log_params(params)
+            mlflow.log_metrics(metrics)
+            mlflow.log_artifacts(str(report_path.parent), artifact_path="forward-execution-audit-report")
+        imported += 1
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "unsupportedSchema": unsupported_schema,
+        "artifactDir": str(artifact_dir),
+    }
 
 
 def ensure_experiment(name, artifact_location):

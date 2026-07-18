@@ -27,6 +27,7 @@ const pipelineLimitsMs: Record<string, { label: string; maximumAgeMs: number }> 
   "realtime-market-data": { label: "秒単位の板収集", maximumAgeMs: 30 * 1_000 },
   "forward-experiment": { label: "固定フォワード検証", maximumAgeMs: 15 * 60 * 1_000 },
   "short-term-direction": { label: "15分モデル検証", maximumAgeMs: 5 * 60 * 1_000 },
+  "forward-execution-audit-report": { label: "前向き監査の保存", maximumAgeMs: 15 * 60 * 1_000 },
   "realtime-short-term-backtest": { label: "5秒板リプレイ", maximumAgeMs: 2 * 60 * 60 * 1_000 },
   backtest: { label: "モデル再検証", maximumAgeMs: 30 * 60 * 60 * 1_000 },
 };

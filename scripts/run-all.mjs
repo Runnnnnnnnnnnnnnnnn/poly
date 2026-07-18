@@ -60,6 +60,11 @@ const processes = [
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-short-term-direction.mts")],
   },
   {
+    name: "forward-execution-audit-report",
+    command: process.execPath,
+    args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-forward-execution-audit-report.mts")],
+  },
+  {
     name: "short-term-research",
     command: process.execPath,
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-short-term-research.mts")],

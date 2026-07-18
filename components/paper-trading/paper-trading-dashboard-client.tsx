@@ -1190,7 +1190,7 @@ export function PaperTradingDashboardClient() {
           <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">必要なときだけ表示<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" /></span>
         </summary>
         <div className="grid gap-4 pb-4">
-          <ShortTermDirectionPanel snapshot={monitoring} />
+          <ShortTermDirectionPanel snapshot={monitoring} downloadsAvailable={!snapshot} />
           <CombinedShadowPanel snapshot={monitoring} />
           <TradingPurposePanel snapshot={monitoring} />
           <DevelopmentMonitor snapshot={monitoring} readOnly={snapshot} />
@@ -1584,7 +1584,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
   );
 }
 
-function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
+function ShortTermDirectionPanel({ snapshot, downloadsAvailable }: { snapshot: MonitoringSnapshot | null; downloadsAvailable: boolean }) {
   const model = snapshot?.combinedShadow.shortTermDirection;
   const audit = model?.executionAudit;
   const settlementResolution = model?.settlementResolution;
@@ -1659,7 +1659,11 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
               value={`上 ${directionCoverage?.longIndependentEvents ?? 0} / 下 ${directionCoverage?.shortIndependentEvents ?? 0}`}
               tone={directionCoverage?.passed ? "good" : "watch"}
             />
-            <CompactMetric label="入口・決済を再現" value={`${audit?.auditedPositions ?? 0}/${audit?.eligiblePositions ?? 0}件`} />
+            <CompactMetric
+              label="実板監査率（95%必要）"
+              value={audit?.eligiblePositions ? formatPct(audit.coverage) : "収集中"}
+              tone={!audit?.eligiblePositions ? "neutral" : audit.coverage >= 0.95 ? "good" : "bad"}
+            />
             <CompactMetric label="95%下限" value={(audit?.verifiedIndependentEvents ?? audit?.verifiedPositions ?? 0) > 0 ? formatSignedPct(audit?.excessConfidenceInterval95?.[0]) : "収集中"} />
             <CompactMetric label="最大取得遅延" value={(audit?.auditedPositions ?? 0) > 0 ? formatMilliseconds(audit?.maximumTimingErrorMs) : "収集中"} />
           </div>
@@ -1703,6 +1707,16 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
             ))}
           </div>
         </details>
+      ) : null}
+      {downloadsAvailable && hasTrades ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 sm:px-5">
+          <span className="flex items-center gap-2 text-xs font-bold text-slate-700"><History className="h-4 w-4" />前向き監査の保存結果</span>
+          <div className="flex flex-wrap gap-2">
+            <a className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-[10px] font-bold text-slate-700 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/forward-execution-audits/latest")}><FileJson className="h-3.5 w-3.5" />最新レポート</a>
+            <a className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-[10px] font-bold text-slate-700 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/forward-execution-audits/latest?format=metrics")}><Download className="h-3.5 w-3.5" />指標CSV</a>
+            <a className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-[10px] font-bold text-slate-700 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/forward-execution-audits/latest?format=history")}><History className="h-3.5 w-3.5" />履歴</a>
+          </div>
+        </div>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
         <span>{research

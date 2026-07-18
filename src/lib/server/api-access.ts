@@ -42,6 +42,7 @@ function isPublicReadPath(pathname: string) {
     || pathname.startsWith("/api/model-evaluations/")
     || pathname.startsWith("/api/short-term-backtests/")
     || pathname.startsWith("/api/realtime-short-term-backtests/")
+    || pathname.startsWith("/api/forward-execution-audits/")
     || pathname === "/api/markets"
     || pathname.startsWith("/api/markets/")
     || pathname === "/api/news"

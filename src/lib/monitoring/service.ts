@@ -870,6 +870,8 @@ export async function getMonitoringSnapshot() {
       modelVersion: horizonEvaluations.length ? "Forward Experiment v2 2026-07-18 / no backfill" : combinedConfig?.modelVersion ?? null,
       forwardEvaluation,
       shortTermDirection: {
+        experimentKey: shortTermConfig?.experimentKey ?? null,
+        modelVersion: shortTermConfig?.modelVersion ?? null,
         status: shortTermExecutionAudit?.readinessStatus
           ?? shortTermEvaluation?.status
           ?? (shortTermStrategyRun?.status === "running" ? "collecting" : "not_started"),
@@ -1185,6 +1187,7 @@ function pipelineStatuses(input: {
     pipeline("testnet-transport", "testnet API疎通", "10分ごと", null, heartbeatMap.get("testnet-transport"), input.now, 30 * 60 * 1_000),
     pipeline("forward-experiment", "固定フォワード検証", "5分ごと", input.combinedAt, heartbeatMap.get("forward-experiment"), input.now),
     pipeline("short-term-direction", "15分モデル検証", "1分ごと", null, heartbeatMap.get("short-term-direction"), input.now, 5 * 60 * 1_000),
+    pipeline("forward-execution-audit-report", "前向き監査の保存", "5分ごと", null, heartbeatMap.get("forward-execution-audit-report"), input.now, 15 * 60 * 1_000),
   ];
 }
 

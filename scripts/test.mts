@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
 import { calculateCaptureSkewMs } from "../src/lib/backtest/service";
@@ -76,6 +79,7 @@ import { annualizeRealizedVolatility } from "../src/lib/model-evaluation/volatil
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
 import { buildRealtimeAssetTick, buildRealtimeMarketTick, isRealtimeCaptureWindow, selectRealtimeMarketsForCollection, shouldReconnectManagedSocket, shouldReportRealtimeCoverageFailure } from "../src/lib/realtime-market-data/collector";
 import { calculatePolymarketTakerFee, evaluateExactExecutionAudit, selectCausalExecutionTick, summarizeExactAuditDirectionCoverage } from "../src/lib/realtime-market-data/execution-audit";
+import { minimumAdditionalPerfectPositionsForCoverage, persistForwardExecutionAuditReport, type ForwardExecutionAuditReportInput } from "../src/lib/realtime-market-data/execution-audit-report";
 import { evaluateReferenceSettlementAudit } from "../src/lib/realtime-market-data/settlement-audit";
 import {
   normalizeHyperliquidWebSocketMessage,
@@ -108,6 +112,105 @@ assert.deepEqual(
 );
 assert.throws(() => untrackedRuntimeSourceRsyncExcludes(["../outside"]), /unsafe untracked runtime source path/);
 console.log("runtime database deployment protection tests passed");
+
+const forwardAuditArtifactRoot = await mkdtemp(join(tmpdir(), "poly-forward-audit-"));
+try {
+  const reportInput: ForwardExecutionAuditReportInput = {
+    generatedAt: "2026-01-01T00:15:00.000Z",
+    codeRevision: "abc123",
+    cohort: {
+      experimentKey: "test-forward",
+      modelVersion: "Test v1",
+      specificationHash: "spec-1",
+      startedAt: "2026-01-01T00:00:00.000Z",
+    },
+    audit: {
+      status: "collecting",
+      readinessStatus: "collecting",
+      collectionStartedAt: "2026-01-01T00:00:00.000Z",
+      eligiblePositions: 2,
+      auditedPositions: 2,
+      coverage: 1,
+      verifiedPositions: 2,
+      verifiedIndependentEvents: 1,
+      verifiedCoverage: 1,
+      directionCoverage: {
+        minimumIndependentEventsPerSide: 5,
+        longIndependentEvents: 1,
+        shortIndependentEvents: 1,
+        passed: false,
+      },
+      portfolioNetReturnPct: -0.001,
+      benchmarkReturnPct: 0,
+      benchmarkLabel: "always short",
+      excessReturnPct: -0.001,
+      excessConfidenceInterval95: [-0.002, 0.001],
+      deflatedSharpeProbability: 0.5,
+      maxDrawdownPct: 0.001,
+      controlCoverage: 1,
+      currentlyPassingReadinessGates: 2,
+      evaluatedReadinessGates: 8,
+      passedReadinessGates: 0,
+      totalReadinessGates: 10,
+      readinessGates: [{ id: "trades", label: "50件", state: "pending", passed: false }],
+      missingEntry: 0,
+      missingExit: 0,
+      missingResolution: 0,
+      maximumTimingErrorMs: 5_000,
+      allowedTimingErrorMs: 15_000,
+      maximumPolymarketQuoteAgeMs: 1_000,
+      allowedPolymarketQuoteAgeMs: 120_000,
+    },
+    settlementResolution: {
+      status: "healthy",
+      completeMarkets: 50,
+      missingBoundaryMarkets: 0,
+      matchedMarkets: 50,
+      mismatchedMarkets: 0,
+      coverage: 1,
+    },
+    synchronizedQuality: {
+      status: "collecting",
+      durationHours: 12,
+      coverage: 1,
+      p95SkewMs: 4_000,
+      passedGates: 5,
+      totalGates: 6,
+    },
+  };
+  const firstReport = await persistForwardExecutionAuditReport(reportInput, { artifactRoot: forwardAuditArtifactRoot });
+  assert.equal(firstReport.written, true);
+  const duplicateReport = await persistForwardExecutionAuditReport(reportInput, { artifactRoot: forwardAuditArtifactRoot });
+  assert.equal(duplicateReport.written, false);
+  assert.equal(duplicateReport.reason, "unchanged");
+  const evidenceOnlyInput = structuredClone(reportInput);
+  evidenceOnlyInput.synchronizedQuality!.durationHours = 13;
+  assert.equal((await persistForwardExecutionAuditReport(evidenceOnlyInput, { artifactRoot: forwardAuditArtifactRoot })).written, false);
+  const nextInput = structuredClone(reportInput);
+  nextInput.generatedAt = "2026-01-01T00:30:00.000Z";
+  nextInput.audit.verifiedPositions = 3;
+  nextInput.audit.verifiedIndependentEvents = 2;
+  nextInput.audit.directionCoverage.longIndependentEvents = 2;
+  const nextReport = await persistForwardExecutionAuditReport(nextInput, { artifactRoot: forwardAuditArtifactRoot });
+  assert.equal(nextReport.written, true);
+  const history = JSON.parse(await readFile(join(forwardAuditArtifactRoot, "history.json"), "utf8")) as { items: Array<{ independentEvents: number }> };
+  assert.deepEqual(history.items.map((item) => item.independentEvents), [2, 1]);
+  const latestMetrics = await readFile(join(forwardAuditArtifactRoot, "latest-metrics.csv"), "utf8");
+  const latestReport = JSON.parse(await readFile(join(forwardAuditArtifactRoot, "latest.json"), "utf8")) as { schemaVersion: number };
+  assert.equal(latestReport.schemaVersion, 3);
+  assert.match(latestMetrics, /verified_independent_events,2/);
+  assert.match(latestMetrics, /report_schema_version,3/);
+  assert.match(latestMetrics, /long_independent_events,2/);
+  assert.match(latestMetrics, /execution_coverage,1/);
+  assert.match(latestMetrics, /minimum_additional_perfect_positions_for_95pct_coverage,0/);
+} finally {
+  await rm(forwardAuditArtifactRoot, { recursive: true, force: true });
+}
+console.log("forward execution audit artifact tests passed");
+assert.equal(minimumAdditionalPerfectPositionsForCoverage(47, 42, 0.95), 53);
+assert.equal(minimumAdditionalPerfectPositionsForCoverage(48, 42, 0.95), 72);
+assert.equal(minimumAdditionalPerfectPositionsForCoverage(100, 95, 0.95), 0);
+assert.throws(() => minimumAdditionalPerfectPositionsForCoverage(1, 1, 1), RangeError);
 
 assert.equal(nextRealtimeReplayDelayMs({ generatedAtMs: 0, nowMs: 20 * 60_000, intervalMs: 30 * 60_000 }), 10 * 60_000);
 assert.equal(nextRealtimeReplayDelayMs({ generatedAtMs: 0, nowMs: 29.5 * 60_000, intervalMs: 30 * 60_000 }), 60_000);
@@ -1860,6 +1963,7 @@ assert.equal(requiredApiAccess("GET", "/api/model-evaluations"), "public");
 assert.equal(requiredApiAccess("GET", "/api/model-evaluations/evaluation-run-1"), "public");
 assert.equal(requiredApiAccess("GET", "/api/short-term-backtests/latest"), "public");
 assert.equal(requiredApiAccess("GET", "/api/realtime-short-term-backtests/latest"), "public");
+assert.equal(requiredApiAccess("GET", "/api/forward-execution-audits/latest"), "public");
 assert.equal(requiredApiAccess("POST", "/api/model-evaluations"), "admin");
 assert.equal(requiredApiAccess("GET", "/api/markets/123"), "public");
 assert.equal(requiredApiAccess("POST", "/api/markets"), "admin");
@@ -1891,7 +1995,7 @@ assert.equal(authorizeApiRequest({
 console.log("API access-scope tests passed");
 
 const alertNow = new Date("2026-01-01T01:00:00Z");
-const healthyHeartbeats = ["polymarket", "hyperliquid", "realtime-market-data", "forward-experiment", "short-term-direction", "realtime-short-term-backtest", "backtest"].map((id) => ({
+const healthyHeartbeats = ["polymarket", "hyperliquid", "realtime-market-data", "forward-experiment", "short-term-direction", "forward-execution-audit-report", "realtime-short-term-backtest", "backtest"].map((id) => ({
   id,
   status: "healthy",
   message: null,

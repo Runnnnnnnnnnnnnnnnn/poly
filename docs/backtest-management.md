@@ -93,7 +93,12 @@ GET /api/model-evaluations/<run-id>?format=csv
 - SQLite now; PostgreSQL later: operational state and normalized execution records.
 - CSV artifacts now; Parquet plus DuckDB when the five-second dataset becomes large enough that SQLite
   extracts are slow. DuckDB can query partitioned Parquet directly without loading it into the app DB.
-- DVC only when dataset snapshots become too large or numerous for the current hash plus artifact model.
+- [DVC](https://dvc.org/doc) only when dataset snapshots become too large or numerous for the current hash
+  plus artifact model.
+- [W&B](https://docs.wandb.ai/models/track) is a reasonable hosted alternative when remote researchers need a shared experiment UI, but it is
+  not the current system of record because local MLflow avoids sending trading data to another SaaS.
+- [Feast](https://docs.feast.dev/getting-started/concepts/point-in-time-joins) is not needed while decisions are calculated directly from synchronized tick tables. Introduce a
+  feature store only when multiple training and serving pipelines need the same point-in-time-correct features.
 
 Do not tune on the final test period. New parameters must be declared before the next forward window,
 selected only on development folds, and evaluated on a new untouched period. A positive dashboard tile
@@ -124,9 +129,10 @@ export MLFLOW_TRACKING_URI="sqlite:///$HOME/.polymarket-watch/mlflow.db"
 ~/.polymarket-watch/mlflow-venv/bin/mlflow server --host 127.0.0.1 --port 8080 --backend-store-uri "$MLFLOW_TRACKING_URI"
 ```
 
-The importer loads the canonical 6/12/24/48-hour runs, the historical 15-minute strategy runs, and
-the synchronized 5-second executable-book replays into separate MLflow experiments. MLflow is used for parameter comparison and artifact browsing; the
-dashboard remains the executive status view. This matches MLflow's official
+The importer loads the canonical 6/12/24/48-hour runs, the historical 15-minute strategy runs, the
+synchronized 5-second executable-book replays, and every changed production forward-audit result into
+separate MLflow experiments. MLflow is used for parameter comparison and artifact browsing; the dashboard
+remains the executive status view. This matches MLflow's official
 [experiment tracking model](https://mlflow.org/docs/latest/ml/tracking/) of runs, parameters, metrics,
 code versions, and artifacts.
 
@@ -171,6 +177,18 @@ cohort: at least five independent long windows and five independent short window
 to 50 total independent windows. Multiple assets with the same direction and 15-minute close count once;
 a close window containing both directions contributes once to each side. Before 50 total windows the gate
 is pending. At 50 or more, missing either direction fails promotion and real-money execution remains off.
+
+Every changed production-audit result is stored immutably under
+`~/.polymarket-watch/artifacts/forward-execution-audits/<run-id>/`. The run ID combines the frozen cohort,
+independent-window count, and result fingerprint, so a later result cannot overwrite an earlier one and an
+unchanged five-minute check does not create a duplicate. `latest.json`, `latest-metrics.csv`, and
+`history.json` provide quick access. The live API exposes the latest report, metrics, and history at:
+
+```text
+GET /api/forward-execution-audits/latest
+GET /api/forward-execution-audits/latest?format=metrics
+GET /api/forward-execution-audits/latest?format=history
+```
 
 The frozen 6/12/24/48-hour forward experiments also gate on 50 distinct event-and-horizon outcomes, not
 raw position count. Their best baseline is selected from Polymarket-only, always long, always short, and
