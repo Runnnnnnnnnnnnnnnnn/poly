@@ -49,6 +49,7 @@ try {
   prepareBuildSource(buildSourceDirectory);
   prepareBuildDatabase(runtimeDatabasePath, buildDatabasePath);
   buildRuntime(modelRevision, buildDatabasePath, buildSourceDirectory);
+  rmSync(resolve(buildSourceDirectory, "node_modules"), { force: true });
 } catch (error) {
   rmSync(buildSourceDirectory, { recursive: true, force: true });
   throw error;
@@ -168,7 +169,7 @@ function prepareBuildSource(target) {
     "-a",
     "--exclude=.git/",
     "--exclude=.next/",
-    "--exclude=node_modules/",
+    "--exclude=node_modules",
     "--exclude=out/",
     "--exclude=.pages-build-disabled/",
     "--exclude=.run-all.lock",
@@ -215,7 +216,7 @@ function stageRuntime(sourceRoot) {
     "--delete",
     "--exclude=.git/",
     "--exclude=.next/",
-    "--exclude=node_modules/",
+    "--exclude=node_modules",
     "--exclude=out/",
     "--exclude=.pages-build-disabled/",
     "--exclude=.run-all.lock",
