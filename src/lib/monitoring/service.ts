@@ -890,7 +890,7 @@ export async function getMonitoringSnapshot() {
           ?? shortTermStrategyRun?.maxDrawdownPct
           ?? null,
         passedGates: shortTermExecutionAudit?.passedReadinessGates ?? shortTermEvaluation?.passedGates ?? 0,
-        totalGates: shortTermExecutionAudit?.totalReadinessGates ?? shortTermEvaluation?.totalGates ?? 9,
+        totalGates: shortTermExecutionAudit?.totalReadinessGates ?? shortTermEvaluation?.totalGates ?? 10,
         openPositions: shortTermPositions.filter((position) => position.status === "OPEN").length,
         scannedMarkets: shortTermDecision?.scannedMarkets ?? 0,
         fifteenMinuteMarkets: shortTermDecision?.structuredMarkets ?? 0,

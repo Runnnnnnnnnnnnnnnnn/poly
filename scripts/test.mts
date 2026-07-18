@@ -75,7 +75,7 @@ import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 import { annualizeRealizedVolatility } from "../src/lib/model-evaluation/volatility";
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
 import { buildRealtimeAssetTick, buildRealtimeMarketTick, isRealtimeCaptureWindow, selectRealtimeMarketsForCollection, shouldReconnectManagedSocket, shouldReportRealtimeCoverageFailure } from "../src/lib/realtime-market-data/collector";
-import { calculatePolymarketTakerFee, evaluateExactExecutionAudit, selectCausalExecutionTick } from "../src/lib/realtime-market-data/execution-audit";
+import { calculatePolymarketTakerFee, evaluateExactExecutionAudit, selectCausalExecutionTick, summarizeExactAuditDirectionCoverage } from "../src/lib/realtime-market-data/execution-audit";
 import { evaluateReferenceSettlementAudit } from "../src/lib/realtime-market-data/settlement-audit";
 import {
   normalizeHyperliquidWebSocketMessage,
@@ -561,6 +561,12 @@ assert.equal(exactAudit.auditedPositions, 2);
 assert.equal(exactAudit.coverage, 1);
 assert.equal(exactAudit.verifiedPositions, 2);
 assert.equal(exactAudit.verifiedIndependentEvents, 1);
+assert.deepEqual(exactAudit.directionCoverage, {
+  minimumIndependentEventsPerSide: 5,
+  longIndependentEvents: 1,
+  shortIndependentEvents: 1,
+  passed: false,
+});
 assert.equal(exactAudit.verifiedCoverage, 1);
 assert.equal(exactAudit.resolvedPredictions, 2);
 assert.equal(exactAudit.predictionAccuracy, 0.5);
@@ -575,9 +581,10 @@ assert.equal(exactAudit.controlComparablePositions, 2);
 assert.equal(exactAudit.comparableEvents, 2);
 assert.equal(exactAudit.comparableIndependentEvents, 1);
 assert.equal(exactAudit.controlCoverage, 1);
-assert.equal(exactAudit.totalReadinessGates, 9);
+assert.equal(exactAudit.totalReadinessGates, 10);
 assert.equal(exactAudit.passedReadinessGates, 0);
 assert.equal(exactAudit.readinessGates.find((gate) => gate.id === "trades")?.state, "pending");
+assert.equal(exactAudit.readinessGates.find((gate) => gate.id === "directions")?.state, "pending");
 assert.equal(exactAudit.readinessGates.find((gate) => gate.id === "drawdown")?.state, "passing");
 assert.equal(exactAudit.readinessGates.find((gate) => gate.id === "drawdown")?.passed, false);
 assert.ok(exactAudit.currentlyPassingReadinessGates > 0);
@@ -592,6 +599,24 @@ assert.deepEqual(exactAudit.attribution.bySide.map((item) => ({ side: item.side,
   { side: "SHORT", trades: 1 },
 ]);
 assert.ok(Math.abs(exactAudit.attribution.byAsset.reduce((total, item) => total + item.returnContributionPct, 0) - (exactAudit.portfolioNetReturnPct ?? 0)) < 1e-12);
+const directionFailureAudit = evaluateExactExecutionAudit({
+  ...auditConfig,
+  minimumAuditedPositions: 1,
+});
+assert.equal(directionFailureAudit.readinessGates.find((gate) => gate.id === "directions")?.state, "failing");
+assert.equal(directionFailureAudit.readinessGates.find((gate) => gate.id === "directions")?.passed, false);
+assert.equal(directionFailureAudit.readinessStatus, "underperforming");
+assert.deepEqual(summarizeExactAuditDirectionCoverage([
+  { exitAt: auditEnd, side: "LONG" },
+  { exitAt: auditEnd, side: "LONG" },
+  { exitAt: auditEnd, side: "SHORT" },
+  { exitAt: new Date(auditEnd.getTime() + 15 * 60_000), side: "SHORT" },
+]), {
+  minimumIndependentEventsPerSide: 5,
+  longIndependentEvents: 1,
+  shortIndependentEvents: 2,
+  passed: false,
+});
 assert.equal(calculatePolymarketTakerFee(100, 0.5), 1.75);
 const atTheMoneyFairProbability = calculateDigitalFairProbability({
   thresholdPrice: 100,
@@ -816,6 +841,12 @@ assert.equal(profitableAudit.status, "healthy");
 assert.equal(profitableAudit.readinessStatus, "promising");
 assert.equal(profitableAudit.verifiedPositions, 60);
 assert.equal(profitableAudit.verifiedIndependentEvents, 60);
+assert.deepEqual(profitableAudit.directionCoverage, {
+  minimumIndependentEventsPerSide: 5,
+  longIndependentEvents: 30,
+  shortIndependentEvents: 30,
+  passed: true,
+});
 assert.equal(profitableAudit.strategyTrials, 11);
 assert.equal(profitableAudit.passedReadinessGates, profitableAudit.totalReadinessGates);
 assert.equal(profitableAudit.currentlyPassingReadinessGates, profitableAudit.totalReadinessGates);

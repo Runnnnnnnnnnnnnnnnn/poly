@@ -392,6 +392,12 @@ type MonitoringSnapshot = {
         coverage: number;
         verifiedPositions: number;
         verifiedIndependentEvents: number;
+        directionCoverage: {
+          minimumIndependentEventsPerSide: number;
+          longIndependentEvents: number;
+          shortIndependentEvents: number;
+          passed: boolean;
+        };
         verifiedCoverage: number;
         resolvedPredictions: number;
         predictionAccuracy: number | null;
@@ -442,7 +448,7 @@ type MonitoringSnapshot = {
         totalReadinessGates: number;
         settlementResolutionStatus: "collecting" | "healthy" | "attention";
         readinessGates: Array<{
-          id: "trades" | "execution" | "control" | "net-positive" | "benchmark" | "significance" | "selection-bias" | "drawdown" | "settlement";
+          id: "trades" | "directions" | "execution" | "control" | "net-positive" | "benchmark" | "significance" | "selection-bias" | "drawdown" | "settlement";
           label: string;
           passed: boolean;
           state?: "passing" | "failing" | "pending";
@@ -1591,6 +1597,7 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
   const remaining = Math.max(0, requiredAudits - verifiedTrades);
   const provisionalPassingGates = audit?.currentlyPassingReadinessGates ?? 0;
   const evaluatedGates = audit?.evaluatedReadinessGates ?? 0;
+  const directionCoverage = audit?.directionCoverage;
   const steps = [
     { label: "15分市場", value: model?.fifteenMinuteMarkets ?? 0, note: "対象" },
     { label: "開始2分後", value: model?.decisionWindowMarkets ?? 0, note: "直近" },
@@ -1646,7 +1653,12 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-3 divide-x border-t px-3 py-3 sm:px-4">
+          <div className="grid grid-cols-2 divide-x border-t px-3 py-3 sm:grid-cols-4 sm:px-4">
+            <CompactMetric
+              label="方向別の監査"
+              value={`上 ${directionCoverage?.longIndependentEvents ?? 0} / 下 ${directionCoverage?.shortIndependentEvents ?? 0}`}
+              tone={directionCoverage?.passed ? "good" : "watch"}
+            />
             <CompactMetric label="入口・決済を再現" value={`${audit?.auditedPositions ?? 0}/${audit?.eligiblePositions ?? 0}件`} />
             <CompactMetric label="95%下限" value={(audit?.verifiedIndependentEvents ?? audit?.verifiedPositions ?? 0) > 0 ? formatSignedPct(audit?.excessConfidenceInterval95?.[0]) : "収集中"} />
             <CompactMetric label="最大取得遅延" value={(audit?.auditedPositions ?? 0) > 0 ? formatMilliseconds(audit?.maximumTimingErrorMs) : "収集中"} />
@@ -1694,7 +1706,7 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
         <span>{research
-          ? `暫定合格 ${provisionalPassingGates}/${evaluatedGates || audit?.totalReadinessGates || 9}・最終合格 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 9}・公式決着 ${settlementResolution?.completeMarkets ?? 0}/${settlementResolution?.targetMarkets ?? 50}`
+          ? `暫定合格 ${provisionalPassingGates}/${evaluatedGates || audit?.totalReadinessGates || 10}・最終合格 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 10}・公式決着 ${settlementResolution?.completeMarkets ?? 0}/${settlementResolution?.targetMarkets ?? 50}`
           : "発注後の最初の5秒板で約定を再現中"}</span>
         <span className="font-bold text-rose-700">実取引 OFF</span>
       </div>

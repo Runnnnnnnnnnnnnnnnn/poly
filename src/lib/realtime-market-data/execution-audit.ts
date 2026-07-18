@@ -11,6 +11,7 @@ const defaultRandomBenchmarkTrials = 200;
 const defaultStrategyTrials = 11;
 const minimumDeflatedSharpeProbability = 0.95;
 const maximumDrawdownPct = 0.05;
+const minimumDirectionalIndependentEvents = 5;
 const cryptoTakerFeeRate = 0.07;
 
 export type ExactExecutionAuditPosition = {
@@ -217,6 +218,12 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   const maximumObservedPolymarketQuoteAgeMs = polymarketQuoteAges.length ? Math.max(...polymarketQuoteAges) : null;
   const verifiedIndependentEvents = independentAuditWindows(verifiedResults).length;
   const enoughData = verifiedIndependentEvents >= minimumAuditedPositions;
+  const directionCoverage = summarizeExactAuditDirectionCoverage(
+    verifiedResults.map((result) => ({
+      exitAt: result.position.exitAt,
+      side: result.position.side,
+    })),
+  );
   const qualityPassed = verifiedCoverage >= 0.95
     && maximumObservedTimingErrorMs !== null
     && maximumObservedTimingErrorMs <= maximumTimingErrorMs
@@ -256,6 +263,12 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   const settlementStatus = input.settlementResolutionStatus ?? input.settlementBasisStatus;
   const readinessGates = [
     gate("trades" as const, `${minimumAuditedPositions}件の独立時間枠を完全監査`, enoughData, true),
+    gate(
+      "directions" as const,
+      `上昇・下落を各${minimumDirectionalIndependentEvents}独立枠で監査`,
+      enoughData || directionCoverage.passed,
+      directionCoverage.passed,
+    ),
     gate("execution" as const, "実板・時刻・決着の監査率95%以上", eligiblePositions.length > 0, qualityPassed),
     gate("control" as const, "同時対照の再現率95%以上", benchmark.comparableEvents > 0, controlCoverage >= 0.95),
     gate("net-positive" as const, "全コスト控除後プラス", portfolioNetReturnPct !== null, (portfolioNetReturnPct ?? 0) > 0),
@@ -287,6 +300,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     coverage,
     verifiedPositions,
     verifiedIndependentEvents,
+    directionCoverage,
     verifiedCoverage,
     resolvedPredictions: predictionResults.length,
     predictionAccuracy: predictionResults.length
@@ -541,16 +555,40 @@ function maximumDrawdownFromPnl(results: ExactResult[], initialEquity: number) {
 }
 
 function independentAuditWindows(results: ExactResult[]) {
-  const windowMs = 15 * 60_000;
   const grouped = new Map<number, ExactResult[]>();
   for (const result of results) {
-    const timestamp = result.position.exitAt.getTime();
-    const key = Math.round(timestamp / windowMs) * windowMs;
+    const key = independentAuditWindowKey(result.position.exitAt);
     grouped.set(key, [...(grouped.get(key) ?? []), result]);
   }
   return Array.from(grouped.entries())
     .sort(([left], [right]) => left - right)
     .map(([, window]) => window);
+}
+
+export function summarizeExactAuditDirectionCoverage(
+  rows: Array<{ exitAt: Date; side: string }>,
+) {
+  const longWindows = new Set<number>();
+  const shortWindows = new Set<number>();
+  for (const row of rows) {
+    const key = independentAuditWindowKey(row.exitAt);
+    if (row.side === "LONG") longWindows.add(key);
+    if (row.side === "SHORT") shortWindows.add(key);
+  }
+  const longIndependentEvents = longWindows.size;
+  const shortIndependentEvents = shortWindows.size;
+  return {
+    minimumIndependentEventsPerSide: minimumDirectionalIndependentEvents,
+    longIndependentEvents,
+    shortIndependentEvents,
+    passed: longIndependentEvents >= minimumDirectionalIndependentEvents
+      && shortIndependentEvents >= minimumDirectionalIndependentEvents,
+  };
+}
+
+function independentAuditWindowKey(exitAt: Date) {
+  const windowMs = 15 * 60_000;
+  return Math.round(exitAt.getTime() / windowMs) * windowMs;
 }
 
 function medianTrial(trials: number[][]) {

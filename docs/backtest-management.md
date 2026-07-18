@@ -166,6 +166,12 @@ untouched promotion holdout. A profitable result from only one market direction 
 because it has not demonstrated robustness across rising and falling regimes. Passing this diagnostic
 still requires a new frozen 50-window forward cohort before promotion.
 
+The production five-second execution audit applies the same directional minimum to the frozen forward
+cohort: at least five independent long windows and five independent short windows are required in addition
+to 50 total independent windows. Multiple assets with the same direction and 15-minute close count once;
+a close window containing both directions contributes once to each side. Before 50 total windows the gate
+is pending. At 50 or more, missing either direction fails promotion and real-money execution remains off.
+
 The frozen 6/12/24/48-hour forward experiments also gate on 50 distinct event-and-horizon outcomes, not
 raw position count. Their best baseline is selected from Polymarket-only, always long, always short, and
 the median of 200 deterministic random-direction trials. Multiple assets recorded for one event contribute
