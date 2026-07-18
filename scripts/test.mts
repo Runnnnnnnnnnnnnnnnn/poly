@@ -60,7 +60,7 @@ import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/s
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 import { annualizeRealizedVolatility } from "../src/lib/model-evaluation/volatility";
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
-import { buildRealtimeMarketTick, isRealtimeCaptureWindow, selectRealtimeMarketsForCollection, shouldReconnectManagedSocket } from "../src/lib/realtime-market-data/collector";
+import { buildRealtimeMarketTick, isRealtimeCaptureWindow, selectRealtimeMarketsForCollection, shouldReconnectManagedSocket, shouldReportRealtimeCoverageFailure } from "../src/lib/realtime-market-data/collector";
 import { calculatePolymarketTakerFee, evaluateExactExecutionAudit, selectCausalExecutionTick } from "../src/lib/realtime-market-data/execution-audit";
 import { evaluateReferenceSettlementAudit } from "../src/lib/realtime-market-data/settlement-audit";
 import {
@@ -545,6 +545,10 @@ assert.equal(evaluateSettlementResolutionAlerts(attentionSettlement)[0]?.severit
 assert.equal(isTransientHeartbeatWriteError(Object.assign(new Error("Socket timeout"), { code: "P1008" })), true);
 assert.equal(isTransientHeartbeatWriteError(new Error("database is locked")), true);
 assert.equal(isTransientHeartbeatWriteError(new Error("validation failed")), false);
+assert.equal(shouldReportRealtimeCoverageFailure({ activeMarkets: 4, savedRows: 0, consecutiveEmptyFlushes: 1, startupGrace: false }), false);
+assert.equal(shouldReportRealtimeCoverageFailure({ activeMarkets: 4, savedRows: 0, consecutiveEmptyFlushes: 3, startupGrace: false }), true);
+assert.equal(shouldReportRealtimeCoverageFailure({ activeMarkets: 4, savedRows: 0, consecutiveEmptyFlushes: 3, startupGrace: true }), false);
+assert.equal(shouldReportRealtimeCoverageFailure({ activeMarkets: 4, savedRows: 4, consecutiveEmptyFlushes: 3, startupGrace: false }), false);
 const incompleteAudit = evaluateExactExecutionAudit({
   ...auditConfig,
   positions: [{ ...auditPositions[0], marketId: "missing-market" }],

@@ -28,6 +28,7 @@ const maximumReferenceAgeMs = 15_000;
 const maximumContextAgeMs = 60_000;
 const connectionStaleMs = 30_000;
 const pipelineHeartbeatIntervalMs = 15_000;
+const emptyFlushFailureThreshold = 3;
 
 export const realtimeSynchronizationVersion = "websocket-v6-near-term-discovery";
 
@@ -51,6 +52,7 @@ export class RealtimeMarketDataCollector {
   private flushing = false;
   private pendingHeartbeatRecords = 0;
   private lastHeartbeatAtMs = 0;
+  private consecutiveEmptyActiveFlushes = 0;
 
   private readonly polymarketSocket = new ManagedWebSocket({
     name: "Polymarket CLOB",
@@ -178,10 +180,18 @@ export class RealtimeMarketDataCollector {
       });
       if (rows.length) await prisma.realtimeMarketTick.createMany({ data: rows });
       this.pendingHeartbeatRecords += rows.length;
+      this.consecutiveEmptyActiveFlushes = activeMarkets.length && !rows.length
+        ? this.consecutiveEmptyActiveFlushes + 1
+        : 0;
       const health = this.connectionHealth(now);
       const startupGrace = now.getTime() - this.startedAt.getTime() < connectionStaleMs;
-      if (activeMarkets.length && !rows.length && !startupGrace) {
-        throw new Error(`秒単位価格が未完成: 市場${activeMarkets.length} / 接続${health.connected}/3`);
+      if (shouldReportRealtimeCoverageFailure({
+        activeMarkets: activeMarkets.length,
+        savedRows: rows.length,
+        consecutiveEmptyFlushes: this.consecutiveEmptyActiveFlushes,
+        startupGrace,
+      })) {
+        throw new Error(`秒単位価格が15秒連続で未完成: 市場${activeMarkets.length} / 接続${health.connected}/3`);
       }
       if (now.getTime() - this.lastHeartbeatAtMs >= pipelineHeartbeatIntervalMs) {
         const recorded = await markPipelineSuccess(
@@ -296,6 +306,18 @@ export class RealtimeMarketDataCollector {
   private async reportError(error: unknown) {
     console.error(error instanceof Error ? error.message : error);
   }
+}
+
+export function shouldReportRealtimeCoverageFailure(input: {
+  activeMarkets: number;
+  savedRows: number;
+  consecutiveEmptyFlushes: number;
+  startupGrace: boolean;
+}) {
+  return input.activeMarkets > 0
+    && input.savedRows === 0
+    && input.consecutiveEmptyFlushes >= emptyFlushFailureThreshold
+    && !input.startupGrace;
 }
 
 export function selectRealtimeMarketsForCollection(
