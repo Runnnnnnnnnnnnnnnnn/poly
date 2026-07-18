@@ -316,6 +316,7 @@ type MonitoringSnapshot = {
       observedAt: string | null;
       executionAudit?: {
         status: "collecting" | "healthy" | "attention";
+        readinessStatus: "collecting" | "promising" | "underperforming";
         minimumAuditedPositions: number;
         eligiblePositions: number;
         auditedPositions: number;
@@ -328,6 +329,33 @@ type MonitoringSnapshot = {
         polymarketNetReturnPct: number | null;
         hyperliquidNetReturnPct: number | null;
         storedNetReturnPct: number | null;
+        portfolioNetReturnPct: number | null;
+        storedPortfolioReturnPct: number | null;
+        meanTradeReturnConfidenceInterval95: [number, number] | null;
+        benchmarkReturnPct: number | null;
+        benchmarkLabel: "Polymarket方向のみ" | "常時ロング" | "常時ショート" | "ランダム中央値" | null;
+        excessReturnPct: number | null;
+        excessConfidenceInterval95: [number, number] | null;
+        deflatedSharpeProbability: number | null;
+        strategyTrials: number;
+        randomBenchmarkTrials: number;
+        maxDrawdownPct: number;
+        controlComparablePositions: number;
+        comparableEvents: number;
+        controlCoverage: number;
+        benchmarks: {
+          polymarketOnlyReturnPct: number;
+          alwaysLongReturnPct: number;
+          alwaysShortReturnPct: number;
+          randomMedianReturnPct: number;
+        };
+        passedReadinessGates: number;
+        totalReadinessGates: number;
+        readinessGates: Array<{
+          id: "trades" | "execution" | "control" | "net-positive" | "benchmark" | "significance" | "selection-bias" | "drawdown" | "settlement";
+          label: string;
+          passed: boolean;
+        }>;
         returnDifferencePct: number | null;
         medianTimingErrorMs: number | null;
         maximumTimingErrorMs: number | null;
@@ -948,28 +976,32 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
   const trades = model?.trades ?? 0;
   const minimumTrades = audit?.minimumAuditedPositions ?? model?.minimumTrades ?? 50;
   const verifiedTrades = audit?.verifiedPositions ?? 0;
+  const auditedNetReturn = audit?.portfolioNetReturnPct ?? model?.netReturnPct ?? null;
+  const auditedExcessReturn = audit?.excessReturnPct ?? model?.excessReturnPct ?? null;
+  const auditedConfidenceLower = audit?.excessConfidenceInterval95?.[0] ?? model?.confidenceLowerPct ?? null;
+  const auditedDrawdown = audit?.maxDrawdownPct ?? model?.maxDrawdownPct ?? null;
   const progress = minimumTrades > 0 ? verifiedTrades / minimumTrades : 0;
   const sampleReady = verifiedTrades >= minimumTrades && audit?.status === "healthy";
-  const netPositive = sampleReady && (model?.netReturnPct ?? 0) > 0;
-  const edgePositive = sampleReady && (model?.confidenceLowerPct ?? Number.NEGATIVE_INFINITY) > 0;
-  const drawdownReady = sampleReady && (model?.maxDrawdownPct ?? Number.POSITIVE_INFINITY) <= 0.05;
+  const netPositive = sampleReady && (auditedNetReturn ?? 0) > 0;
+  const edgePositive = sampleReady && (auditedConfidenceLower ?? Number.NEGATIVE_INFINITY) > 0;
+  const drawdownReady = sampleReady && (auditedDrawdown ?? Number.POSITIVE_INFINITY) <= 0.05;
   const dataReady = snapshot?.collection.realtimePrices?.status === "healthy";
   const testnetReady = snapshot?.combinedShadow.testnet.ready === true;
   const liveEnabled = snapshot?.tradeReadiness.realTradingEnabled === true;
-  const promising = model?.status === "promising" && sampleReady && netPositive && edgePositive && drawdownReady;
+  const promising = audit?.readinessStatus === "promising" && sampleReady && netPositive && edgePositive && drawdownReady;
   const verdict = liveEnabled
     ? { label: "実取引中", note: "運用条件を満たし、実取引を監視しています。", tone: "good" as const, icon: CheckCircle2 }
     : promising && testnetReady
       ? { label: "実取引の最終確認", note: "成績基準を満たしました。テストネット照合の完了後に判断します。", tone: "watch" as const, icon: ShieldCheck }
-      : model?.status === "underperforming" && sampleReady
+      : audit?.readinessStatus === "underperforming" && sampleReady
         ? { label: "モデル改善が必要", note: "50件の検証で採用基準に届きませんでした。実取引には進みません。", tone: "bad" as const, icon: TrendingDown }
         : { label: "検証中・実取引不可", note: trades > 0
           ? `${trades}件決済、うち板と決着を確認できた${verifiedTrades}件を合格判定に使用します。`
           : "最初の決済結果を待っています。", tone: "watch" as const, icon: Clock3 };
   const VerdictIcon = verdict.icon;
-  const pnlTone: Tone = trades === 0 ? "neutral" : (model?.netReturnPct ?? 0) > 0 ? "good" : "bad";
-  const edgeTone: Tone = trades === 0 ? "neutral" : (model?.excessReturnPct ?? 0) > 0 ? "good" : "bad";
-  const drawdownTone: Tone = trades === 0 ? "neutral" : (model?.maxDrawdownPct ?? 0) <= 0.05 ? "good" : "bad";
+  const pnlTone: Tone = verifiedTrades === 0 ? "neutral" : (auditedNetReturn ?? 0) > 0 ? "good" : "bad";
+  const edgeTone: Tone = verifiedTrades === 0 ? "neutral" : (auditedExcessReturn ?? 0) > 0 ? "good" : "bad";
+  const drawdownTone: Tone = verifiedTrades === 0 ? "neutral" : (auditedDrawdown ?? 0) <= 0.05 ? "good" : "bad";
   const latestAt = snapshot?.collection.realtimePrices?.latestAt ?? snapshot?.generatedAt ?? null;
 
   return (
@@ -989,9 +1021,9 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
 
       <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
         <ExecutiveMetric icon={Target} label="完全監査" value={`${verifiedTrades} / ${minimumTrades}`} note={`決済 ${trades}件・あと${Math.max(0, minimumTrades - verifiedTrades)}件`} tone={sampleReady ? "good" : "watch"} meter={progress * 100} />
-        <ExecutiveMetric icon={TrendingUp} label="純損益" value={trades ? formatSignedPct(model?.netReturnPct) : "未判定"} note="全コスト控除後" tone={pnlTone} />
-        <ExecutiveMetric icon={BarChart3} label="単純戦略との差" value={trades ? formatSignedPct(model?.excessReturnPct) : "未判定"} note="同期間の対照比" tone={edgeTone} />
-        <ExecutiveMetric icon={TrendingDown} label="最大下落" value={trades ? formatPct(model?.maxDrawdownPct) : "未判定"} note="上限 5.00%" tone={drawdownTone} />
+        <ExecutiveMetric icon={TrendingUp} label="実板純損益" value={verifiedTrades ? formatSignedPct(auditedNetReturn) : "未判定"} note="全コスト控除後" tone={pnlTone} />
+        <ExecutiveMetric icon={BarChart3} label="最良比較との差" value={verifiedTrades ? formatSignedPct(auditedExcessReturn) : "未判定"} note={audit?.benchmarkLabel ?? "同期間の対照比"} tone={edgeTone} />
+        <ExecutiveMetric icon={TrendingDown} label="最大下落" value={verifiedTrades ? formatPct(auditedDrawdown) : "未判定"} note="上限 5.00%" tone={drawdownTone} />
         <ExecutiveMetric icon={LockKeyhole} label="運用可否" value={liveEnabled ? "運用中" : "不可"} note={testnetReady ? "テストネット接続済み" : "テストネット未接続"} tone={liveEnabled ? "good" : "bad"} />
       </div>
 
@@ -999,7 +1031,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
         <ExecutiveGate label="5秒板" value={dataReady ? "正常" : "確認中"} tone={dataReady ? "good" : "watch"} />
         <ExecutiveGate label="完全監査" value={sampleReady ? "合格" : `${verifiedTrades}/${minimumTrades}`} tone={sampleReady ? "good" : "watch"} />
         <ExecutiveGate label="純損益" value={netPositive ? "合格" : trades ? "未合格" : "未判定"} tone={netPositive ? "good" : trades ? "bad" : "neutral"} />
-        <ExecutiveGate label="95%下限" value={edgePositive ? "合格" : model?.confidenceLowerPct === null || model?.confidenceLowerPct === undefined ? "未判定" : "未合格"} tone={edgePositive ? "good" : model?.confidenceLowerPct === null || model?.confidenceLowerPct === undefined ? "neutral" : "bad"} />
+        <ExecutiveGate label="95%下限" value={edgePositive ? "合格" : auditedConfidenceLower === null ? "未判定" : sampleReady ? "未合格" : formatSignedPct(auditedConfidenceLower)} tone={edgePositive ? "good" : auditedConfidenceLower === null ? "neutral" : sampleReady ? "bad" : "watch"} />
         <ExecutiveGate label="テストネット" value={testnetReady ? "接続済み" : "未接続"} tone={testnetReady ? "good" : "neutral"} />
       </div>
 
@@ -1234,11 +1266,11 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
   const model = snapshot?.combinedShadow.shortTermDirection;
   const audit = model?.executionAudit;
   const research = model?.research;
-  const hasTrades = (model?.trades ?? 0) > 0;
+  const hasTrades = (audit?.verifiedPositions ?? 0) > 0;
   const requiredAudits = audit?.minimumAuditedPositions ?? 50;
   const verifiedTrades = audit?.verifiedPositions ?? 0;
   const auditReady = audit?.status === "healthy" && verifiedTrades >= requiredAudits;
-  const tone: Tone = auditReady && model?.status === "promising" ? "good" : auditReady && model?.status === "underperforming" ? "bad" : "neutral";
+  const tone: Tone = auditReady && audit?.readinessStatus === "promising" ? "good" : auditReady && audit?.readinessStatus === "underperforming" ? "bad" : "neutral";
   const remaining = Math.max(0, requiredAudits - verifiedTrades);
   const steps = [
     { label: "15分市場", value: model?.fifteenMinuteMarkets ?? 0, note: "対象" },
@@ -1266,9 +1298,9 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
         </div>
         <div className="grid min-w-0">
           <div className="grid grid-cols-3 divide-x divide-border">
-            <CompactMetric label="コスト控除後" value={hasTrades ? formatSignedPct(model?.netReturnPct) : "未判定"} />
-            <CompactMetric label="単純戦略との差" value={hasTrades ? formatSignedPct(model?.excessReturnPct) : "未判定"} />
-            <CompactMetric label="最大下落" value={hasTrades ? formatPct(model?.maxDrawdownPct) : "未判定"} />
+            <CompactMetric label="実板純損益" value={hasTrades ? formatSignedPct(audit?.portfolioNetReturnPct) : "未判定"} />
+            <CompactMetric label="最良比較との差" value={hasTrades ? formatSignedPct(audit?.excessReturnPct) : "未判定"} />
+            <CompactMetric label="最大下落" value={hasTrades ? formatPct(audit?.maxDrawdownPct) : "未判定"} />
           </div>
           <div className="grid grid-cols-4 border-t bg-slate-50">
             {steps.map((step, index) => (
@@ -1281,7 +1313,7 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
           </div>
           <div className="grid grid-cols-3 divide-x border-t px-3 py-3 sm:px-4">
             <CompactMetric label="5秒板で再現" value={`${audit?.auditedPositions ?? 0}/${audit?.eligiblePositions ?? 0}件`} />
-            <CompactMetric label="HL実板損益" value={(audit?.auditedPositions ?? 0) > 0 ? formatSignedPct(audit?.hyperliquidNetReturnPct) : "収集中"} />
+            <CompactMetric label="95%下限" value={(audit?.verifiedPositions ?? 0) > 0 ? formatSignedPct(audit?.excessConfidenceInterval95?.[0]) : "収集中"} />
             <CompactMetric label="最大時刻ずれ" value={(audit?.auditedPositions ?? 0) > 0 ? formatMilliseconds(audit?.maximumTimingErrorMs) : "収集中"} />
           </div>
         </div>
@@ -1301,7 +1333,7 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
         <span>{research
-          ? `過去検証 ${formatCompact(research.completeMarkets)}市場・順次${research.walkForwardFolds}期間・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用`
+          ? `完全監査条件 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 9}・過去 ${formatCompact(research.completeMarkets)}市場・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用`
           : "売買時刻に最も近い5秒板で約定を再現中"}</span>
         <span className="font-bold text-rose-700">実取引 OFF</span>
       </div>

@@ -1,9 +1,19 @@
+import {
+  blockBootstrapMeanConfidenceInterval,
+  deflatedSharpeProbability,
+} from "@/src/lib/model-evaluation/combined-trading";
+
 const defaultMinimumAuditedPositions = 50;
 const defaultMaximumTimingErrorMs = 15_000;
 const defaultMaximumPolymarketQuoteAgeMs = 2 * 60_000;
+const defaultInitialEquity = 10_000;
+const defaultRandomBenchmarkTrials = 200;
+const minimumDeflatedSharpeProbability = 0.95;
+const maximumDrawdownPct = 0.05;
 const cryptoTakerFeeRate = 0.07;
 
 export type ExactExecutionAuditPosition = {
+  eventId?: string;
   marketId: string;
   asset: string;
   side: string;
@@ -43,12 +53,17 @@ export type ExactExecutionAuditResolution = {
 
 export type ExactExecutionAuditInput = {
   positions: ExactExecutionAuditPosition[];
+  controlPositions?: ExactExecutionAuditPosition[];
   ticks: ExactExecutionAuditTick[];
   resolutions: ExactExecutionAuditResolution[];
   collectionStartedAt: Date | null;
   takerFeePerSide: number;
   slippagePerSide: number;
   fundingPer24h: number;
+  initialEquity?: number;
+  settlementBasisStatus?: "collecting" | "healthy" | "attention";
+  strategyTrials?: number;
+  randomBenchmarkTrials?: number;
   minimumAuditedPositions?: number;
   maximumTimingErrorMs?: number;
   maximumPolymarketQuoteAgeMs?: number;
@@ -60,20 +75,20 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   const maximumTimingErrorMs = input.maximumTimingErrorMs ?? defaultMaximumTimingErrorMs;
   const maximumPolymarketQuoteAgeMs = input.maximumPolymarketQuoteAgeMs ?? defaultMaximumPolymarketQuoteAgeMs;
   const minimumAuditedPositions = input.minimumAuditedPositions ?? defaultMinimumAuditedPositions;
-  const eligiblePositions = input.positions.filter((position) => (
-    position.status === "CLOSED"
-    && position.closedAt instanceof Date
-    && typeof position.realizedPnl === "number"
-    && Number.isFinite(position.realizedPnl)
-    && input.collectionStartedAt instanceof Date
-    && position.openedAt >= input.collectionStartedAt
-  ));
+  const initialEquity = positiveNumber(input.initialEquity ?? defaultInitialEquity)
+    ? input.initialEquity ?? defaultInitialEquity
+    : defaultInitialEquity;
+  const strategyTrials = Math.max(1, Math.round(input.strategyTrials ?? 1));
+  const randomBenchmarkTrials = Math.max(20, Math.round(input.randomBenchmarkTrials ?? defaultRandomBenchmarkTrials));
+  const eligiblePositions = eligibleAuditPositions(input.positions, input.collectionStartedAt);
+  const eligibleControlPositions = eligibleAuditPositions(input.controlPositions ?? [], input.collectionStartedAt);
   const ticksByMarket = groupTicksByMarket(input.ticks);
   const resolutionsByMarket = new Map(input.resolutions.map((resolution) => [resolution.marketId, resolution]));
   const timingErrors: number[] = [];
   const polymarketQuoteAges: number[] = [];
   const closeDelays: number[] = [];
-  const exactResults: Array<{ exactPnl: number; storedPnl: number; notional: number }> = [];
+  const exactResults: ExactResult[] = [];
+  const verifiedResults: ExactResult[] = [];
   const predictionResults: Array<{ correct: boolean; polymarketReturn: number | null }> = [];
   let missingEntry = 0;
   let missingExit = 0;
@@ -102,6 +117,12 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
       if (exact) {
         hasExactExecution = true;
         exactResults.push({
+          marketId: position.marketId,
+          eventId: position.eventId ?? position.marketId,
+          openedAt: position.openedAt,
+          position,
+          entryTick: entry.tick,
+          exitTick: exit.tick,
           exactPnl: exact.realizedPnl,
           storedPnl: position.realizedPnl as number,
           notional: exact.notional,
@@ -131,8 +152,37 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
       correct,
       polymarketReturn,
     });
-    if (hasExactExecution && polymarketReturn !== null) verifiedPositions += 1;
+    if (hasExactExecution && polymarketReturn !== null) {
+      verifiedPositions += 1;
+      const exactResult = exactResults.at(-1);
+      if (exactResult?.marketId === position.marketId) verifiedResults.push(exactResult);
+    }
   }
+
+  const controlResults = exactExecutionResults({
+    positions: eligibleControlPositions,
+    ticksByMarket,
+    maximumTimingErrorMs,
+    takerFeePerSide: input.takerFeePerSide,
+    slippagePerSide: input.slippagePerSide,
+    fundingPer24h: input.fundingPer24h,
+  });
+  const resolvedMarketIds = new Set(input.resolutions.flatMap((resolution) => (
+    resolution.resolved && (resolution.result === 0 || resolution.result === 1)
+      ? [resolution.marketId]
+      : []
+  )));
+  const verifiedControlResults = controlResults.filter((result) => resolvedMarketIds.has(result.marketId));
+  const benchmark = buildExactBenchmarks({
+    strategyResults: verifiedResults,
+    controlResults: verifiedControlResults,
+    initialEquity,
+    takerFeePerSide: input.takerFeePerSide,
+    slippagePerSide: input.slippagePerSide,
+    fundingPer24h: input.fundingPer24h,
+    randomBenchmarkTrials,
+    strategyTrials,
+  });
 
   const auditedNotional = sum(exactResults.map((result) => result.notional));
   const hyperliquidNetReturnPct = auditedNotional > 0
@@ -154,9 +204,38 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     && maximumObservedTimingErrorMs <= maximumTimingErrorMs
     && maximumObservedPolymarketQuoteAgeMs !== null
     && maximumObservedPolymarketQuoteAgeMs <= maximumPolymarketQuoteAgeMs;
+  const portfolioNetReturnPct = verifiedResults.length
+    ? sum(verifiedResults.map((result) => result.exactPnl)) / initialEquity
+    : null;
+  const storedPortfolioReturnPct = verifiedResults.length
+    ? sum(verifiedResults.map((result) => result.storedPnl)) / initialEquity
+    : null;
+  const tradeReturns = verifiedResults.map((result) => result.exactPnl / result.notional);
+  const meanTradeReturnConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(tradeReturns);
+  const maxDrawdown = maximumDrawdownFromPnl(verifiedResults, initialEquity);
+  const controlCoverage = benchmark.comparableEvents
+    ? benchmark.controlComparablePositions / benchmark.comparableEvents
+    : 0;
+  const readinessGates = [
+    { id: "trades" as const, label: `${minimumAuditedPositions}件の完全監査`, passed: enoughData },
+    { id: "execution" as const, label: "実板・時刻・決着の監査率95%以上", passed: enoughData && qualityPassed },
+    { id: "control" as const, label: "同時対照の再現率95%以上", passed: enoughData && controlCoverage >= 0.95 },
+    { id: "net-positive" as const, label: "全コスト控除後プラス", passed: enoughData && (portfolioNetReturnPct ?? 0) > 0 },
+    { id: "benchmark" as const, label: "最良の単純戦略を上回る", passed: enoughData && (benchmark.excessReturnPct ?? 0) > 0 },
+    { id: "significance" as const, label: "対照との差の95%下限がプラス", passed: enoughData && (benchmark.excessConfidenceInterval95?.[0] ?? 0) > 0 },
+    { id: "selection-bias" as const, label: "試行補正後の確信度95%以上", passed: enoughData && (benchmark.deflatedSharpeProbability ?? 0) >= minimumDeflatedSharpeProbability },
+    { id: "drawdown" as const, label: "最大下落5%以内", passed: enoughData && maxDrawdown <= maximumDrawdownPct },
+    { id: "settlement" as const, label: "判定参照価格との整合性を確認", passed: enoughData && input.settlementBasisStatus === "healthy" },
+  ];
+  const readinessStatus = !enoughData
+    ? "collecting" as const
+    : readinessGates.every((gate) => gate.passed)
+      ? "promising" as const
+      : "underperforming" as const;
 
   return {
     status: enoughData ? qualityPassed ? "healthy" as const : "attention" as const : "collecting" as const,
+    readinessStatus,
     collectionStartedAt: input.collectionStartedAt?.toISOString() ?? null,
     minimumAuditedPositions,
     eligiblePositions: eligiblePositions.length,
@@ -172,6 +251,24 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     polymarketNetReturnPct: average(polymarketReturns),
     hyperliquidNetReturnPct,
     storedNetReturnPct,
+    portfolioNetReturnPct,
+    storedPortfolioReturnPct,
+    meanTradeReturnConfidenceInterval95,
+    benchmarkReturnPct: benchmark.bestReturnPct,
+    benchmarkLabel: benchmark.bestLabel,
+    excessReturnPct: benchmark.excessReturnPct,
+    excessConfidenceInterval95: benchmark.excessConfidenceInterval95,
+    deflatedSharpeProbability: benchmark.deflatedSharpeProbability,
+    strategyTrials,
+    randomBenchmarkTrials,
+    maxDrawdownPct: maxDrawdown,
+    controlComparablePositions: benchmark.controlComparablePositions,
+    comparableEvents: benchmark.comparableEvents,
+    controlCoverage,
+    benchmarks: benchmark.returns,
+    passedReadinessGates: readinessGates.filter((gate) => gate.passed).length,
+    totalReadinessGates: readinessGates.length,
+    readinessGates,
     returnDifferencePct: hyperliquidNetReturnPct !== null && storedNetReturnPct !== null
       ? hyperliquidNetReturnPct - storedNetReturnPct
       : null,
@@ -186,6 +283,174 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     missingEntry,
     missingExit,
     missingResolution,
+  };
+}
+
+type ExactResult = {
+  marketId: string;
+  eventId: string;
+  openedAt: Date;
+  position: ExactExecutionAuditPosition;
+  entryTick: ExactExecutionAuditTick;
+  exitTick: ExactExecutionAuditTick;
+  exactPnl: number;
+  storedPnl: number;
+  notional: number;
+};
+
+function eligibleAuditPositions(positions: ExactExecutionAuditPosition[], collectionStartedAt: Date | null) {
+  return positions.filter((position) => (
+    position.status === "CLOSED"
+    && position.closedAt instanceof Date
+    && typeof position.realizedPnl === "number"
+    && Number.isFinite(position.realizedPnl)
+    && collectionStartedAt instanceof Date
+    && position.openedAt >= collectionStartedAt
+  ));
+}
+
+function exactExecutionResults(input: {
+  positions: ExactExecutionAuditPosition[];
+  ticksByMarket: Map<string, ExactExecutionAuditTick[]>;
+  maximumTimingErrorMs: number;
+  takerFeePerSide: number;
+  slippagePerSide: number;
+  fundingPer24h: number;
+}) {
+  return input.positions.flatMap((position): ExactResult[] => {
+    const ticks = input.ticksByMarket.get(position.marketId) ?? [];
+    const entry = nearestTick(ticks, position.openedAt, (tick) => tick.hyperliquidUpdatedAt, input.maximumTimingErrorMs);
+    const exit = nearestTick(ticks, position.exitAt, (tick) => tick.hyperliquidUpdatedAt, input.maximumTimingErrorMs);
+    if (!entry || !exit) return [];
+    const exact = calculateHyperliquidBookPnl({
+      position,
+      entryTick: entry.tick,
+      exitTick: exit.tick,
+      takerFeePerSide: input.takerFeePerSide,
+      slippagePerSide: input.slippagePerSide,
+      fundingPer24h: input.fundingPer24h,
+    });
+    if (!exact) return [];
+    return [{
+      marketId: position.marketId,
+      eventId: position.eventId ?? position.marketId,
+      openedAt: position.openedAt,
+      position,
+      entryTick: entry.tick,
+      exitTick: exit.tick,
+      exactPnl: exact.realizedPnl,
+      storedPnl: position.realizedPnl as number,
+      notional: exact.notional,
+    }];
+  });
+}
+
+function buildExactBenchmarks(input: {
+  strategyResults: ExactResult[];
+  controlResults: ExactResult[];
+  initialEquity: number;
+  takerFeePerSide: number;
+  slippagePerSide: number;
+  fundingPer24h: number;
+  randomBenchmarkTrials: number;
+  strategyTrials: number;
+}) {
+  const strategyByMarket = new Map(input.strategyResults.map((result) => [result.marketId, result]));
+  const controlByMarket = new Map(input.controlResults.map((result) => [result.marketId, result]));
+  const comparableResults = Array.from(new Set([
+    ...strategyByMarket.keys(),
+    ...controlByMarket.keys(),
+  ])).map((marketId) => {
+    const strategy = strategyByMarket.get(marketId);
+    const control = controlByMarket.get(marketId);
+    return {
+      marketId,
+      strategy,
+      control,
+      reference: strategy ?? control as ExactResult,
+    };
+  });
+  const strategyReturns = comparableResults.map(({ strategy }) => strategy ? strategy.exactPnl / strategy.notional : 0);
+  const controlReturns = comparableResults.map(({ control }) => control ? control.exactPnl / control.notional : 0);
+  const longReturns = comparableResults.map(({ reference }) => exactSideReturn(reference, "LONG", input));
+  const shortReturns = comparableResults.map(({ reference }) => exactSideReturn(reference, "SHORT", input));
+  const randomTrials = Array.from({ length: input.randomBenchmarkTrials }, (_, trial) => {
+    const random = createSeededRandom(trial + 1);
+    return comparableResults.map((_, index) => random() < 0.5 ? longReturns[index] : shortReturns[index]);
+  });
+  const randomMedian = medianTrial(randomTrials);
+  const candidates = [
+    { label: "Polymarket方向のみ" as const, returns: controlReturns },
+    { label: "常時ロング" as const, returns: longReturns },
+    { label: "常時ショート" as const, returns: shortReturns },
+    { label: "ランダム中央値" as const, returns: randomMedian },
+  ].map((candidate) => ({
+    ...candidate,
+    returnPct: portfolioReturn(candidate.returns, comparableResults.map((result) => result.reference), input.initialEquity),
+  }));
+  const best = [...candidates].sort((left, right) => right.returnPct - left.returnPct)[0];
+  const excessReturns = strategyReturns.map((value, index) => value - (best?.returns[index] ?? 0));
+  const strategyReturnPct = portfolioReturn(strategyReturns, comparableResults.map((result) => result.reference), input.initialEquity);
+  const bestReturnPct = comparableResults.length ? best.returnPct : null;
+  return {
+    bestLabel: comparableResults.length ? best.label : null,
+    bestReturnPct,
+    excessReturnPct: bestReturnPct === null ? null : strategyReturnPct - bestReturnPct,
+    excessConfidenceInterval95: blockBootstrapMeanConfidenceInterval(excessReturns),
+    deflatedSharpeProbability: deflatedSharpeProbability(excessReturns, input.strategyTrials),
+    controlComparablePositions: comparableResults.filter((result) => Boolean(result.control)).length,
+    comparableEvents: comparableResults.length,
+    returns: {
+      polymarketOnlyReturnPct: candidates[0].returnPct,
+      alwaysLongReturnPct: candidates[1].returnPct,
+      alwaysShortReturnPct: candidates[2].returnPct,
+      randomMedianReturnPct: candidates[3].returnPct,
+    },
+  };
+}
+
+function exactSideReturn(
+  result: ExactResult,
+  side: "LONG" | "SHORT",
+  input: Pick<ExactExecutionAuditInput, "takerFeePerSide" | "slippagePerSide" | "fundingPer24h">,
+) {
+  const exact = calculateHyperliquidBookPnl({
+    position: { ...result.position, side },
+    entryTick: result.entryTick,
+    exitTick: result.exitTick,
+    takerFeePerSide: input.takerFeePerSide,
+    slippagePerSide: input.slippagePerSide,
+    fundingPer24h: input.fundingPer24h,
+  });
+  return exact ? exact.realizedPnl / exact.notional : 0;
+}
+
+function portfolioReturn(returns: number[], results: ExactResult[], initialEquity: number) {
+  return returns.reduce((total, value, index) => total + value * (results[index]?.notional ?? 0), 0) / initialEquity;
+}
+
+function maximumDrawdownFromPnl(results: ExactResult[], initialEquity: number) {
+  let equity = initialEquity;
+  let peak = initialEquity;
+  let maximumDrawdown = 0;
+  for (const result of [...results].sort((left, right) => left.openedAt.getTime() - right.openedAt.getTime())) {
+    equity += result.exactPnl;
+    peak = Math.max(peak, equity);
+    maximumDrawdown = Math.max(maximumDrawdown, peak > 0 ? (peak - equity) / peak : 1);
+  }
+  return maximumDrawdown;
+}
+
+function medianTrial(trials: number[][]) {
+  if (!trials.length) return [];
+  return [...trials].sort((left, right) => sum(left) - sum(right))[Math.floor(trials.length / 2)];
+}
+
+function createSeededRandom(initialSeed: number) {
+  let seed = Math.imul(initialSeed, 0x9e3779b9) >>> 0;
+  return () => {
+    seed = (1664525 * seed + 1013904223) >>> 0;
+    return seed / 0x1_0000_0000;
   };
 }
 

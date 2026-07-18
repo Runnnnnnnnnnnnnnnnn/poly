@@ -106,9 +106,13 @@ try {
   }
 
   const repo = process.env.GITHUB_PAGES_REPO || "poly";
+  const runtimeDatabasePath = join(homedir(), ".polymarket-watch", "runtime", "prisma", "dev.db");
+  const pagesDatabaseUrl = process.env.PAGES_DATABASE_URL
+    || process.env.DATABASE_URL
+    || (existsSync(runtimeDatabasePath) ? `file:${runtimeDatabasePath}` : "file:./dev.db");
   const env = {
     ...process.env,
-    DATABASE_URL: process.env.DATABASE_URL || "file:./dev.db",
+    DATABASE_URL: pagesDatabaseUrl,
     NEXT_PUBLIC_STATIC_EXPORT: "1",
     GITHUB_PAGES: "true",
     GITHUB_PAGES_REPO: repo,
@@ -127,7 +131,11 @@ try {
   spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/gen-ai-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
   // CI only has the small repository fixture DB. Keep the runtime snapshot committed by the collector.
   if (!process.env.CI) {
-    spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/gen-monitoring-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
+    const monitoring = spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/gen-monitoring-snapshot.mts"], { cwd: root, env, stdio: "inherit" });
+    if (monitoring.status !== 0) {
+      exitCode = monitoring.status ?? 1;
+      throw new Error("monitoring snapshot generation failed");
+    }
   }
 
   clearBuildOutput(join(root, ".next"));

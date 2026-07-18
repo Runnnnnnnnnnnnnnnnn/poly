@@ -371,6 +371,7 @@ const auditTicks = [
 ];
 const auditConfig = {
   positions: auditPositions,
+  controlPositions: auditPositions,
   ticks: auditTicks,
   resolutions: [
     { marketId: "audit-long", resolved: true, result: 1 },
@@ -380,8 +381,11 @@ const auditConfig = {
   takerFeePerSide: 0.00045,
   slippagePerSide: 0.0002,
   fundingPer24h: 0.0003,
+  initialEquity: 10_000,
+  settlementBasisStatus: "healthy" as const,
 };
 const exactAudit = evaluateExactExecutionAudit(auditConfig);
+assert.equal(exactAudit.readinessStatus, "collecting");
 assert.equal(exactAudit.eligiblePositions, 2);
 assert.equal(exactAudit.auditedPositions, 2);
 assert.equal(exactAudit.coverage, 1);
@@ -395,6 +399,11 @@ assert.equal(exactAudit.medianTimingErrorMs, 4_000);
 assert.equal(exactAudit.maximumCloseDelayMs, 5_000);
 assert.ok((exactAudit.hyperliquidNetReturnPct ?? 1) < 0);
 assert.ok(Math.abs((exactAudit.storedNetReturnPct ?? 0) - 1 / (10 * 100.12 + 5 * 199.76)) < 1e-12);
+assert.ok((exactAudit.portfolioNetReturnPct ?? 1) < 0);
+assert.equal(exactAudit.controlComparablePositions, 2);
+assert.equal(exactAudit.comparableEvents, 2);
+assert.equal(exactAudit.controlCoverage, 1);
+assert.equal(exactAudit.totalReadinessGates, 9);
 assert.equal(calculatePolymarketTakerFee(100, 0.5), 1.75);
 const incompleteAudit = evaluateExactExecutionAudit({
   ...auditConfig,
@@ -407,6 +416,66 @@ assert.equal(incompleteAudit.auditedPositions, 0);
 assert.equal(incompleteAudit.missingEntry, 1);
 assert.equal(incompleteAudit.missingExit, 1);
 assert.equal(incompleteAudit.missingResolution, 1);
+const filteredAudit = evaluateExactExecutionAudit({
+  ...auditConfig,
+  positions: [auditPositions[0]],
+});
+assert.equal(filteredAudit.verifiedPositions, 1);
+assert.equal(filteredAudit.comparableEvents, 2);
+assert.equal(filteredAudit.controlComparablePositions, 2);
+assert.equal(filteredAudit.controlCoverage, 1);
+
+const profitableAuditPositions = Array.from({ length: 60 }, (_, index) => {
+  const long = index % 2 === 0;
+  const openedAt = new Date(auditStart.getTime() + 2 * 60_000);
+  return {
+    marketId: `profitable-${index}`,
+    asset: index % 4 === 0 ? "BTC" : "ETH",
+    side: long ? "LONG" : "SHORT",
+    quantity: 5,
+    entryPrice: long ? 100.1 : 99.9,
+    entryFunding24h: 0,
+    polymarketSide: long ? "LONG" : "SHORT",
+    realizedPnl: 8,
+    status: "CLOSED",
+    openedAt,
+    exitAt: auditEnd,
+    closedAt: auditEnd,
+  };
+});
+const profitableAuditTicks = profitableAuditPositions.flatMap((position, index) => {
+  const long = position.side === "LONG";
+  const move = 1.5 + (index % 7) * 0.15;
+  const exitMid = long ? 100 + move : 100 - move;
+  return [
+    auditTick(position.marketId, "2026-01-01T00:02:00Z", "2026-01-01T00:02:00Z", 100, 99.9, 100.1, long ? 0.62 : 0.4, long ? 0.4 : 0.62),
+    auditTick(position.marketId, "2026-01-01T00:15:00Z", "2026-01-01T00:15:00Z", exitMid, exitMid - 0.1, exitMid + 0.1, long ? 0.98 : 0.02, long ? 0.02 : 0.98),
+  ];
+});
+const profitableAudit = evaluateExactExecutionAudit({
+  ...auditConfig,
+  positions: profitableAuditPositions,
+  controlPositions: profitableAuditPositions.map((position) => ({
+    ...position,
+    side: position.side === "LONG" ? "SHORT" : "LONG",
+  })),
+  ticks: profitableAuditTicks,
+  resolutions: profitableAuditPositions.map((position) => ({
+    marketId: position.marketId,
+    resolved: true,
+    result: position.polymarketSide === "LONG" ? 1 : 0,
+  })),
+  minimumAuditedPositions: 50,
+});
+assert.equal(profitableAudit.status, "healthy");
+assert.equal(profitableAudit.readinessStatus, "promising");
+assert.equal(profitableAudit.verifiedPositions, 60);
+assert.equal(profitableAudit.passedReadinessGates, profitableAudit.totalReadinessGates);
+assert.ok((profitableAudit.portfolioNetReturnPct ?? 0) > 0);
+assert.ok((profitableAudit.excessReturnPct ?? 0) > 0);
+assert.ok((profitableAudit.excessConfidenceInterval95?.[0] ?? 0) > 0);
+assert.ok((profitableAudit.deflatedSharpeProbability ?? 0) >= 0.95);
+assert.ok(profitableAudit.maxDrawdownPct <= 0.05);
 
 console.log("exact 5-second execution audit tests passed");
 

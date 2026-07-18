@@ -10,5 +10,6 @@ try {
   await writeFile(output, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
   console.log(`monitoring snapshot: ${snapshot.collection.totalRecords} records -> ${output}`);
 } catch (error) {
-  console.warn(`monitoring snapshot unchanged: ${error instanceof Error ? error.message : error}`);
+  console.error(`monitoring snapshot generation failed: ${error instanceof Error ? error.message : error}`);
+  process.exitCode = 1;
 }

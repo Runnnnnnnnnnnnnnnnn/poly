@@ -315,7 +315,7 @@ export async function getMonitoringSnapshot() {
           : Promise.resolve([]),
       ])
     : [null, null, [], []];
-  const exactAuditMarketIds = Array.from(new Set(shortTermPositions
+  const exactAuditMarketIds = Array.from(new Set([...shortTermPositions, ...shortTermControlPositions]
     .filter((position) => (
       position.status === "CLOSED"
       && position.closedAt
@@ -355,6 +355,7 @@ export async function getMonitoringSnapshot() {
       })
     : [];
   const settlementBasis = summarizeSettlementBasis(combinedPositions);
+  const shortTermSettlementBasis = summarizeSettlementBasis(shortTermPositions);
   const combinedConfig = parseJson<Partial<CombinedShadowConfig>>(combinedRun?.configJson ?? null);
   const horizonEvaluations = forwardStrategyRuns.flatMap(({ horizonHours, run }) => {
     const controlRun = forwardControlRuns.find((item) => item.horizonHours === horizonHours)?.run ?? null;
@@ -437,13 +438,14 @@ export async function getMonitoringSnapshot() {
         slippagePerSide: shortTermConfig.slippagePerSide ?? 0.0002,
         fundingPer24h: shortTermConfig.fundingPer24h ?? 0.0003,
         maxDrawdownPct: shortTermStrategyRun.maxDrawdownPct,
-        settlementBasisStatus: summarizeSettlementBasis(shortTermPositions).status,
+        settlementBasisStatus: shortTermSettlementBasis.status,
         strategyTrials: 1,
       })
     : null;
   const shortTermExecutionAudit = shortTermStrategyRun && shortTermConfig
     ? evaluateExactExecutionAudit({
         positions: shortTermPositions,
+        controlPositions: shortTermControlPositions,
         ticks: shortTermRealtimeTicks,
         resolutions: shortTermResolutions.map((resolution) => ({
           marketId: resolution.id,
@@ -454,6 +456,9 @@ export async function getMonitoringSnapshot() {
         takerFeePerSide: shortTermConfig.takerFeePerSide ?? 0.00045,
         slippagePerSide: shortTermConfig.slippagePerSide ?? 0.0002,
         fundingPer24h: shortTermConfig.fundingPer24h ?? 0.0003,
+        initialEquity: shortTermStrategyRun.initialEquity,
+        settlementBasisStatus: shortTermSettlementBasis.status,
+        strategyTrials: 1,
       })
     : null;
   const latestPaperMetrics = parseJson<Record<string, number | null>>(latestCompletedPaper?.metricsJson ?? null);
@@ -474,7 +479,8 @@ export async function getMonitoringSnapshot() {
   const ageMs = newestDataAt ? now.getTime() - newestDataAt.getTime() : Number.POSITIVE_INFINITY;
   const status = ageMs <= freshnessMs ? "live" : ageMs <= 60 * 60 * 1_000 ? "delayed" : "offline";
   const combinedEdgeConfirmed = shortTermEvaluation?.status === "promising"
-    && shortTermExecutionAudit?.status === "healthy";
+    && shortTermExecutionAudit?.status === "healthy"
+    && shortTermExecutionAudit.readinessStatus === "promising";
   const runningPaperReturnPct = latestRunningPaper && latestRunningEquity
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
@@ -605,7 +611,9 @@ export async function getMonitoringSnapshot() {
       modelVersion: horizonEvaluations.length ? "Forward Experiment v2 2026-07-18 / no backfill" : combinedConfig?.modelVersion ?? null,
       forwardEvaluation,
       shortTermDirection: {
-        status: shortTermEvaluation?.status ?? (shortTermStrategyRun?.status === "running" ? "collecting" : "not_started"),
+        status: shortTermExecutionAudit?.readinessStatus
+          ?? shortTermEvaluation?.status
+          ?? (shortTermStrategyRun?.status === "running" ? "collecting" : "not_started"),
         running: shortTermStrategyRun?.status === "running" && !shortTermStrategyRun.emergencyStopped,
         startedAt: shortTermStrategyRun?.startedAt.toISOString() ?? null,
         updatedAt: shortTermSnapshot?.capturedAt.toISOString() ?? null,
@@ -613,12 +621,17 @@ export async function getMonitoringSnapshot() {
         controlTrades: shortTermEvaluation?.controlTrades ?? 0,
         minimumTrades: shortTermEvaluation?.minimumTrades ?? 50,
         progressPct: shortTermEvaluation?.progressPct ?? 0,
-        netReturnPct: shortTermEvaluation?.netReturnPct ?? null,
-        excessReturnPct: shortTermEvaluation?.excessReturnPct ?? null,
-        confidenceLowerPct: shortTermEvaluation?.excessConfidenceInterval95?.[0] ?? null,
-        maxDrawdownPct: shortTermEvaluation?.maxDrawdownPct ?? shortTermStrategyRun?.maxDrawdownPct ?? null,
-        passedGates: shortTermEvaluation?.passedGates ?? 0,
-        totalGates: shortTermEvaluation?.totalGates ?? 8,
+        netReturnPct: shortTermExecutionAudit?.portfolioNetReturnPct ?? shortTermEvaluation?.netReturnPct ?? null,
+        excessReturnPct: shortTermExecutionAudit?.excessReturnPct ?? shortTermEvaluation?.excessReturnPct ?? null,
+        confidenceLowerPct: shortTermExecutionAudit?.excessConfidenceInterval95?.[0]
+          ?? shortTermEvaluation?.excessConfidenceInterval95?.[0]
+          ?? null,
+        maxDrawdownPct: shortTermExecutionAudit?.maxDrawdownPct
+          ?? shortTermEvaluation?.maxDrawdownPct
+          ?? shortTermStrategyRun?.maxDrawdownPct
+          ?? null,
+        passedGates: shortTermExecutionAudit?.passedReadinessGates ?? shortTermEvaluation?.passedGates ?? 0,
+        totalGates: shortTermExecutionAudit?.totalReadinessGates ?? shortTermEvaluation?.totalGates ?? 9,
         openPositions: shortTermPositions.filter((position) => position.status === "OPEN").length,
         scannedMarkets: shortTermDecision?.scannedMarkets ?? 0,
         fifteenMinuteMarkets: shortTermDecision?.structuredMarkets ?? 0,
