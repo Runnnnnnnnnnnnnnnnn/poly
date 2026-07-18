@@ -122,6 +122,7 @@ def import_short_term_runs(args):
             skipped += 1
             continue
         methodology = report["methodology"]
+        reproducibility = report.get("reproducibility", {})
         params = {
             "market_duration": methodology["marketDuration"],
             "lookback_hours": methodology["period"]["lookbackHours"],
@@ -129,7 +130,14 @@ def import_short_term_runs(args):
             "position_pct": methodology["positionPct"],
             "maximum_concurrent_positions": methodology["maximumConcurrentPositions"],
             "strategy_trials": methodology["impliedRule"]["strategyTrials"],
+            "run_id": reproducibility.get("runId"),
+            "code_revision": reproducibility.get("codeRevision"),
+            "script_sha256": reproducibility.get("scriptSha256"),
+            "specification_sha256": reproducibility.get("specificationSha256"),
+            "dataset_sha256": reproducibility.get("datasetSha256"),
+            "observations_csv_sha256": reproducibility.get("observationsCsvSha256"),
         }
+        params = {key: value for key, value in params.items() if value is not None}
         metrics = {"complete_markets": float(report["coverage"]["completeMarkets"])}
         for candidate in ("baseline", "implied", "leadLag", "crossSectional"):
             result = report["holdout"][candidate]
@@ -152,6 +160,8 @@ def import_short_term_runs(args):
             run_name=f"15m-{generated_at}",
             tags={
                 "polymarket.short_term_generated_at": generated_at,
+                "polymarket.short_term_run_id": reproducibility.get("runId", generated_at),
+                "polymarket.dataset_sha256": reproducibility.get("datasetSha256", "unavailable"),
                 "quality_status": report["screening"]["baseline"]["status"],
                 "source": "polymarket-watch-15m",
             },
