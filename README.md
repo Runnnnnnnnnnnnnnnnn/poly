@@ -100,7 +100,7 @@ Runnnnnnnnnnnnnnnnn/poly
 
 GitHub Pages is a static host and cannot run Next.js route handlers at runtime. This app currently uses server route handlers and server-side adapters so it can fetch live data safely without client-side direct API calls.
 
-For GitHub Pages, `npm run build:pages` generates a static UI snapshot in `out/`. The macOS service publishes its verified tunnel URL to the repository's `live` branch, and the Pages UI discovers it automatically. A named Cloudflare Tunnel can be enabled with `CLOUDFLARED_TUNNEL_TOKEN` and `CLOUDFLARED_PUBLIC_URL`; without them, a checked Quick Tunnel is used and its rotating URL is republished automatically.
+For GitHub Pages, `npm run build:pages` generates a static UI snapshot in `out/`. The macOS service publishes its verified tunnel URL and a recent public dashboard snapshot to the repository's `live` branch. A `live` branch update redeploys those registry files onto the same GitHub Pages origin, so the UI does not depend on GitHub Raw's mutable-branch cache. During a new Quick Tunnel's DNS propagation, the recent live snapshot is shown instead of falling back immediately to an old build-time value. Service updates preserve a healthy tunnel unless tunnel code or configuration changed. A named Cloudflare Tunnel can be enabled with `CLOUDFLARED_TUNNEL_TOKEN` and `CLOUDFLARED_PUBLIC_URL`; without them, a checked Quick Tunnel is used and its rotating URL is republished automatically.
 
 ## Compliance Notes
 

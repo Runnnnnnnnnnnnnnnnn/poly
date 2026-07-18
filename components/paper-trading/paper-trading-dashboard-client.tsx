@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { discoverLiveApiBase, fetchLocalApi, getLocalApiToken, isSnapshotMode } from "@/src/lib/localApiClient";
+import { discoverLiveApiBase, fetchLiveDashboardSnapshot, fetchLocalApi, getLocalApiToken, isSnapshotMode } from "@/src/lib/localApiClient";
 
 type RunMetrics = {
   totalReturnPct?: number;
@@ -703,14 +703,25 @@ export function PaperTradingDashboardClient() {
     } catch (error) {
       let usingFallback = false;
       if (process.env.NEXT_PUBLIC_STATIC_EXPORT === "1") {
-        const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-        const fallback = await fetch(`${base}/monitoring-snapshot.json`, { cache: "no-store" }).catch(() => null);
-        if (fallback?.ok) {
-          setMonitoring(await fallback.json());
+        const liveFallback = await fetchLiveDashboardSnapshot<PublicDashboardResponse>().catch(() => null);
+        if (liveFallback?.monitoring) {
+          setRuns(liveFallback.runs ?? []);
+          setBacktests(liveFallback.backtests ?? []);
+          setMonitoring(liveFallback.monitoring);
           setSnapshot(true);
           setReadOnly(true);
-          setUpdatedAt(new Date().toISOString());
+          setUpdatedAt(liveFallback.generatedAt);
           usingFallback = true;
+        } else {
+          const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+          const fallback = await fetch(`${base}/monitoring-snapshot.json`, { cache: "no-store" }).catch(() => null);
+          if (fallback?.ok) {
+            setMonitoring(await fallback.json());
+            setSnapshot(true);
+            setReadOnly(true);
+            setUpdatedAt(new Date().toISOString());
+            usingFallback = true;
+          }
         }
       }
       setMessage(usingFallback

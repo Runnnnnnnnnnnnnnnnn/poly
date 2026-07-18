@@ -50,8 +50,15 @@ const cloudflared = [
 ].filter(Boolean).find((candidate) => existsSync(candidate));
 
 if (cloudflared) {
-  const tunnelCommand = `set -a; source ${shellQuote(resolve(deployedRoot, ".env"))}; set +a; cd ${shellQuote(homedir())}; APP_PORT=3001 CLOUDFLARED_BIN=${shellQuote(cloudflared)} ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-tunnel.mjs"))}`;
-  installAgent(tunnelLabel, makePlist(tunnelLabel, tunnelCommand, "/tmp/polymarket-watch-tunnel.log"));
+  const tunnelRevision = fileFingerprint([
+    "scripts/run-tunnel.mjs",
+    "scripts/publish-live-connection.mjs",
+    "scripts/public-health.mjs",
+    "scripts/tunnel-config.mjs",
+    "scripts/tunnel-health-policy.mjs",
+  ]);
+  const tunnelCommand = `set -a; source ${shellQuote(resolve(deployedRoot, ".env"))}; set +a; cd ${shellQuote(homedir())}; APP_PORT=3001 POLYMARKET_TUNNEL_REVISION=${shellQuote(tunnelRevision)} CLOUDFLARED_BIN=${shellQuote(cloudflared)} ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-tunnel.mjs"))}`;
+  installAgent(tunnelLabel, makePlist(tunnelLabel, tunnelCommand, "/tmp/polymarket-watch-tunnel.log"), { preserveIfUnchanged: true });
 } else {
   console.warn("cloudflared was not found; the local runtime is installed without public tunneling");
 }
@@ -75,9 +82,14 @@ function makePlist(label, serviceCommand, logPath) {
 `;
 }
 
-function installAgent(label, plist) {
+function installAgent(label, plist, options = {}) {
   const plistPath = resolve(agentsDir, `${label}.plist`);
   const service = `${domain}/${label}`;
+  const unchanged = existsSync(plistPath) && readFileSync(plistPath, "utf8") === plist;
+  if (options.preserveIfUnchanged && unchanged && agentIsLoaded(service)) {
+    console.log(`kept ${label} running`);
+    return;
+  }
   writeFileSync(plistPath, plist, "utf8");
   try { execFileSync("launchctl", ["bootout", service], { stdio: "ignore" }); } catch {}
   execFileSync("/bin/sleep", ["1"]);
@@ -93,6 +105,15 @@ function installAgent(label, plist) {
     }
   }
   throw lastError;
+}
+
+function agentIsLoaded(service) {
+  try {
+    execFileSync("launchctl", ["print", service], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function buildRuntime() {
@@ -184,6 +205,12 @@ function dependencyFingerprint(directory) {
   } catch {
     return `unreadable:${directory}`;
   }
+}
+
+function fileFingerprint(paths) {
+  const hash = createHash("sha256");
+  for (const path of paths) hash.update(readFileSync(resolve(root, path)));
+  return hash.digest("hex").slice(0, 16);
 }
 
 function shellQuote(value) {

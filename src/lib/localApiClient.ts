@@ -4,8 +4,11 @@ const LOCAL_API_STORAGE_KEY = "jmw.localApiBase";
 const LOCAL_API_TOKEN_STORAGE_KEY = "jmw.localApiToken";
 const VIEWER_API_TOKEN_STORAGE_KEY = "jmw.viewerApiToken";
 const DEFAULT_STATIC_LOCAL_API_BASE = process.env.NEXT_PUBLIC_LOCAL_API_BASE ?? "";
+const STATIC_BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const LIVE_CONNECTION_URL = process.env.NEXT_PUBLIC_LIVE_CONNECTION_URL
-  ?? "https://raw.githubusercontent.com/Runnnnnnnnnnnnnnnnn/poly/refs/heads/live/connection.json";
+  ?? `${STATIC_BASE_PATH}/live-connection.json`;
+const LIVE_DASHBOARD_URL = process.env.NEXT_PUBLIC_LIVE_DASHBOARD_URL
+  ?? `${STATIC_BASE_PATH}/live-dashboard.json`;
 const LIVE_CONNECTION_REFRESH_MS = 120_000;
 
 let liveConnectionPromise: Promise<string> | null = null;
@@ -78,6 +81,16 @@ export async function discoverLiveApiBase() {
     });
 
   return liveConnectionPromise;
+}
+
+export async function fetchLiveDashboardSnapshot<T>() {
+  const separator = LIVE_DASHBOARD_URL.includes("?") ? "&" : "?";
+  const response = await fetch(`${LIVE_DASHBOARD_URL}${separator}v=${Date.now()}`, {
+    cache: "no-store",
+    headers: { accept: "application/vnd.github.raw+json" },
+  });
+  if (!response.ok) throw new Error(`live dashboard registry returned ${response.status}`);
+  return response.json() as Promise<T>;
 }
 
 export function initializeApiAccessFromUrl() {

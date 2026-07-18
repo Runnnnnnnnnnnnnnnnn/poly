@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - live
   workflow_dispatch:
 
 permissions:
@@ -33,13 +34,31 @@ jobs:
       # そのバックエンド経由でAIが動く（鍵は公開サイトに出ない）。未設定なら従来どおり案内表示。
       NEXT_PUBLIC_AI_API_BASE: ${{ vars.AI_API_BASE }}
     steps:
-      - name: Checkout
+      - name: Checkout application
         uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Checkout live connection registry
+        uses: actions/checkout@v6
+        with:
+          ref: live
+          path: .live-registry
+          sparse-checkout: |
+            connection.json
+            dashboard.json
+          sparse-checkout-cone-mode: false
+
+      - name: Stage live connection registry
+        run: |
+          cp .live-registry/connection.json public/live-connection.json
+          cp .live-registry/dashboard.json public/live-dashboard.json
+          rm -rf .live-registry
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
 
       - name: Install dependencies

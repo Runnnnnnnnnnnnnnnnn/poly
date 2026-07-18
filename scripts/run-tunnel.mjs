@@ -97,7 +97,8 @@ async function publishWhenReady() {
     await verifyEndpoints();
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(stateFile, `${latestUrl}\n`, "utf8");
-    publishLiveConnection(latestUrl);
+    const dashboardSnapshot = await fetchLocalDashboardSnapshot();
+    publishLiveConnection(latestUrl, dashboardSnapshot);
     healthFailures = 0;
     publishedAt = new Date().toISOString();
     lastCheckedAt = publishedAt;
@@ -142,6 +143,16 @@ async function verifyEndpoints() {
     checkPublicHealth(latestUrl),
   ]);
   if (!localResponse.ok) throw new Error(`local health check returned ${localResponse.status}`);
+}
+
+async function fetchLocalDashboardSnapshot() {
+  const response = await fetch(`http://127.0.0.1:${port}/api/public-dashboard`, {
+    cache: "no-store",
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) throw new Error(`local dashboard snapshot returned ${response.status}`);
+  return response.json();
 }
 
 function handleHealthFailure(error, source) {
