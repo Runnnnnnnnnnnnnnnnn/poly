@@ -6,6 +6,7 @@ import { collectHyperliquidSnapshots, fetchHyperliquidMarketStates } from "../sr
 import { prisma } from "../src/lib/server/prisma";
 
 const collectIntervalMs = Math.max(60_000, Number(process.env.COLLECT_INTERVAL_MS ?? 60_000));
+const outcomeRefreshIntervalMs = Math.max(60_000, Number(process.env.OUTCOME_REFRESH_INTERVAL_MS ?? 60_000));
 const backtestIntervalMs = Math.max(60 * 60 * 1_000, Number(process.env.BACKTEST_INTERVAL_MS ?? 6 * 60 * 60 * 1_000));
 let collecting = false;
 let backtesting = false;
@@ -44,7 +45,7 @@ async function collectCycle() {
     } else {
       console.error(hyperliquid.reason);
     }
-    if (Date.now() - lastOutcomeRefreshAt >= 5 * 60 * 1_000) {
+    if (Date.now() - lastOutcomeRefreshAt >= outcomeRefreshIntervalMs) {
       lastOutcomeRefreshAt = Date.now();
       try {
         const outcomes = await refreshPredictionMarketOutcomes({ limit: 80 });
@@ -98,4 +99,4 @@ await collectCycle();
 void backtestCycle();
 setInterval(() => void collectCycle(), collectIntervalMs);
 setInterval(() => void backtestCycle(), backtestIntervalMs);
-console.log(`monitoring worker: collection ${collectIntervalMs}ms / backtest ${backtestIntervalMs}ms`);
+console.log(`monitoring worker: collection ${collectIntervalMs}ms / outcomes ${outcomeRefreshIntervalMs}ms / backtest ${backtestIntervalMs}ms`);

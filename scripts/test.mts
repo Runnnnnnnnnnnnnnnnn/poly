@@ -9,6 +9,7 @@ import {
   parseHyperliquidOrderEvidence,
 } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
+import { calculateShortTermImpliedSignal } from "../src/lib/combined-trading/short-term-implied-signal";
 import { authorizeApiRequest, requiredApiAccess, resolveViewerAccessToken } from "../src/lib/server/api-access";
 import { selectCombinedSignalScan, type CombinedSignalScan } from "../src/lib/combined-trading/live-signal";
 import { applyCombinedSignalRule, calculateCombinedClose, selectCombinedSignalCandidate } from "../src/lib/combined-trading/service";
@@ -787,6 +788,37 @@ assert.equal(isShortTermDirectionFamilyKey("poly-updown-forward-control-v1-m15")
 assert.equal(isShortTermDirectionFamilyKey("polymarket-only-forward-control-v2-h24"), false);
 
 console.log("combined shadow signal-rule tests passed");
+
+const freshBinarySignal = calculateShortTermImpliedSignal({
+  marketProbability: 0.8,
+  thresholdReferencePrice: 100,
+  currentReferencePrice: 100,
+  currentHyperliquidPrice: 100.1,
+  volatility24h: 0.02,
+  remainingHours: 0.2,
+});
+assert.equal(freshBinarySignal?.side, "LONG");
+assert.ok((freshBinarySignal?.expectedReturnPct ?? 0) > 0);
+const alreadyMovedBinarySignal = calculateShortTermImpliedSignal({
+  marketProbability: 0.8,
+  thresholdReferencePrice: 100,
+  currentReferencePrice: 102,
+  currentHyperliquidPrice: 102.1,
+  volatility24h: 0.02,
+  remainingHours: 0.2,
+});
+assert.equal(alreadyMovedBinarySignal?.side, "SHORT");
+assert.ok((alreadyMovedBinarySignal?.expectedReturnPct ?? 0) < 0);
+assert.equal(calculateShortTermImpliedSignal({
+  marketProbability: 1,
+  thresholdReferencePrice: 100,
+  currentReferencePrice: 100,
+  currentHyperliquidPrice: 100,
+  volatility24h: 0.02,
+  remainingHours: 0.2,
+}), null);
+
+console.log("short-term implied signal tests passed");
 
 assert.ok(Math.abs((calculatePriceBasisPct(100.1, 100) ?? 0) - 0.001) < 1e-12);
 assert.equal(calculatePriceBasisPct(0, 100), null);
