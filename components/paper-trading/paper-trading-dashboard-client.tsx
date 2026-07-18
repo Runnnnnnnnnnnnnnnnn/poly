@@ -114,6 +114,23 @@ type ResearchDiagnosisSlice = {
   netReturnPct: number;
 };
 
+type RealtimeReplayMetric = {
+  independentWindows: number;
+  trades: number;
+  correctTrades: number;
+  directionAccuracy: number | null;
+  equalWeightWinRate: number | null;
+  equalWeightAverageReturnPct: number | null;
+  equalWeightNetReturnPct: number;
+  equalWeightConfidenceInterval95: [number, number] | null;
+  deflatedSharpeProbability: number | null;
+  hyperliquidAverageReturnPct: number | null;
+  hyperliquidNetReturnPct: number;
+  polymarketAverageReturnPct: number | null;
+  polymarketNetReturnPct: number;
+  maximumDrawdownPct: number;
+};
+
 type MonitoringSnapshot = {
   status: "live" | "delayed" | "offline";
   generatedAt: string;
@@ -510,6 +527,50 @@ type MonitoringSnapshot = {
           totalFolds: number;
           passedGates: number;
           totalGates: number;
+        }>;
+      } | null;
+      realtimeResearch?: {
+        generatedAt: string;
+        status: "insufficient" | "promising" | "rejected";
+        promotionAllowed: false;
+        completeMarkets: number;
+        replayableMarkets: number;
+        independentWindows: number;
+        minimumHoldoutWindows: number;
+        selectedTrades: number;
+        strategyTrials: number;
+        calibrationPositiveVariants: number;
+        holdoutPositiveVariants: number;
+        selectedCandidate: {
+          id: string;
+          strategy: "market_direction" | "trend_confirmed" | "fair_value";
+          entryOffsetSeconds: number;
+          calibration: RealtimeReplayMetric;
+          holdout: RealtimeReplayMetric;
+          profitableFolds: number;
+          totalFolds: number;
+        } | null;
+        reproducibility: {
+          runId: string;
+          codeRevision: string | null;
+          specificationSha256: string;
+          datasetSha256: string;
+        };
+        history: Array<{
+          runId: string;
+          generatedAt: string;
+          status: "insufficient" | "promising" | "rejected";
+          selectedCandidateId: string | null;
+          completeMarkets: number;
+          replayableMarkets: number;
+          independentWindows: number;
+          holdoutWindows: number;
+          holdoutTrades: number;
+          holdoutEqualWeightNetReturnPct: number;
+          holdoutHyperliquidNetReturnPct: number;
+          holdoutPolymarketNetReturnPct: number;
+          profitableFolds: number;
+          totalFolds: number;
         }>;
       } | null;
       realTradingEnabled: false;
@@ -1899,6 +1960,7 @@ const fallbackPipelines = [
   { id: "realtime-market-data", label: "秒単位の板収集", cadence: "5秒ごと", status: "waiting" as const },
   { id: "backtest", label: "モデル再検証", cadence: "6時間ごと", status: "waiting" as const },
   { id: "short-term-backtest", label: "15分モデル過去検証", cadence: "6時間ごと", status: "waiting" as const },
+  { id: "realtime-short-term-backtest", label: "5秒板リプレイ", cadence: "30分ごと", status: "waiting" as const },
   { id: "forward-experiment", label: "固定フォワード検証", cadence: "5分ごと", status: "waiting" as const },
   { id: "short-term-direction", label: "15分モデル検証", cadence: "1分ごと", status: "waiting" as const },
 ];
@@ -1939,6 +2001,7 @@ function BacktestResultsPanel({
   const isRejectedAudit = selected?.result.source === "closest-rejected-candidate";
   const backtestPipeline = monitoring?.pipelines.find((pipeline) => pipeline.id === "backtest");
   const research = monitoring?.combinedShadow.shortTermDirection?.research ?? null;
+  const realtimeResearch = monitoring?.combinedShadow.shortTermDirection?.realtimeResearch ?? null;
   const publicBase = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
   return (
@@ -1953,8 +2016,9 @@ function BacktestResultsPanel({
       </div>
 
       {research ? <ShortTermHistoricalBacktest research={research} downloadsAvailable={downloadsAvailable} /> : null}
+      {realtimeResearch ? <RealtimeShortTermBacktest research={realtimeResearch} downloadsAvailable={downloadsAvailable} /> : null}
 
-      <details className={research ? "border-t" : ""} open={requestedId || !research ? true : undefined}>
+      <details className={research || realtimeResearch ? "border-t" : ""} open={requestedId || (!research && !realtimeResearch) ? true : undefined}>
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
           <span className="flex items-center gap-2"><Layers3 className="h-4 w-4" />6・12・24・48時間モデル</span>
           <span className="text-[10px] font-semibold text-slate-500">比較研究と全実行履歴</span>
@@ -2131,6 +2195,98 @@ function ShortTermHistoricalBacktest({
       ) : null}
     </div>
   );
+}
+
+function RealtimeShortTermBacktest({
+  research,
+  downloadsAvailable,
+}: {
+  research: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["shortTermDirection"]>["realtimeResearch"]>;
+  downloadsAvailable: boolean;
+}) {
+  const selected = research.selectedCandidate;
+  const holdout = selected?.holdout ?? null;
+  const calibration = selected?.calibration ?? null;
+  const sampleReady = (holdout?.independentWindows ?? 0) >= research.minimumHoldoutWindows;
+  const promising = research.status === "promising" && sampleReady;
+  const tone: Tone = promising ? "watch" : "bad";
+  const Icon = promising ? Clock3 : TrendingDown;
+
+  return (
+    <div className="border-t" aria-label="5秒板を使った実約定リプレイ">
+      <div className={`grid gap-4 border-b p-5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-6 ${toneSoftClass(tone)}`}>
+        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-md ${toneIconClass(tone)}`}><Icon className="h-6 w-6" /></span>
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold text-slate-500">5秒板の実約定リプレイ</p>
+          <p className="mt-1 text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{promising ? "次期検証候補" : "採用不可"}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-600">
+            {selected
+              ? `${realtimeStrategyLabel(selected.strategy)}・開始${selected.entryOffsetSeconds}秒後 / 50枠の前向き検証とは別管理`
+              : "再生可能な売買を収集中 / 50枠の前向き検証とは別管理"}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-left text-[11px] font-semibold leading-5 text-slate-600 sm:justify-end sm:text-right">
+          <div>
+            <p>{formatCompact(research.replayableMarkets)}市場・独立{research.independentWindows}枠</p>
+            <p>{formatJapanDateTime(research.generatedAt)} 実行</p>
+          </div>
+          {downloadsAvailable ? (
+            <div className="flex gap-1">
+              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/realtime-short-term-backtests/latest")} title="実板リプレイの最新レポート" aria-label="実板リプレイの最新レポート"><FileJson className="h-4 w-4" /></a>
+              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/realtime-short-term-backtests/latest?format=trades")} title="実板リプレイの全取引" aria-label="実板リプレイの全取引"><Download className="h-4 w-4" /></a>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
+        <BacktestMetric label="独立データ" value={`${research.independentWindows}枠`} tone={research.independentWindows >= research.minimumHoldoutWindows ? "good" : "watch"} />
+        <BacktestMetric label="学習側の損益" value={calibration ? formatSignedPct(calibration.equalWeightNetReturnPct) : "未判定"} tone={signedMetricTone(calibration?.equalWeightNetReturnPct, Boolean(calibration))} />
+        <BacktestMetric label="未使用データ" value={`${holdout?.independentWindows ?? 0} / ${research.minimumHoldoutWindows}`} tone={sampleReady ? "good" : "bad"} />
+        <BacktestMetric label="未使用側の損益" value={holdout?.trades ? formatSignedPct(holdout.equalWeightNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.equalWeightNetReturnPct, true) : "watch"} />
+        <BacktestMetric label="学習側でプラス" value={`${research.calibrationPositiveVariants} / ${research.strategyTrials}`} tone={research.calibrationPositiveVariants > 0 ? "watch" : "bad"} />
+      </div>
+
+      <div className="grid grid-cols-2 divide-x border-t bg-white sm:grid-cols-4">
+        <BacktestMetric label="Polymarket損益" value={holdout?.trades ? formatSignedPct(holdout.polymarketNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.polymarketNetReturnPct, true) : "neutral"} />
+        <BacktestMetric label="Hyperliquid損益" value={holdout?.trades ? formatSignedPct(holdout.hyperliquidNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.hyperliquidNetReturnPct, true) : "neutral"} />
+        <BacktestMetric label="方向正解率" value={holdout?.directionAccuracy === null || holdout?.directionAccuracy === undefined ? "未判定" : formatPct(holdout.directionAccuracy)} tone="neutral" />
+        <BacktestMetric label="順次プラス" value={selected ? `${selected.profitableFolds} / ${selected.totalFolds}` : "未判定"} tone={selected && selected.profitableFolds >= 3 ? "good" : "bad"} />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
+        <span>手数料・スプレッド・滑り・資金調達を控除済み</span>
+        <span className="font-bold text-rose-700">{sampleReady ? "新しい前向き検証が必要" : `判定まであと${Math.max(0, research.minimumHoldoutWindows - (holdout?.independentWindows ?? 0))}枠`}</span>
+      </div>
+
+      {research.history.length ? (
+        <details className="border-t">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
+            <span className="flex items-center gap-2"><History className="h-4 w-4" />5秒板リプレイの実行履歴</span>
+            <span className="text-[10px] font-semibold text-slate-500">{research.history.length}回分</span>
+          </summary>
+          <div className="divide-y border-t">
+            {research.history.slice(0, 12).map((item) => (
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 text-xs sm:px-5" key={item.runId}>
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-800">{formatJapanDateTime(item.generatedAt)}</p>
+                  <p className="truncate text-[10px] font-semibold text-slate-500">独立{item.independentWindows}枠・未使用{item.holdoutWindows}枠・{item.holdoutTrades}取引</p>
+                </div>
+                <span className={`font-bold ${item.holdoutEqualWeightNetReturnPct >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.holdoutEqualWeightNetReturnPct)}</span>
+                <span className={`rounded-sm px-2 py-1 text-[10px] font-bold ${tonePillClass(item.status === "promising" ? "watch" : "bad")}`}>{item.status === "promising" ? "探索通過" : item.status === "rejected" ? "未達" : "不足"}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function realtimeStrategyLabel(strategy: "market_direction" | "trend_confirmed" | "fair_value") {
+  if (strategy === "trend_confirmed") return "市場方向 + 値動き一致";
+  if (strategy === "fair_value") return "理論確率との差";
+  return "Polymarketの市場方向";
 }
 
 function ShortTermBacktestDiagnosis({

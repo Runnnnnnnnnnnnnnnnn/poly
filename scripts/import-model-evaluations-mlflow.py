@@ -20,6 +20,11 @@ def parse_args():
         default=os.path.expanduser("~/.polymarket-watch/artifacts/short-term-backtests"),
     )
     parser.add_argument("--short-term-experiment", default="polymarket-hyperliquid-15m-backtests")
+    parser.add_argument(
+        "--realtime-short-term-artifact-dir",
+        default=os.path.expanduser("~/.polymarket-watch/artifacts/realtime-short-term-backtests"),
+    )
+    parser.add_argument("--realtime-short-term-experiment", default="polymarket-hyperliquid-5s-replays")
     parser.add_argument("--tracking-uri", default=os.environ.get("MLFLOW_TRACKING_URI", ""))
     parser.add_argument(
         "--mlflow-artifact-root",
@@ -102,9 +107,11 @@ def main():
         imported += 1
 
     short_term = import_short_term_runs(args)
+    realtime_short_term = import_realtime_short_term_runs(args)
     print(json.dumps({
         "canonical": {"imported": imported, "skipped": skipped, "artifactDir": str(artifact_dir)},
         "shortTerm": short_term,
+        "realtimeShortTerm": realtime_short_term,
     }))
 
 
@@ -193,6 +200,83 @@ def import_short_term_runs(args):
             mlflow.log_params(params)
             mlflow.log_metrics(metrics)
             mlflow.log_artifacts(str(report_path.parent), artifact_path="short-term-backtest-report")
+        imported += 1
+    return {"imported": imported, "skipped": skipped, "artifactDir": str(artifact_dir)}
+
+
+def import_realtime_short_term_runs(args):
+    artifact_dir = Path(args.realtime_short_term_artifact_dir).expanduser().resolve()
+    experiment = ensure_experiment(
+        args.realtime_short_term_experiment,
+        Path(args.mlflow_artifact_root).expanduser().resolve() / "realtime-short-term",
+    )
+    client = MlflowClient()
+    imported = 0
+    skipped = 0
+    for report_path in sorted(artifact_dir.glob("*/report.json")):
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        reproducibility = report["reproducibility"]
+        source_run_id = reproducibility["runId"]
+        existing = client.search_runs(
+            [experiment.experiment_id],
+            filter_string=f'tags."polymarket.realtime_replay_run_id" = "{source_run_id}"',
+            max_results=1,
+        )
+        if existing:
+            skipped += 1
+            continue
+        selected_id = report["selection"].get("selectedExploratoryCandidateId")
+        selected = next((item for item in report["variants"] if item["id"] == selected_id), None)
+        params = {
+            "purpose": report["methodology"]["status"],
+            "selected_candidate": selected_id or "none",
+            "strategy_trials": report["selection"]["strategyTrials"],
+            "minimum_holdout_windows": report["specification"]["minimumHoldoutWindows"],
+            "code_revision": reproducibility.get("codeRevision") or "unknown",
+            "dataset_sha256": reproducibility["datasetSha256"],
+            "specification_sha256": reproducibility["specificationSha256"],
+            "trades_csv_sha256": reproducibility.get("tradesCsvSha256") or "unavailable",
+        }
+        coverage = report["coverage"]
+        metrics = {
+            "complete_markets": coverage["completeMarkets"],
+            "replayable_markets": coverage["replayableMarkets"],
+            "independent_windows": coverage["independentWindows"],
+            "selected_trades": coverage["selectedTrades"],
+        }
+        if selected:
+            for split in ("calibration", "holdout"):
+                values = selected[split]
+                candidates = {
+                    "independent_windows": values["independentWindows"],
+                    "trades": values["trades"],
+                    "direction_accuracy": values["directionAccuracy"],
+                    "equal_weight_net_return_pct": values["equalWeightNetReturnPct"],
+                    "equal_weight_confidence_lower_pct": values["equalWeightConfidenceInterval95"][0]
+                    if values["equalWeightConfidenceInterval95"] else None,
+                    "hyperliquid_net_return_pct": values["hyperliquidNetReturnPct"],
+                    "polymarket_net_return_pct": values["polymarketNetReturnPct"],
+                    "maximum_drawdown_pct": values["maximumDrawdownPct"],
+                }
+                metrics.update({
+                    f"{split}_{key}": float(value)
+                    for key, value in candidates.items()
+                    if value is not None
+                })
+            metrics["profitable_walk_forward_folds"] = float(selected["walkForward"]["profitableFolds"])
+        with mlflow.start_run(
+            run_name=f"5s-replay-{source_run_id}",
+            tags={
+                "polymarket.realtime_replay_run_id": source_run_id,
+                "polymarket.dataset_sha256": reproducibility["datasetSha256"],
+                "quality_status": report["selection"]["status"],
+                "promotion_allowed": "false",
+                "source": "polymarket-watch-5s-replay",
+            },
+        ):
+            mlflow.log_params(params)
+            mlflow.log_metrics({key: float(value) for key, value in metrics.items()})
+            mlflow.log_artifacts(str(report_path.parent), artifact_path="realtime-short-term-backtest-report")
         imported += 1
     return {"imported": imported, "skipped": skipped, "artifactDir": str(artifact_dir)}
 

@@ -59,6 +59,12 @@ import { toHorizonStudy } from "../src/lib/model-evaluation/service";
 import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/probability-ladder";
 import { parseTerminalPriceCondition, probabilityForCondition, summarizeFundingAt } from "../src/lib/model-evaluation/price-structure";
 import { selectProspectiveExecutionTriplet } from "../src/lib/model-evaluation/prospective-synchronized";
+import {
+  calculateDigitalFairProbability,
+  calculateHyperliquidReplayReturn,
+  calculatePolymarketReplayReturn,
+  selectCausalReferenceBoundary,
+} from "../src/lib/model-evaluation/realtime-short-term-replay";
 import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 import { annualizeRealizedVolatility } from "../src/lib/model-evaluation/volatility";
@@ -546,6 +552,45 @@ assert.deepEqual(exactAudit.attribution.bySide.map((item) => ({ side: item.side,
 ]);
 assert.ok(Math.abs(exactAudit.attribution.byAsset.reduce((total, item) => total + item.returnContributionPct, 0) - (exactAudit.portfolioNetReturnPct ?? 0)) < 1e-12);
 assert.equal(calculatePolymarketTakerFee(100, 0.5), 1.75);
+const atTheMoneyFairProbability = calculateDigitalFairProbability({
+  thresholdPrice: 100,
+  currentPrice: 100,
+  volatility24h: 0.02,
+  remainingHours: 0.2,
+});
+assert.equal(atTheMoneyFairProbability < 0.5 && atTheMoneyFairProbability > 0.49, true);
+const winningTokenReplay = calculatePolymarketReplayReturn({ price: 0.5, correct: true });
+const losingTokenReplay = calculatePolymarketReplayReturn({ price: 0.5, correct: false });
+assert.equal((winningTokenReplay?.returnPct ?? 0) > 0, true);
+assert.equal((losingTokenReplay?.returnPct ?? 0) < -0.9, true);
+const flatHyperliquidReplay = calculateHyperliquidReplayReturn({
+  side: "LONG",
+  entryBestBid: 99.99,
+  entryBestAsk: 100.01,
+  exitBestBid: 99.99,
+  exitBestAsk: 100.01,
+  fundingRatePerHour: 0,
+  holdingHours: 0.2,
+});
+assert.equal((flatHyperliquidReplay?.returnPct ?? 0) < -0.001, true);
+const delayedBoundaryTick = {
+  capturedAt: new Date("2026-01-01T00:00:40Z"),
+  chainlinkPrice: 100,
+  chainlinkUpdatedAt: new Date("2026-01-01T00:00:01Z"),
+  hyperliquidMidPrice: 100.1,
+};
+assert.equal(selectCausalReferenceBoundary(
+  [delayedBoundaryTick],
+  new Date("2026-01-01T00:00:00Z"),
+  new Date("2026-01-01T00:00:30Z"),
+  15_000,
+), null);
+assert.equal(selectCausalReferenceBoundary(
+  [delayedBoundaryTick],
+  new Date("2026-01-01T00:00:00Z"),
+  new Date("2026-01-01T00:00:45Z"),
+  15_000,
+)?.price, 100);
 const settlementRows = [
   { marketId: "settlement-up", asset: "BTC", officialResult: 1, startPrice: 100, endPrice: 101, startErrorMs: 1_000, endErrorMs: 2_000 },
   { marketId: "settlement-down", asset: "ETH", officialResult: 0, startPrice: 200, endPrice: 199, startErrorMs: 3_000, endErrorMs: 4_000 },
@@ -1653,6 +1698,7 @@ assert.equal(requiredApiAccess("GET", "/api/public-dashboard"), "public");
 assert.equal(requiredApiAccess("GET", "/api/model-evaluations"), "public");
 assert.equal(requiredApiAccess("GET", "/api/model-evaluations/evaluation-run-1"), "public");
 assert.equal(requiredApiAccess("GET", "/api/short-term-backtests/latest"), "public");
+assert.equal(requiredApiAccess("GET", "/api/realtime-short-term-backtests/latest"), "public");
 assert.equal(requiredApiAccess("POST", "/api/model-evaluations"), "admin");
 assert.equal(requiredApiAccess("GET", "/api/markets/123"), "public");
 assert.equal(requiredApiAccess("POST", "/api/markets"), "admin");
@@ -1684,7 +1730,7 @@ assert.equal(authorizeApiRequest({
 console.log("API access-scope tests passed");
 
 const alertNow = new Date("2026-01-01T01:00:00Z");
-const healthyHeartbeats = ["polymarket", "hyperliquid", "realtime-market-data", "forward-experiment", "short-term-direction", "backtest"].map((id) => ({
+const healthyHeartbeats = ["polymarket", "hyperliquid", "realtime-market-data", "forward-experiment", "short-term-direction", "realtime-short-term-backtest", "backtest"].map((id) => ({
   id,
   status: "healthy",
   message: null,

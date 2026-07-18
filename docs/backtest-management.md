@@ -120,8 +120,8 @@ export MLFLOW_TRACKING_URI="sqlite:///$HOME/.polymarket-watch/mlflow.db"
 ~/.polymarket-watch/mlflow-venv/bin/mlflow server --host 127.0.0.1 --port 8080 --backend-store-uri "$MLFLOW_TRACKING_URI"
 ```
 
-The importer loads both the canonical 6/12/24/48-hour runs and the 15-minute strategy runs into
-separate MLflow experiments. MLflow is used for parameter comparison and artifact browsing; the
+The importer loads the canonical 6/12/24/48-hour runs, the historical 15-minute strategy runs, and
+the synchronized 5-second executable-book replays into separate MLflow experiments. MLflow is used for parameter comparison and artifact browsing; the
 dashboard remains the executive status view. This matches MLflow's official
 [experiment tracking model](https://mlflow.org/docs/latest/ml/tracking/) of runs, parameters, metrics,
 code versions, and artifacts.
@@ -139,3 +139,9 @@ runs, restarts through launchd, and writes health/import state to
 
 Use a protected remote MLflow Tracking Server instead of exposing this local port directly when the run
 comparison UI must be shared with a remote manager.
+
+For larger tick datasets, keep the dashboard on compact JSON summaries and write raw immutable ticks
+to date/asset-partitioned Parquet. Query those files with DuckDB for research, and register only hashes,
+parameters, metrics, and artifact paths in MLflow. This keeps the executive screen fast while preserving
+reproducible row-level analysis. The 5-second replay already writes immutable JSON and trade CSV artifacts;
+Parquet becomes worthwhile when repeated CSV scans or the SQLite runtime database become the bottleneck.

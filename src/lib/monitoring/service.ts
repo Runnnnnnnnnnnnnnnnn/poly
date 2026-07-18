@@ -135,12 +135,82 @@ const shortTermResearchSchema = z.object({
     }).passthrough(),
   }).optional(),
 });
+const realtimeReplayMetricSchema = z.object({
+  independentWindows: z.number(),
+  trades: z.number(),
+  correctTrades: z.number(),
+  directionAccuracy: z.number().nullable(),
+  equalWeightWinRate: z.number().nullable(),
+  equalWeightAverageReturnPct: z.number().nullable(),
+  equalWeightNetReturnPct: z.number(),
+  equalWeightConfidenceInterval95: z.tuple([z.number(), z.number()]).nullable(),
+  deflatedSharpeProbability: z.number().nullable(),
+  hyperliquidAverageReturnPct: z.number().nullable(),
+  hyperliquidNetReturnPct: z.number(),
+  polymarketAverageReturnPct: z.number().nullable(),
+  polymarketNetReturnPct: z.number(),
+  maximumDrawdownPct: z.number(),
+});
+const realtimeReplaySchema = z.object({
+  generatedAt: z.string(),
+  specification: z.object({
+    minimumHoldoutWindows: z.number(),
+    strategyTrials: z.number(),
+  }).passthrough(),
+  coverage: z.object({
+    completeMarkets: z.number(),
+    replayableMarkets: z.number(),
+    independentWindows: z.number(),
+    selectedTrades: z.number(),
+  }).passthrough(),
+  selection: z.object({
+    status: z.enum(["insufficient", "promising", "rejected"]),
+    promotionAllowed: z.literal(false),
+    reason: z.string(),
+    selectedExploratoryCandidateId: z.string().nullable(),
+    strategyTrials: z.number(),
+  }),
+  variants: z.array(z.object({
+    id: z.string(),
+    strategy: z.enum(["market_direction", "trend_confirmed", "fair_value"]),
+    entryOffsetSeconds: z.number(),
+    calibration: realtimeReplayMetricSchema,
+    holdout: realtimeReplayMetricSchema,
+    walkForward: z.object({
+      profitableFolds: z.number(),
+      totalFolds: z.number(),
+    }).passthrough(),
+  })),
+  reproducibility: z.object({
+    runId: z.string(),
+    codeRevision: z.string().nullable(),
+    specificationSha256: z.string(),
+    datasetSha256: z.string(),
+  }).passthrough(),
+});
+const realtimeReplayHistoryItemSchema = z.object({
+  runId: z.string(),
+  generatedAt: z.string(),
+  status: z.enum(["insufficient", "promising", "rejected"]),
+  selectedCandidateId: z.string().nullable(),
+  completeMarkets: z.number(),
+  replayableMarkets: z.number(),
+  independentWindows: z.number(),
+  holdoutWindows: z.number(),
+  holdoutTrades: z.number(),
+  holdoutEqualWeightNetReturnPct: z.number(),
+  holdoutHyperliquidNetReturnPct: z.number(),
+  holdoutPolymarketNetReturnPct: z.number(),
+  profitableFolds: z.number(),
+  totalFolds: z.number(),
+}).passthrough();
 
 export type MonitoringSnapshot = Awaited<ReturnType<typeof getMonitoringSnapshot>>;
 
 export async function getMonitoringSnapshot() {
   const now = new Date();
   const shortTermResearch = loadShortTermResearchSummary();
+  const realtimeShortTermResearch = loadRealtimeShortTermResearchSummary();
   const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1_000);
   const [
     polymarketAggregate,
@@ -782,6 +852,7 @@ export async function getMonitoringSnapshot() {
         executionAudit: shortTermExecutionAudit,
         settlementResolution: shortTermSettlementResolution,
         research: shortTermResearch,
+        realtimeResearch: realtimeShortTermResearch,
         realTradingEnabled: false,
       },
       settlementBasis: {
@@ -1055,6 +1126,7 @@ function pipelineStatuses(input: {
     pipeline("realtime-market-data", "秒単位の板収集", "5秒ごと", null, heartbeatMap.get("realtime-market-data"), input.now, 30_000),
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("short-term-backtest", "15分モデル過去検証", "6時間ごと", null, heartbeatMap.get("short-term-backtest"), input.now, 30 * 60 * 60 * 1_000),
+    pipeline("realtime-short-term-backtest", "5秒板リプレイ", "30分ごと", null, heartbeatMap.get("realtime-short-term-backtest"), input.now, 2 * 60 * 60 * 1_000),
     pipeline("forward-experiment", "固定フォワード検証", "5分ごと", input.combinedAt, heartbeatMap.get("forward-experiment"), input.now),
     pipeline("short-term-direction", "15分モデル検証", "1分ごと", null, heartbeatMap.get("short-term-direction"), input.now, 5 * 60 * 1_000),
   ];
@@ -1135,6 +1207,54 @@ function loadShortTermResearchHistory(root: string) {
   if (!existsSync(path)) return [];
   try {
     return z.object({ items: z.array(researchHistoryItemSchema) })
+      .parse(JSON.parse(readFileSync(path, "utf8"))).items;
+  } catch {
+    return [];
+  }
+}
+
+function loadRealtimeShortTermResearchSummary() {
+  const root = process.env.POLYMARKET_PROJECT_ROOT ?? process.cwd();
+  const path = resolve(root, "public/realtime-short-term-research.json");
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = realtimeReplaySchema.parse(JSON.parse(readFileSync(path, "utf8")));
+    const selected = parsed.variants.find((variant) => variant.id === parsed.selection.selectedExploratoryCandidateId) ?? null;
+    return {
+      generatedAt: parsed.generatedAt,
+      status: parsed.selection.status,
+      promotionAllowed: parsed.selection.promotionAllowed,
+      completeMarkets: parsed.coverage.completeMarkets,
+      replayableMarkets: parsed.coverage.replayableMarkets,
+      independentWindows: parsed.coverage.independentWindows,
+      minimumHoldoutWindows: parsed.specification.minimumHoldoutWindows,
+      selectedTrades: parsed.coverage.selectedTrades,
+      strategyTrials: parsed.selection.strategyTrials,
+      calibrationPositiveVariants: parsed.variants.filter((variant) => variant.calibration.equalWeightNetReturnPct > 0).length,
+      holdoutPositiveVariants: parsed.variants.filter((variant) => variant.holdout.equalWeightNetReturnPct > 0).length,
+      selectedCandidate: selected ? {
+        id: selected.id,
+        strategy: selected.strategy,
+        entryOffsetSeconds: selected.entryOffsetSeconds,
+        calibration: selected.calibration,
+        holdout: selected.holdout,
+        profitableFolds: selected.walkForward.profitableFolds,
+        totalFolds: selected.walkForward.totalFolds,
+      } : null,
+      reproducibility: parsed.reproducibility,
+      history: loadRealtimeShortTermResearchHistory(root),
+    };
+  } catch (error) {
+    console.warn(`[monitoring] failed to parse realtime short-term artifact at ${path}`, error);
+    return null;
+  }
+}
+
+function loadRealtimeShortTermResearchHistory(root: string) {
+  const path = resolve(root, "public/realtime-short-term-research-history.json");
+  if (!existsSync(path)) return [];
+  try {
+    return z.object({ items: z.array(realtimeReplayHistoryItemSchema) })
       .parse(JSON.parse(readFileSync(path, "utf8"))).items;
   } catch {
     return [];
