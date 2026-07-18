@@ -135,6 +135,7 @@ def import_short_term_runs(args):
             "script_sha256": reproducibility.get("scriptSha256"),
             "specification_sha256": reproducibility.get("specificationSha256"),
             "dataset_sha256": reproducibility.get("datasetSha256"),
+            "decision_sha256": reproducibility.get("decisionSha256"),
             "observations_csv_sha256": reproducibility.get("observationsCsvSha256"),
         }
         params = {key: value for key, value in params.items() if value is not None}

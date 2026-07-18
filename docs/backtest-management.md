@@ -46,7 +46,10 @@ Its immutable artifacts are stored under:
 ```
 
 Each report contains the run ID, deployed code revision, script SHA-256, model specification SHA-256,
-dataset SHA-256, and the SHA-256 of `observations.csv`. `observations.csv` is the market-level audit table used to calculate the summary;
+input dataset SHA-256, model-decision SHA-256, and the SHA-256 of `observations.csv`. The input hash is
+calculated only from market IDs, timestamps, official outcomes, Polymarket observations, and
+Hyperliquid boundary OHLC values; changing a model rule therefore changes the specification and
+decision hashes without pretending that the source dataset changed. `observations.csv` is the market-level audit table used to calculate the summary;
 it records the official result, Polymarket probability, Hyperliquid trend, selection decision, side,
 and after-cost return for every candidate. `latest.json`, `latest-observations.csv`, and a 24-run
 `history.json` are maintained in the parent directory for quick inspection. The report also records a

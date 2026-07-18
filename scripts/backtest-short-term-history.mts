@@ -136,6 +136,8 @@ const observations = markets.flatMap((market) => {
       return [{
         point,
         entryCandle,
+        startPrice,
+        entryPrice,
         trendZ,
         baselineSide,
         baselineSignalZ,
@@ -183,7 +185,23 @@ const observations = markets.flatMap((market) => {
     marketId: market.id,
     asset: market.asset,
     startAt: market.startAt.toISOString(),
+    endAt: market.endAt.toISOString(),
     officialResult: market.officialResult,
+    input: {
+      polymarketObservedAt: new Date(representative.point.t * 1_000).toISOString(),
+      polymarketProbability: representative.point.p,
+      hyperliquidStartOpen: representative.startPrice,
+      hyperliquidEntryAt: new Date(representative.entryCandle.t).toISOString(),
+      hyperliquidEntryOpen: representative.entryPrice,
+      hyperliquidEntryHigh: number(representative.entryCandle.h),
+      hyperliquidEntryLow: number(representative.entryCandle.l),
+      hyperliquidEntryClose: number(representative.entryCandle.c),
+      hyperliquidExitAt: new Date(exitCandle.t).toISOString(),
+      hyperliquidExitOpen: number(exitCandle.o),
+      hyperliquidExitHigh: number(exitCandle.h),
+      hyperliquidExitLow: number(exitCandle.l),
+      hyperliquidExitClose: number(exitCandle.c),
+    },
     crossSection: {
       probability: representative.point.p,
       expectedReturnPct: representative.implied.expectedReturnPct,
@@ -285,6 +303,7 @@ const modelSpecification = {
     randomBenchmarkTrials,
   },
 };
+const reproducibilityInputRows = researchInputRows(observations);
 const reproducibilityRows = researchDatasetRows(observations);
 const serializedObservations = researchObservationsCsv(reproducibilityRows);
 const runId = generatedAt.toISOString().replaceAll(":", "-");
@@ -294,7 +313,8 @@ const reproducibility = {
   hashAlgorithm: "sha256",
   scriptSha256: await sha256File(fileURLToPath(import.meta.url)),
   specificationSha256: sha256Json(modelSpecification),
-  datasetSha256: sha256Json(reproducibilityRows),
+  datasetSha256: sha256Json(reproducibilityInputRows),
+  decisionSha256: sha256Json(reproducibilityRows),
   observationsCsvSha256: sha256Text(serializedObservations),
   observationRows: reproducibilityRows.length,
   randomSeedPolicy: "deterministic FNV-1a seed by window and trial",
@@ -948,6 +968,7 @@ function researchHistoryItem(value: typeof report) {
     scriptSha256: value.reproducibility.scriptSha256,
     specificationSha256: value.reproducibility.specificationSha256,
     datasetSha256: value.reproducibility.datasetSha256,
+    decisionSha256: value.reproducibility.decisionSha256,
     observationsCsvSha256: value.reproducibility.observationsCsvSha256,
     marketDuration: value.methodology.marketDuration,
     lookbackHours: value.methodology.period.lookbackHours,
@@ -974,11 +995,12 @@ function researchMetricsCsv(value: typeof report) {
     ["leadLag", value.holdout.leadLag, value.screening.leadLag, value.walkForward.stability.leadLag],
     ["crossSectional", value.holdout.crossSectional, value.screening.crossSectional, value.walkForward.stability.crossSectional],
   ] as const;
-  const header = "run_id,code_revision,dataset_sha256,observations_csv_sha256,specification_sha256,script_sha256,candidate,status,trades,net_return_pct,average_return_pct,confidence_lower_pct,excess_return_pct,max_drawdown_pct,profitable_folds,total_folds,passed_gates,total_gates";
+  const header = "run_id,code_revision,dataset_sha256,decision_sha256,observations_csv_sha256,specification_sha256,script_sha256,candidate,status,trades,net_return_pct,average_return_pct,confidence_lower_pct,excess_return_pct,max_drawdown_pct,profitable_folds,total_folds,passed_gates,total_gates";
   const rows = definitions.map(([id, metrics, screening, stability]) => [
     value.reproducibility.runId,
     value.reproducibility.codeRevision ?? "",
     value.reproducibility.datasetSha256,
+    value.reproducibility.decisionSha256,
     value.reproducibility.observationsCsvSha256,
     value.reproducibility.specificationSha256,
     value.reproducibility.scriptSha256,
@@ -1003,7 +1025,9 @@ function researchDatasetRows(rows: typeof observations) {
     marketId: row.marketId,
     asset: row.asset,
     startAt: row.startAt,
+    endAt: row.endAt,
     officialResult: row.officialResult,
+    ...row.input,
     polymarketProbability: row.crossSection.probability,
     impliedExpectedReturnPct: row.crossSection.expectedReturnPct,
     trendZ: row.crossSection.trendZ,
@@ -1024,13 +1048,37 @@ function researchDatasetRows(rows: typeof observations) {
   }));
 }
 
+function researchInputRows(rows: typeof observations) {
+  return rows.map((row) => ({
+    marketId: row.marketId,
+    asset: row.asset,
+    startAt: row.startAt,
+    endAt: row.endAt,
+    officialResult: row.officialResult,
+    ...row.input,
+  }));
+}
+
 function researchObservationsCsv(rows: ReturnType<typeof researchDatasetRows>) {
   const keys = [
     "marketId",
     "asset",
     "startAt",
+    "endAt",
     "officialResult",
+    "polymarketObservedAt",
     "polymarketProbability",
+    "hyperliquidStartOpen",
+    "hyperliquidEntryAt",
+    "hyperliquidEntryOpen",
+    "hyperliquidEntryHigh",
+    "hyperliquidEntryLow",
+    "hyperliquidEntryClose",
+    "hyperliquidExitAt",
+    "hyperliquidExitOpen",
+    "hyperliquidExitHigh",
+    "hyperliquidExitLow",
+    "hyperliquidExitClose",
     "impliedExpectedReturnPct",
     "trendZ",
     "baselineSelected",
