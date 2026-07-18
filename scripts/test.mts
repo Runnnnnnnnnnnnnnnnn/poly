@@ -50,6 +50,7 @@ import { evaluateSynchronizedPriceQuality, synchronizedDataReadinessStatus } fro
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
 import { dashboardStateFingerprint, shouldPublishDashboardSnapshot } from "./live-snapshot-policy.mjs";
+import { nextRealtimeReplayDelayMs } from "./realtime-short-term-schedule.mjs";
 import { isProtectedRuntimeDatabasePath, runtimeDatabaseRsyncExcludes, untrackedRuntimeSourceRsyncExcludes } from "./runtime-deployment-policy.mjs";
 import { processSignalTarget, supervisorExitDelayMs, supervisorForceKillDelayMs } from "./process-supervisor-policy.mjs";
 import { calculateDirectionalBookReturn, deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
@@ -105,6 +106,11 @@ assert.deepEqual(
 );
 assert.throws(() => untrackedRuntimeSourceRsyncExcludes(["../outside"]), /unsafe untracked runtime source path/);
 console.log("runtime database deployment protection tests passed");
+
+assert.equal(nextRealtimeReplayDelayMs({ generatedAtMs: 0, nowMs: 20 * 60_000, intervalMs: 30 * 60_000 }), 10 * 60_000);
+assert.equal(nextRealtimeReplayDelayMs({ generatedAtMs: 0, nowMs: 29.5 * 60_000, intervalMs: 30 * 60_000 }), 60_000);
+assert.equal(nextRealtimeReplayDelayMs({ generatedAtMs: 0, nowMs: 35 * 60_000, intervalMs: 30 * 60_000 }), 60_000);
+console.log("restart-safe replay schedule tests passed");
 
 assert.equal(processSignalTarget(123, "darwin"), -123);
 assert.equal(processSignalTarget(123, "win32"), 123);

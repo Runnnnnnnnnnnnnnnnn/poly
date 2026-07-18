@@ -5,28 +5,36 @@ import { resolve } from "node:path";
 
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
 import { prisma } from "../src/lib/server/prisma";
+import { nextRealtimeReplayDelayMs } from "./realtime-short-term-schedule.mjs";
 
 const root = process.env.POLYMARKET_PROJECT_ROOT ?? resolve(import.meta.dirname, "..");
 const intervalMs = Math.max(5 * 60_000, Number(process.env.REALTIME_SHORT_TERM_INTERVAL_MS ?? 30 * 60_000));
 const reportPath = resolve(root, "public/realtime-short-term-research.json");
 const historyPath = resolve(root, "public/realtime-short-term-research-history.json");
 let running = false;
+let timer: NodeJS.Timeout | null = null;
+let closing = false;
 
 async function cycle() {
-  if (running) return;
-  const fresh = await loadReport().catch(() => null);
-  if (fresh && Date.now() - new Date(fresh.generatedAt).getTime() < intervalMs * 0.9) {
-    await recordSuccess(fresh);
-    return;
-  }
+  if (running) return 60_000;
   running = true;
   try {
+    const fresh = await loadReport().catch(() => null);
+    const generatedAtMs = fresh ? new Date(fresh.generatedAt).getTime() : Number.NaN;
+    const nowMs = Date.now();
+    const delayMs = nextRealtimeReplayDelayMs({ generatedAtMs, nowMs, intervalMs });
+    if (fresh && Number.isFinite(generatedAtMs) && nowMs - generatedAtMs < intervalMs) {
+      await recordSuccess(fresh);
+      return delayMs;
+    }
     await markPipelineAttempt("realtime-short-term-backtest", "5秒板の約定リプレイを検証中");
     await runBacktest();
     await recordSuccess(await loadReport());
+    return intervalMs;
   } catch (error) {
     await markPipelineError("realtime-short-term-backtest", error);
     console.error(error instanceof Error ? error.message : error);
+    return Math.min(intervalMs, 5 * 60_000);
   } finally {
     running = false;
   }
@@ -86,11 +94,17 @@ type ReplayReport = {
   variants: Array<{ id: string; holdout: { independentWindows: number } }>;
 };
 
-await cycle();
-setInterval(() => void cycle(), intervalMs);
-console.log(`realtime short-term research worker: ${intervalMs}ms`);
+async function scheduleNextCycle() {
+  const delayMs = await cycle();
+  if (!closing) timer = setTimeout(() => void scheduleNextCycle(), delayMs);
+}
+
+await scheduleNextCycle();
+console.log(`realtime short-term research worker: target ${intervalMs}ms / restart-safe scheduling`);
 
 async function shutdown() {
+  closing = true;
+  if (timer) clearTimeout(timer);
   await prisma.$disconnect();
   process.exit(0);
 }

@@ -40,6 +40,8 @@ const modelRevision = fileFingerprint([
   "src/lib/model-evaluation/service.ts",
   "src/lib/combined-trading/forward-evaluation.ts",
   "scripts/backtest-realtime-short-term.mts",
+  "scripts/realtime-short-term-schedule.mjs",
+  "scripts/run-realtime-short-term-research.mts",
 ]);
 const runtimeDatabasePath = resolve(deployedRoot, "prisma/dev.db");
 const buildSnapshotDirectory = mkdtempSync(resolve(tmpdir(), "polymarket-watch-build-"));
