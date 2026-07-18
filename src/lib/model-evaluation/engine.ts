@@ -4,7 +4,7 @@ import { evaluateCombinedTrading } from "@/src/lib/model-evaluation/combined-tra
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
 import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
-export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v17";
+export const MODEL_VERSION = "Polymarket x Hyperliquid Signal v18";
 export const HORIZON_HOURS = 24;
 export const MIN_TRAIN_EVENTS = 20;
 export const MIN_HOLDOUT_EVENTS = 15;
@@ -99,7 +99,11 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
   const maximumExecutionTimingErrorMinutes = executionTimingErrors.length ? Math.max(...executionTimingErrors) : null;
   const statisticallyPositive = confidenceInterval95[0] > 0;
   const gates = [
-    { id: "chronology", label: "取引ルールのウォークフォワード選択を実施", passed: false },
+    {
+      id: "chronology",
+      label: "過去データだけで取引ルールを再選択する4期間検証",
+      passed: combinedTrading.walkForwardChronologyValid && combinedTrading.walkForwardFolds >= 4,
+    },
     {
       id: "horizon",
       label: `全市場を決着${horizonHours}時間前で統一`,

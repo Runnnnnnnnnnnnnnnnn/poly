@@ -216,6 +216,22 @@ export type ModelEvaluationMetrics = {
     strategyTrials: number;
     walkForwardFolds: number;
     profitableValidationFolds: number;
+    walkForwardChronologyValid: boolean;
+    walkForwardSelections: Array<{
+      fold: number;
+      trainingStartedAt: string | null;
+      trainingEndedAt: string | null;
+      testStartedAt: string | null;
+      testEndedAt: string | null;
+      trainingSignals: number;
+      testSignals: number;
+      selectedStrategy: CombinedStrategyCandidate;
+      selectedFromPastOnly: boolean;
+      trades: number;
+      netReturnPct: number;
+      benchmarkReturnPct: number;
+      excessReturnPct: number;
+    }>;
     minimumRequiredTrades: number;
     maxDrawdownPct: number;
     totalFees: number;

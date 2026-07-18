@@ -68,6 +68,8 @@ type Simulation = Omit<CombinedMetrics,
   | "strategyTrials"
   | "walkForwardFolds"
   | "profitableValidationFolds"
+  | "walkForwardChronologyValid"
+  | "walkForwardSelections"
   | "minimumRequiredTrades"
 > & { tradeReturns: number[] };
 
@@ -82,6 +84,7 @@ export function evaluateCombinedTrading(
   const validationSignals = allSignals.slice(0, splitIndex);
   const validationBoundary = validationSignals.reduce((latest, signal) => Math.max(latest, signal.exitAt), Number.NEGATIVE_INFINITY);
   const testSignals = allSignals.slice(splitIndex).filter((signal) => signal.entryAt >= validationBoundary);
+  const walkForward = evaluateWalkForwardSelection(validationSignals);
   const selection = selectStrategy(validationSignals);
   const selectedStrategy = selection.candidate;
   const selectedSignals = selectedStrategy.id === "no-trade guard"
@@ -115,12 +118,73 @@ export function evaluateCombinedTrading(
     eligibleSignals: testSignals.length,
     ...publicStrategy,
     benchmarkReturnPct: benchmarks.bestReturnPct,
-    excessReturnPct: strategy.trades > 0 ? strategy.netReturnPct - benchmarks.bestReturnPct : 0,
+    excessReturnPct: strategy.netReturnPct - benchmarks.bestReturnPct,
     benchmarks,
     strategyTrials: cumulativeStrategyTrials,
-    walkForwardFolds,
-    profitableValidationFolds: selection.profitableFolds,
+    walkForwardFolds: walkForward.selections.length,
+    profitableValidationFolds: walkForward.selections.filter((fold) => fold.netReturnPct > 0).length,
+    walkForwardChronologyValid: walkForward.chronologyValid,
+    walkForwardSelections: walkForward.selections,
     minimumRequiredTrades: minimumValidationTrades,
+  };
+}
+
+function evaluateWalkForwardSelection(validationSignals: TradeSignal[]) {
+  if (validationSignals.length <= walkForwardFolds) {
+    return { chronologyValid: false, selections: [] as CombinedMetrics["walkForwardSelections"] };
+  }
+  const initialTrainingCount = Math.min(
+    validationSignals.length - walkForwardFolds,
+    Math.max(minimumValidationTrades, Math.floor(validationSignals.length * 0.4)),
+  );
+  const evaluationSignals = validationSignals.slice(initialTrainingCount);
+  const selections = Array.from({ length: walkForwardFolds }, (_, index) => {
+    const start = Math.floor(index * evaluationSignals.length / walkForwardFolds);
+    const end = Math.floor((index + 1) * evaluationSignals.length / walkForwardFolds);
+    const rawTestSignals = evaluationSignals.slice(start, end);
+    const firstTestEntryAt = rawTestSignals[0]?.entryAt ?? Number.POSITIVE_INFINITY;
+    const trainingSignals = validationSignals
+      .slice(0, initialTrainingCount + start)
+      .filter((signal) => signal.exitAt <= firstTestEntryAt);
+    const trainingEndedAt = trainingSignals.reduce(
+      (latest, signal) => Math.max(latest, signal.exitAt),
+      Number.NEGATIVE_INFINITY,
+    );
+    const foldSignals = rawTestSignals.filter((signal) => signal.entryAt >= trainingEndedAt);
+    const selection = selectStrategy(trainingSignals);
+    const selectedStrategy = selection.candidate;
+    const selectedSignals = selectedStrategy.id === "no-trade guard"
+      ? []
+      : selectSignalsForCandidate(foldSignals, selectedStrategy);
+    const result = simulate(selectedSignals, selectedStrategy, "signal");
+    const benchmarkSignals = selectedStrategy.id === "no-trade guard"
+      ? selectNonOverlappingSignals(foldSignals, 0)
+      : selectedSignals;
+    const benchmark = evaluateBenchmarks(benchmarkSignals, selectedStrategy);
+    const chronologyValid = trainingSignals.length > 0
+      && foldSignals.length > 0
+      && Number.isFinite(trainingEndedAt)
+      && trainingEndedAt <= Math.min(...foldSignals.map((signal) => signal.entryAt));
+    return {
+      fold: index + 1,
+      trainingStartedAt: signalTime(trainingSignals[0], "entryAt"),
+      trainingEndedAt: Number.isFinite(trainingEndedAt) ? new Date(trainingEndedAt).toISOString() : null,
+      testStartedAt: signalTime(foldSignals[0], "entryAt"),
+      testEndedAt: signalTime(foldSignals.at(-1), "exitAt"),
+      trainingSignals: trainingSignals.length,
+      testSignals: foldSignals.length,
+      selectedStrategy,
+      selectedFromPastOnly: chronologyValid,
+      trades: result.trades,
+      netReturnPct: result.netReturnPct,
+      benchmarkReturnPct: benchmark.bestReturnPct,
+      excessReturnPct: result.netReturnPct - benchmark.bestReturnPct,
+    };
+  });
+  return {
+    chronologyValid: selections.length === walkForwardFolds
+      && selections.every((selection) => selection.selectedFromPastOnly),
+    selections,
   };
 }
 
@@ -207,7 +271,7 @@ function selectStrategy(validationSignals: TradeSignal[]) {
       { id: "trades", label: `${minimumValidationTrades}取引以上`, passed: result.trades >= minimumValidationTrades },
       { id: "significance", label: "95%区間がプラス", passed: result.statisticallyPositive },
       { id: "benchmark", label: "単純戦略を上回る", passed: excessReturnPct > 0 },
-      { id: "folds", label: `${walkForwardFolds}期間中${minimumProfitableFolds}期間でプラス`, passed: profitableFolds >= minimumProfitableFolds },
+      { id: "folds", label: `${walkForwardFolds}期間の安定性確認で${minimumProfitableFolds}期間以上プラス`, passed: profitableFolds >= minimumProfitableFolds },
       { id: "selection-bias", label: "試行補正後95%以上", passed: (result.deflatedSharpeProbability ?? 0) >= minimumDeflatedSharpeProbability },
     ];
     const diagnostic: CombinedCandidateDiagnostic = {

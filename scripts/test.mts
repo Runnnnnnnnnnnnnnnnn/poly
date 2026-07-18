@@ -1025,6 +1025,12 @@ assert.equal(combined.statisticallyPositive, true);
 assert.ok((combined.deflatedSharpeProbability ?? 0) > 0.95);
 assert.equal(combined.strategyTrials, 19);
 assert.equal(combined.walkForwardFolds, 4);
+assert.equal(combined.walkForwardChronologyValid, true);
+assert.equal(combined.walkForwardSelections.length, 4);
+assert.equal(combined.walkForwardSelections.every((fold) => fold.selectedFromPastOnly), true);
+assert.equal(combined.walkForwardSelections.every((fold) => (
+  new Date(fold.trainingEndedAt as string).getTime() <= new Date(fold.testStartedAt as string).getTime()
+)), true);
 assert.equal(combined.selectedFromValidation, true);
 assert.equal(combined.closestHoldoutAudit?.strategy.id, combined.closestValidationCandidate?.id);
 assert.equal(combined.closestHoldoutAudit?.trades, 24);
@@ -1052,6 +1058,10 @@ const hourlyFallbackCombined = evaluateCombinedTrading(combinedSamples.map((samp
 assert.equal(hourlyFallbackCombined.totalEligibleSignals, 0);
 assert.equal(hourlyFallbackCombined.trades, 0);
 assert.equal(hourlyFallbackCombined.selectedStrategy.id, "no-trade guard");
+assert.equal(hourlyFallbackCombined.walkForwardChronologyValid, false);
+
+const combinedChronologicalEvaluation = evaluateChronologicalModel(combinedSamples);
+assert.equal(combinedChronologicalEvaluation.quality.gates.find((gate) => gate.id === "chronology")?.passed, true);
 
 const concurrentCombined = evaluateCombinedTrading([
   ...combinedSamples,
@@ -1101,6 +1111,8 @@ assert.equal(guarded.selectedFromValidation, false);
 assert.ok(guarded.closestValidationCandidate);
 assert.ok(guarded.closestHoldoutAudit);
 assert.equal(guarded.candidateDiagnostics.every((candidate) => !candidate.passed), true);
+assert.notEqual(guarded.benchmarkReturnPct, 0);
+assert.ok(Math.abs(guarded.excessReturnPct + guarded.benchmarkReturnPct) < 1e-12);
 
 console.log("combined Polymarket and Hyperliquid strategy tests passed");
 
