@@ -1,5 +1,5 @@
 import { prisma } from "@/src/lib/server/prisma";
-import { realtimeSynchronizationVersion } from "@/src/lib/realtime-market-data/collector";
+import { realtimeAssetSynchronizationVersion, realtimeSynchronizationVersion } from "@/src/lib/realtime-market-data/collector";
 
 const defaultTargetMarkets = 50;
 const defaultMaximumBoundaryErrorMs = 60_000;
@@ -38,11 +38,15 @@ export async function loadReferenceSettlementAudit(options: {
       FROM "RealtimeMarketTick"
       WHERE "synchronizationVersion" = ${realtimeSynchronizationVersion}
     ), observed AS (
-      SELECT tick."marketId" AS "marketId"
+      SELECT
+        tick."marketId" AS "marketId",
+        tick."asset" AS "asset",
+        MIN(tick."marketStartAt") AS "marketStartAt",
+        MAX(tick."marketEndAt") AS "marketEndAt"
       FROM "RealtimeMarketTick" tick
       CROSS JOIN collection_bounds
       WHERE tick."synchronizationVersion" = ${realtimeSynchronizationVersion}
-      GROUP BY tick."marketId", collection_bounds."firstAt", collection_bounds."lastAt"
+      GROUP BY tick."marketId", tick."asset", collection_bounds."firstAt", collection_bounds."lastAt"
       HAVING MIN(tick."marketStartAt") >= collection_bounds."firstAt"
         AND MAX(tick."marketEndAt") <= collection_bounds."lastAt"
     ), boundary_candidates AS (
@@ -71,6 +75,42 @@ export async function loadReferenceSettlementAudit(options: {
       WHERE tick."synchronizationVersion" = ${realtimeSynchronizationVersion}
         AND tick."referenceSource" = 'CHAINLINK'
         AND ABS(tick."referenceUpdatedAt" - tick."marketEndAt") <= ${maximumBoundaryErrorMs}
+
+      UNION ALL
+
+      SELECT
+        observed."marketId" AS "marketId",
+        'START' AS "boundary",
+        asset_tick."chainlinkPrice" AS "referencePrice",
+        ABS(asset_tick."chainlinkUpdatedAt" - observed."marketStartAt") AS "errorMs",
+        asset_tick."capturedAt" AS "capturedAt"
+      FROM observed
+      INNER JOIN "RealtimeAssetTick" asset_tick
+        ON asset_tick."asset" = observed."asset"
+      WHERE asset_tick."synchronizationVersion" = ${realtimeAssetSynchronizationVersion}
+        AND asset_tick."chainlinkPrice" IS NOT NULL
+        AND asset_tick."chainlinkUpdatedAt" IS NOT NULL
+        AND asset_tick."capturedAt" BETWEEN observed."marketStartAt" - ${maximumBoundaryErrorMs + 15_000}
+          AND observed."marketStartAt" + ${maximumBoundaryErrorMs + 15_000}
+        AND ABS(asset_tick."chainlinkUpdatedAt" - observed."marketStartAt") <= ${maximumBoundaryErrorMs}
+
+      UNION ALL
+
+      SELECT
+        observed."marketId" AS "marketId",
+        'END' AS "boundary",
+        asset_tick."chainlinkPrice" AS "referencePrice",
+        ABS(asset_tick."chainlinkUpdatedAt" - observed."marketEndAt") AS "errorMs",
+        asset_tick."capturedAt" AS "capturedAt"
+      FROM observed
+      INNER JOIN "RealtimeAssetTick" asset_tick
+        ON asset_tick."asset" = observed."asset"
+      WHERE asset_tick."synchronizationVersion" = ${realtimeAssetSynchronizationVersion}
+        AND asset_tick."chainlinkPrice" IS NOT NULL
+        AND asset_tick."chainlinkUpdatedAt" IS NOT NULL
+        AND asset_tick."capturedAt" BETWEEN observed."marketEndAt" - ${maximumBoundaryErrorMs + 15_000}
+          AND observed."marketEndAt" + ${maximumBoundaryErrorMs + 15_000}
+        AND ABS(asset_tick."chainlinkUpdatedAt" - observed."marketEndAt") <= ${maximumBoundaryErrorMs}
     ), ranked AS (
       SELECT
         *,

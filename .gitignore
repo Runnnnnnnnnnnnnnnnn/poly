@@ -15,7 +15,11 @@ tsconfig.tsbuildinfo
 public/ai-evaluations.json
 dev.db
 dev.db-journal
+dev.db-shm
+dev.db-wal
 prisma/dev.db
 prisma/dev.db-journal
+prisma/dev.db-shm
+prisma/dev.db-wal
 .paper-run-id
 .run-all.lock

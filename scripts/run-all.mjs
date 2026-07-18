@@ -4,6 +4,8 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { processSignalTarget, supervisorExitDelayMs, supervisorForceKillDelayMs } from "./process-supervisor-policy.mjs";
+
 const root = process.env.POLYMARKET_PROJECT_ROOT || resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeCwd = process.env.POLYMARKET_RUNTIME_CWD || root;
 const lockPath = resolve(homedir(), ".polymarket-watch.run.lock");
@@ -88,13 +90,20 @@ const children = new Map();
 let closing = false;
 function startProcess(config) {
   if (closing) return;
-  const child = spawn(config.command, config.args, { cwd: runtimeCwd, env, stdio: "inherit" });
+  const child = spawn(config.command, config.args, {
+    cwd: runtimeCwd,
+    env,
+    stdio: "inherit",
+    detached: process.platform !== "win32",
+  });
   children.set(config.name, child);
   child.on("exit", (code, signal) => {
     children.delete(config.name);
     if (closing) return;
+    signalProcessTree(child.pid, "SIGTERM");
+    setTimeout(() => signalProcessTree(child.pid, "SIGKILL"), supervisorForceKillDelayMs);
     console.error(`${config.name} stopped (${signal || (code ?? 0)}). restarting in 2s...`);
-    setTimeout(() => startProcess(config), 2000);
+    setTimeout(() => startProcess(config), supervisorExitDelayMs);
   });
 }
 
@@ -102,8 +111,18 @@ function shutdown(code = 0) {
   if (closing) return;
   closing = true;
   rmSync(lockPath, { force: true });
-  for (const child of children.values()) child.kill("SIGTERM");
-  setTimeout(() => process.exit(code), 250);
+  const processIds = Array.from(children.values()).map((child) => child.pid).filter(Boolean);
+  for (const pid of processIds) signalProcessTree(pid, "SIGTERM");
+  setTimeout(() => {
+    for (const pid of processIds) signalProcessTree(pid, "SIGKILL");
+  }, supervisorForceKillDelayMs);
+  setTimeout(() => process.exit(code), supervisorExitDelayMs);
+}
+
+function signalProcessTree(pid, signal) {
+  const target = processSignalTarget(pid);
+  if (target === null) return;
+  try { process.kill(target, signal); } catch { /* already stopped */ }
 }
 
 for (const processConfig of processes) startProcess(processConfig);

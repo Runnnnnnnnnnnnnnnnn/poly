@@ -123,6 +123,11 @@ type MonitoringSnapshot = {
       arbitrageViolations: number;
       targetCadenceSeconds: number;
       synchronizationVersion: string;
+      executionRecords: number;
+      executionLast24Hours: number;
+      executionLatestAt: string | null;
+      executionMaximumSkewMs: number | null;
+      executionSynchronizationVersion: string;
     };
     synchronizedPrices?: {
       records: number;
@@ -322,6 +327,11 @@ type MonitoringSnapshot = {
       executionAudit?: {
         status: "collecting" | "healthy" | "attention";
         readinessStatus: "collecting" | "promising" | "underperforming";
+        priceSources: {
+          entry: "Polymarket CLOB 5秒板";
+          exit: "Hyperliquid L2 独立5秒板";
+          settlement: "Chainlink 独立5秒価格";
+        };
         minimumAuditedPositions: number;
         minimumIndependentEvents: number;
         eligiblePositions: number;
@@ -1129,7 +1139,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
       </div>
 
       <div className="grid grid-cols-2 border-t sm:grid-cols-6">
-        <ExecutiveGate label="5秒板" value={dataReady ? "正常" : "確認中"} tone={dataReady ? "good" : "watch"} />
+        <ExecutiveGate label="入口・決済板" value={dataReady ? "正常" : "確認中"} tone={dataReady ? "good" : "watch"} />
         <ExecutiveGate
           label="公式決着"
           value={settlementResolution?.completeMarkets
@@ -1148,11 +1158,11 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
         <ArrowRight className="hidden h-4 w-4 self-center justify-self-center text-slate-300 md:block" />
         <ExecutiveFlowStep icon={BrainCircuit} title="固定モデル" value="買い・売り・見送り" state="検証中" tone="watch" />
         <ArrowRight className="hidden h-4 w-4 self-center justify-self-center text-slate-300 md:block" />
-        <ExecutiveFlowStep icon={TrendingUp} title="Hyperliquid" value="板価格で仮想約定" state="実資金なし" tone="neutral" />
+        <ExecutiveFlowStep icon={TrendingUp} title="Hyperliquid" value="独立5秒板で仮想約定" state="実資金なし" tone="neutral" />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${dataReady ? "text-emerald-600" : "text-amber-600"}`} />5秒板 {formatCompact(snapshot?.collection.realtimePrices?.records)}件・独立枠 {verifiedTrades}/{minimumTrades}{research ? `・採用 ${research.acceptedCandidates}/${research.totalCandidates}・順次 ${research.walkForwardFolds}期間` : ""}</span>
+        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${dataReady ? "text-emerald-600" : "text-amber-600"}`} />市場板 {formatCompact(snapshot?.collection.realtimePrices?.records)}・決済板 {formatCompact(snapshot?.collection.realtimePrices?.executionRecords)}・独立枠 {verifiedTrades}/{minimumTrades}{research ? `・採用 ${research.acceptedCandidates}/${research.totalCandidates}・順次 ${research.walkForwardFolds}期間` : ""}</span>
         <span>{savedSnapshot ? "公開保存値" : "自動更新"}・{latestAt ? `${relativeTime(latestAt)}に更新` : "更新待ち"}</span>
       </div>
     </section>
@@ -1437,7 +1447,7 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
             ))}
           </div>
           <div className="grid grid-cols-3 divide-x border-t px-3 py-3 sm:px-4">
-            <CompactMetric label="5秒板で再現" value={`${audit?.auditedPositions ?? 0}/${audit?.eligiblePositions ?? 0}件`} />
+            <CompactMetric label="入口・決済を再現" value={`${audit?.auditedPositions ?? 0}/${audit?.eligiblePositions ?? 0}件`} />
             <CompactMetric label="95%下限" value={(audit?.verifiedIndependentEvents ?? audit?.verifiedPositions ?? 0) > 0 ? formatSignedPct(audit?.excessConfidenceInterval95?.[0]) : "収集中"} />
             <CompactMetric label="最大取得遅延" value={(audit?.auditedPositions ?? 0) > 0 ? formatMilliseconds(audit?.maximumTimingErrorMs) : "収集中"} />
           </div>

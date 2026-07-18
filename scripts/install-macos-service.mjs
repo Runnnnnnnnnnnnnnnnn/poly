@@ -1,9 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { runtimeDatabaseRsyncExcludes } from "./runtime-deployment-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeLabel = "com.polymarket-watch.runtime";
@@ -36,22 +38,40 @@ const modelRevision = fileFingerprint([
   "src/lib/model-evaluation/synchronized-execution.ts",
   "src/lib/model-evaluation/service.ts",
 ]);
-buildRuntime(modelRevision);
-stageRuntime();
-try { execFileSync("launchctl", ["bootout", `${domain}/${runtimeLabel}`], { stdio: "ignore" }); } catch {}
-execFileSync("/bin/sleep", ["1"]);
-const databaseUrl = `file:${resolve(deployedRoot, "prisma/dev.db")}`;
-execFileSync(runtimeNode, [resolve(deployedRoot, "node_modules/prisma/build/index.js"), "db", "push", "--schema", resolve(deployedRoot, "prisma/schema.prisma")], {
-  cwd: deployedRoot,
-  env: { ...process.env, DATABASE_URL: databaseUrl },
-  stdio: "inherit",
-});
-configureSqliteDatabase(resolve(deployedRoot, "prisma/dev.db"));
-const command = `set -a; source ${shellQuote(resolve(deployedRoot, ".env"))}; set +a; cd ${shellQuote(homedir())}; PAPER_PRODUCTION=1 APP_PORT=3001 POLYMARKET_PROJECT_ROOT=${shellQuote(deployedRoot)} POLYMARKET_MODEL_REVISION=${shellQuote(modelRevision)} DATABASE_URL=${shellQuote(databaseUrl)} ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-all.mjs"))}`;
+const runtimeDatabasePath = resolve(deployedRoot, "prisma/dev.db");
+const buildSnapshotDirectory = mkdtempSync(resolve(tmpdir(), "polymarket-watch-build-"));
+const buildDatabasePath = resolve(buildSnapshotDirectory, "dev.db");
+try {
+  prepareBuildDatabase(runtimeDatabasePath, buildDatabasePath);
+  buildRuntime(modelRevision, buildDatabasePath);
+} finally {
+  rmSync(buildSnapshotDirectory, { recursive: true, force: true });
+}
+const databaseUrl = `file:${runtimeDatabasePath}`;
+const command = `set -a; source ${shellQuote(resolve(deployedRoot, ".env"))}; set +a; cd ${shellQuote(homedir())}; PAPER_PRODUCTION=1 APP_PORT=3001 POLYMARKET_PROJECT_ROOT=${shellQuote(deployedRoot)} POLYMARKET_MODEL_REVISION=${shellQuote(modelRevision)} DATABASE_URL=${shellQuote(databaseUrl)} exec ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-all.mjs"))}`;
 const runtimePlist = makePlist(runtimeLabel, command, "/tmp/polymarket-watch-runtime.log");
 
 mkdirSync(agentsDir, { recursive: true });
-installAgent(runtimeLabel, runtimePlist);
+const runtimePlistPath = resolve(agentsDir, `${runtimeLabel}.plist`);
+const previousRuntimePlist = existsSync(runtimePlistPath) ? readFileSync(runtimePlistPath, "utf8") : null;
+const runtimeWasLoaded = agentIsLoaded(`${domain}/${runtimeLabel}`);
+try {
+  stopAgent(runtimeLabel);
+  waitForDatabaseRelease(runtimeDatabasePath);
+  stageRuntime();
+  assertSqliteIntegrity(runtimeDatabasePath);
+  execFileSync(runtimeNode, [resolve(deployedRoot, "node_modules/prisma/build/index.js"), "db", "push", "--schema", resolve(deployedRoot, "prisma/schema.prisma")], {
+    cwd: deployedRoot,
+    env: { ...process.env, DATABASE_URL: databaseUrl },
+    stdio: "inherit",
+  });
+  configureSqliteDatabase(runtimeDatabasePath);
+  assertSqliteIntegrity(runtimeDatabasePath);
+  installAgent(runtimeLabel, runtimePlist);
+} catch (error) {
+  restartPreviousAgent(runtimeLabel, previousRuntimePlist, runtimeWasLoaded);
+  throw error;
+}
 
 const cloudflared = [
   process.env.CLOUDFLARED_BIN,
@@ -128,10 +148,10 @@ function agentIsLoaded(service) {
   }
 }
 
-function buildRuntime(revision) {
+function buildRuntime(revision, buildDatabasePath) {
   const buildEnv = {
     ...process.env,
-    DATABASE_URL: `file:${resolve(deployedRoot, "prisma/dev.db")}`,
+    DATABASE_URL: `file:${buildDatabasePath}`,
     SKIP_TITLE_AI: "1",
     POLYMARKET_MODEL_REVISION: revision,
   };
@@ -166,7 +186,7 @@ function stageRuntime() {
     "--exclude=.pages-build-disabled/",
     "--exclude=.run-all.lock",
     "--exclude=.paper-run-id",
-    "--exclude=prisma/dev.db",
+    ...runtimeDatabaseRsyncExcludes,
     `${root}/`,
     `${deployedRoot}/`,
   ], { stdio: "inherit" });
@@ -195,6 +215,61 @@ function stageRuntime() {
 
   const runtimeDatabase = resolve(deployedRoot, "prisma/dev.db");
   if (!existsSync(runtimeDatabase)) copyFileSync(resolve(root, "prisma/dev.db"), runtimeDatabase);
+}
+
+function prepareBuildDatabase(sourcePath, targetPath) {
+  if (!existsSync(sourcePath)) {
+    copyFileSync(resolve(root, "prisma/dev.db"), targetPath);
+    assertSqliteIntegrity(targetPath);
+    return;
+  }
+  if (!existsSync("/usr/bin/sqlite3")) {
+    throw new Error("sqlite3 is required to create a consistent runtime build snapshot");
+  }
+  execFileSync("/usr/bin/sqlite3", [
+    sourcePath,
+    ".timeout 10000",
+    `.backup '${targetPath.replaceAll("'", "''")}'`,
+  ], { stdio: "inherit" });
+  assertSqliteIntegrity(targetPath);
+  console.log("created an integrity-checked build snapshot of the runtime database");
+}
+
+function stopAgent(label) {
+  const service = `${domain}/${label}`;
+  try { execFileSync("launchctl", ["bootout", service], { stdio: "ignore" }); } catch {}
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (!agentIsLoaded(service)) return;
+    execFileSync("/bin/sleep", ["0.25"]);
+  }
+  throw new Error(`timed out stopping ${label}`);
+}
+
+function waitForDatabaseRelease(path) {
+  if (!existsSync("/usr/sbin/lsof")) return;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    try {
+      const holders = execFileSync("/usr/sbin/lsof", ["-t", "--", path], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+      if (!holders) return;
+    } catch {
+      return;
+    }
+    execFileSync("/bin/sleep", ["0.25"]);
+  }
+  throw new Error("runtime database is still open after the service stopped");
+}
+
+function restartPreviousAgent(label, previousPlist, wasLoaded) {
+  if (!previousPlist || !wasLoaded) return;
+  const plistPath = resolve(agentsDir, `${label}.plist`);
+  try {
+    if (agentIsLoaded(`${domain}/${label}`)) return;
+    writeFileSync(plistPath, previousPlist, "utf8");
+    execFileSync("launchctl", ["bootstrap", domain, plistPath], { stdio: "inherit" });
+    console.warn(`restored ${label} after deployment failure`);
+  } catch (restartError) {
+    console.error(`failed to restore ${label}: ${restartError instanceof Error ? restartError.message : restartError}`);
+  }
 }
 
 function dependencyFingerprint(directory) {
@@ -229,6 +304,12 @@ function configureSqliteDatabase(path) {
   }).trim().split(/\s+/)[0];
   if (mode.toLowerCase() !== "wal") throw new Error(`failed to enable SQLite WAL mode: ${mode || "empty response"}`);
   console.log("configured runtime SQLite database in WAL mode");
+}
+
+function assertSqliteIntegrity(path) {
+  if (!existsSync("/usr/bin/sqlite3")) return;
+  const result = execFileSync("/usr/bin/sqlite3", [path, "PRAGMA integrity_check;"], { encoding: "utf8" }).trim();
+  if (result !== "ok") throw new Error(`SQLite integrity check failed: ${result.slice(0, 300)}`);
 }
 
 function fileFingerprint(paths) {

@@ -126,6 +126,32 @@ model RealtimeMarketTick {
   @@index([synchronizationVersion, capturedAt])
 }
 
+model RealtimeAssetTick {
+  id                     String   @id
+  asset                  String
+  hyperliquidBestBid     Float
+  hyperliquidBestAsk     Float
+  hyperliquidBidSize     Float?
+  hyperliquidAskSize     Float?
+  hyperliquidSpread      Float
+  hyperliquidMidPrice    Float
+  hyperliquidMarkPrice   Float?
+  hyperliquidOraclePrice Float?
+  hyperliquidFundingRate Float?
+  hyperliquidUpdatedAt   DateTime
+  chainlinkPrice         Float?
+  chainlinkUpdatedAt     DateTime?
+  binancePrice           Float?
+  binanceUpdatedAt       DateTime?
+  captureSkewMs          Int
+  synchronizationVersion String
+  capturedAt             DateTime @default(now())
+
+  @@index([asset, capturedAt])
+  @@index([capturedAt, captureSkewMs])
+  @@index([synchronizationVersion, capturedAt])
+}
+
 model PipelineHeartbeat {
   id            String    @id
   status        String

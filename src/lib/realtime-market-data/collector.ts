@@ -31,6 +31,7 @@ const pipelineHeartbeatIntervalMs = 15_000;
 const emptyFlushFailureThreshold = 3;
 
 export const realtimeSynchronizationVersion = "websocket-v6-near-term-discovery";
+export const realtimeAssetSynchronizationVersion = "websocket-asset-v1";
 
 type ReferenceState = Record<"BINANCE" | "CHAINLINK", RealtimeReferenceUpdate | null>;
 
@@ -178,8 +179,22 @@ export class RealtimeMarketDataCollector {
         });
         return row ? [row] : [];
       });
-      if (rows.length) await prisma.realtimeMarketTick.createMany({ data: rows });
-      this.pendingHeartbeatRecords += rows.length;
+      const assetRows = Array.from(supportedAssets).flatMap((asset) => {
+        const row = buildRealtimeAssetTick({
+          asset,
+          hyperliquidBook: this.hyperliquidBooks.get(asset) ?? null,
+          hyperliquidContext: this.hyperliquidContexts.get(asset) ?? null,
+          references: this.references.get(asset) ?? { BINANCE: null, CHAINLINK: null },
+          now,
+          intervalMs: this.intervalMs,
+        });
+        return row ? [row] : [];
+      });
+      await Promise.all([
+        rows.length ? prisma.realtimeMarketTick.createMany({ data: rows }) : Promise.resolve(),
+        assetRows.length ? prisma.realtimeAssetTick.createMany({ data: assetRows }) : Promise.resolve(),
+      ]);
+      this.pendingHeartbeatRecords += rows.length + assetRows.length;
       this.consecutiveEmptyActiveFlushes = activeMarkets.length && !rows.length
         ? this.consecutiveEmptyActiveFlushes + 1
         : 0;
@@ -197,14 +212,14 @@ export class RealtimeMarketDataCollector {
         const recorded = await markPipelineSuccess(
           "realtime-market-data",
           this.pendingHeartbeatRecords,
-          `5秒板 ${rows.length}/${activeMarkets.length}市場 / 接続${health.connected}/3`,
+          `5秒板 ${rows.length}/${activeMarkets.length}市場・${assetRows.length}/${supportedAssets.size}資産 / 接続${health.connected}/3`,
         );
         if (recorded) {
           this.pendingHeartbeatRecords = 0;
           this.lastHeartbeatAtMs = now.getTime();
         }
       }
-      return { saved: rows.length, activeMarkets: activeMarkets.length, health };
+      return { saved: rows.length, assetRows: assetRows.length, activeMarkets: activeMarkets.length, health };
     } catch (error) {
       await markPipelineError("realtime-market-data", error);
       throw error;
@@ -300,7 +315,10 @@ export class RealtimeMarketDataCollector {
 
   private async prune(now = new Date()) {
     const cutoff = new Date(now.getTime() - this.retentionDays * 24 * 60 * 60_000);
-    return prisma.realtimeMarketTick.deleteMany({ where: { capturedAt: { lt: cutoff } } });
+    return Promise.all([
+      prisma.realtimeMarketTick.deleteMany({ where: { capturedAt: { lt: cutoff } } }),
+      prisma.realtimeAssetTick.deleteMany({ where: { capturedAt: { lt: cutoff } } }),
+    ]);
   }
 
   private async reportError(error: unknown) {
@@ -430,6 +448,54 @@ export function buildRealtimeMarketTick(input: {
     arbitrageViolation: complementAskSum < 0.999 || complementBidSum > 1.001,
     captureSkewMs,
     synchronizationVersion: realtimeSynchronizationVersion,
+    capturedAt: now,
+  };
+}
+
+export function buildRealtimeAssetTick(input: {
+  asset: string;
+  hyperliquidBook: HyperliquidBookUpdate | null;
+  hyperliquidContext: HyperliquidContextUpdate | null;
+  references: ReferenceState;
+  now: Date;
+  intervalMs?: number;
+}): Prisma.RealtimeAssetTickCreateManyInput | null {
+  const { asset, hyperliquidBook, hyperliquidContext, references, now } = input;
+  if (!hyperliquidBook || !isFresh(hyperliquidBook.updatedAt, now, maximumHyperliquidBookAgeMs)) return null;
+  const chainlink = references.CHAINLINK && isFresh(references.CHAINLINK.updatedAt, now, maximumReferenceAgeMs)
+    ? references.CHAINLINK
+    : null;
+  const binance = references.BINANCE && isFresh(references.BINANCE.updatedAt, now, maximumReferenceAgeMs)
+    ? references.BINANCE
+    : null;
+  if (!chainlink && !binance) return null;
+  const context = hyperliquidContext && isFresh(hyperliquidContext.updatedAt, now, maximumContextAgeMs)
+    ? hyperliquidContext
+    : null;
+  const timestamps = [hyperliquidBook.updatedAt, chainlink?.updatedAt, binance?.updatedAt]
+    .filter((value): value is Date => value instanceof Date);
+  const captureSkewMs = Math.max(...timestamps.map((date) => date.getTime())) - Math.min(...timestamps.map((date) => date.getTime()));
+  const intervalMs = boundedNumber(input.intervalMs, 5_000, 1_000, 60_000);
+  const hyperliquidMidPrice = (hyperliquidBook.bestBid + hyperliquidBook.bestAsk) / 2;
+  return {
+    id: `${asset}:${Math.floor(now.getTime() / intervalMs)}`,
+    asset,
+    hyperliquidBestBid: hyperliquidBook.bestBid,
+    hyperliquidBestAsk: hyperliquidBook.bestAsk,
+    hyperliquidBidSize: hyperliquidBook.bidSize,
+    hyperliquidAskSize: hyperliquidBook.askSize,
+    hyperliquidSpread: hyperliquidBook.bestAsk - hyperliquidBook.bestBid,
+    hyperliquidMidPrice,
+    hyperliquidMarkPrice: context?.markPrice ?? null,
+    hyperliquidOraclePrice: context?.oraclePrice ?? null,
+    hyperliquidFundingRate: context?.fundingRate ?? null,
+    hyperliquidUpdatedAt: hyperliquidBook.updatedAt,
+    chainlinkPrice: chainlink?.price ?? null,
+    chainlinkUpdatedAt: chainlink?.updatedAt ?? null,
+    binancePrice: binance?.price ?? null,
+    binanceUpdatedAt: binance?.updatedAt ?? null,
+    captureSkewMs,
+    synchronizationVersion: realtimeAssetSynchronizationVersion,
     capturedAt: now,
   };
 }

@@ -46,6 +46,14 @@ export type ExactExecutionAuditTick = {
   capturedAt: Date;
 };
 
+export type ExactExecutionAuditAssetTick = {
+  asset: string;
+  hyperliquidBestBid: number;
+  hyperliquidBestAsk: number;
+  hyperliquidUpdatedAt: Date;
+  capturedAt: Date;
+};
+
 export type ExactExecutionAuditResolution = {
   marketId: string;
   resolved: boolean;
@@ -56,6 +64,7 @@ export type ExactExecutionAuditInput = {
   positions: ExactExecutionAuditPosition[];
   controlPositions?: ExactExecutionAuditPosition[];
   ticks: ExactExecutionAuditTick[];
+  assetTicks?: ExactExecutionAuditAssetTick[];
   resolutions: ExactExecutionAuditResolution[];
   collectionStartedAt: Date | null;
   takerFeePerSide: number;
@@ -85,6 +94,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   const eligiblePositions = eligibleAuditPositions(input.positions, input.collectionStartedAt);
   const eligibleControlPositions = eligibleAuditPositions(input.controlPositions ?? [], input.collectionStartedAt);
   const ticksByMarket = groupTicksByMarket(input.ticks);
+  const ticksByAsset = groupTicksByAsset(input.assetTicks ?? []);
   const resolutionsByMarket = new Map(input.resolutions.map((resolution) => [resolution.marketId, resolution]));
   const timingErrors: number[] = [];
   const polymarketQuoteAges: number[] = [];
@@ -100,7 +110,11 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   for (const position of eligiblePositions) {
     const ticks = ticksByMarket.get(position.marketId) ?? [];
     const entry = selectCausalExecutionTick(ticks, position.openedAt, maximumTimingErrorMs);
-    const exit = selectCausalExecutionTick(ticks, position.exitAt, maximumTimingErrorMs);
+    const exit = selectCausalAssetExecutionTick(
+      ticksByAsset.get(position.asset) ?? [],
+      position.exitAt,
+      maximumTimingErrorMs,
+    ) ?? selectCausalExecutionTick(ticks, position.exitAt, maximumTimingErrorMs);
     if (!entry) missingEntry += 1;
     if (!exit) missingExit += 1;
 
@@ -164,6 +178,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   const controlResults = exactExecutionResults({
     positions: eligibleControlPositions,
     ticksByMarket,
+    ticksByAsset,
     maximumTimingErrorMs,
     takerFeePerSide: input.takerFeePerSide,
     slippagePerSide: input.slippagePerSide,
@@ -251,6 +266,11 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   return {
     status: enoughData ? qualityPassed ? "healthy" as const : "attention" as const : "collecting" as const,
     readinessStatus,
+    priceSources: {
+      entry: "Polymarket CLOB 5秒板" as const,
+      exit: "Hyperliquid L2 独立5秒板" as const,
+      settlement: "Chainlink 独立5秒価格" as const,
+    },
     collectionStartedAt: input.collectionStartedAt?.toISOString() ?? null,
     minimumAuditedPositions,
     minimumIndependentEvents: minimumAuditedPositions,
@@ -312,7 +332,7 @@ type ExactResult = {
   openedAt: Date;
   position: ExactExecutionAuditPosition;
   entryTick: ExactExecutionAuditTick;
-  exitTick: ExactExecutionAuditTick;
+  exitTick: ExactExecutionAuditAssetTick;
   exactPnl: number;
   storedPnl: number;
   notional: number;
@@ -354,6 +374,7 @@ function eligibleAuditPositions(positions: ExactExecutionAuditPosition[], collec
 function exactExecutionResults(input: {
   positions: ExactExecutionAuditPosition[];
   ticksByMarket: Map<string, ExactExecutionAuditTick[]>;
+  ticksByAsset: Map<string, ExactExecutionAuditAssetTick[]>;
   maximumTimingErrorMs: number;
   takerFeePerSide: number;
   slippagePerSide: number;
@@ -362,7 +383,11 @@ function exactExecutionResults(input: {
   return input.positions.flatMap((position): ExactResult[] => {
     const ticks = input.ticksByMarket.get(position.marketId) ?? [];
     const entry = selectCausalExecutionTick(ticks, position.openedAt, input.maximumTimingErrorMs);
-    const exit = selectCausalExecutionTick(ticks, position.exitAt, input.maximumTimingErrorMs);
+    const exit = selectCausalAssetExecutionTick(
+      input.ticksByAsset.get(position.asset) ?? [],
+      position.exitAt,
+      input.maximumTimingErrorMs,
+    ) ?? selectCausalExecutionTick(ticks, position.exitAt, input.maximumTimingErrorMs);
     if (!entry || !exit) return [];
     const exact = calculateHyperliquidBookPnl({
       position,
@@ -546,7 +571,7 @@ function calculatePolymarketTokenReturn(price: number, correct: boolean) {
 function calculateHyperliquidBookPnl(input: {
   position: ExactExecutionAuditPosition;
   entryTick: ExactExecutionAuditTick;
-  exitTick: ExactExecutionAuditTick;
+  exitTick: ExactExecutionAuditAssetTick;
   takerFeePerSide: number;
   slippagePerSide: number;
   fundingPer24h: number;
@@ -596,12 +621,39 @@ function groupTicksByMarket(ticks: ExactExecutionAuditTick[]) {
   return grouped;
 }
 
+function groupTicksByAsset(ticks: ExactExecutionAuditAssetTick[]) {
+  const grouped = new Map<string, ExactExecutionAuditAssetTick[]>();
+  for (const tick of ticks) {
+    const rows = grouped.get(tick.asset) ?? [];
+    rows.push(tick);
+    grouped.set(tick.asset, rows);
+  }
+  for (const rows of grouped.values()) {
+    rows.sort((left, right) => left.capturedAt.getTime() - right.capturedAt.getTime());
+  }
+  return grouped;
+}
+
 export function selectCausalExecutionTick(
   ticks: ExactExecutionAuditTick[],
   target: Date,
   maximumDelayMs: number,
 ) {
   let first: { tick: ExactExecutionAuditTick; errorMs: number } | null = null;
+  for (const tick of ticks) {
+    const errorMs = tick.capturedAt.getTime() - target.getTime();
+    if (errorMs < 0 || errorMs > maximumDelayMs) continue;
+    if (!first || errorMs < first.errorMs) first = { tick, errorMs };
+  }
+  return first;
+}
+
+export function selectCausalAssetExecutionTick(
+  ticks: ExactExecutionAuditAssetTick[],
+  target: Date,
+  maximumDelayMs: number,
+) {
+  let first: { tick: ExactExecutionAuditAssetTick; errorMs: number } | null = null;
   for (const tick of ticks) {
     const errorMs = tick.capturedAt.getTime() - target.getTime();
     if (errorMs < 0 || errorMs > maximumDelayMs) continue;

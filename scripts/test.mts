@@ -49,6 +49,8 @@ import { evaluateSynchronizedPriceQuality } from "../src/lib/monitoring/synchron
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
 import { dashboardStateFingerprint, shouldPublishDashboardSnapshot } from "./live-snapshot-policy.mjs";
+import { isProtectedRuntimeDatabasePath, runtimeDatabaseRsyncExcludes } from "./runtime-deployment-policy.mjs";
+import { processSignalTarget, supervisorExitDelayMs, supervisorForceKillDelayMs } from "./process-supervisor-policy.mjs";
 import { calculateDirectionalBookReturn, deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { modelEvaluationConfigHash, modelEvaluationSummariesCsv, summarizeModelEvaluation } from "../src/lib/model-evaluation/report";
@@ -60,7 +62,7 @@ import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/s
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 import { annualizeRealizedVolatility } from "../src/lib/model-evaluation/volatility";
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
-import { buildRealtimeMarketTick, isRealtimeCaptureWindow, selectRealtimeMarketsForCollection, shouldReconnectManagedSocket, shouldReportRealtimeCoverageFailure } from "../src/lib/realtime-market-data/collector";
+import { buildRealtimeAssetTick, buildRealtimeMarketTick, isRealtimeCaptureWindow, selectRealtimeMarketsForCollection, shouldReconnectManagedSocket, shouldReportRealtimeCoverageFailure } from "../src/lib/realtime-market-data/collector";
 import { calculatePolymarketTakerFee, evaluateExactExecutionAudit, selectCausalExecutionTick } from "../src/lib/realtime-market-data/execution-audit";
 import { evaluateReferenceSettlementAudit } from "../src/lib/realtime-market-data/settlement-audit";
 import {
@@ -83,6 +85,19 @@ const snapshotState = {
     },
   },
 };
+assert.deepEqual(runtimeDatabaseRsyncExcludes, ["--exclude=prisma/dev.db*"]);
+for (const path of ["prisma/dev.db", "prisma/dev.db-wal", "prisma/dev.db-shm", "prisma/dev.db-journal"]) {
+  assert.equal(isProtectedRuntimeDatabasePath(path), true);
+}
+assert.equal(isProtectedRuntimeDatabasePath("prisma/schema.prisma"), false);
+console.log("runtime database deployment protection tests passed");
+
+assert.equal(processSignalTarget(123, "darwin"), -123);
+assert.equal(processSignalTarget(123, "win32"), 123);
+assert.equal(processSignalTarget(0, "darwin"), null);
+assert.ok(supervisorExitDelayMs > supervisorForceKillDelayMs);
+console.log("process supervisor shutdown policy tests passed");
+
 assert.equal(
   dashboardStateFingerprint({ ...snapshotState, generatedAt: "2026-01-01T00:01:00Z" }),
   dashboardStateFingerprint({ ...snapshotState, generatedAt: "2026-01-01T00:02:00Z" }),
@@ -348,6 +363,22 @@ assert.equal(realtimeTick.arbitrageViolation, false);
 assert.equal(realtimeTick.captureSkewMs, 2_000);
 assert.equal(realtimeTick.synchronizationVersion, "websocket-v6-near-term-discovery");
 assert.ok(Math.abs(realtimeTick.priceBasisPct - (100.05 / 99 - 1)) < 1e-12);
+const realtimeAssetTick = buildRealtimeAssetTick({
+  asset: "BTC",
+  hyperliquidBook: realtimeHyperliquidBook && "bestBid" in realtimeHyperliquidBook ? realtimeHyperliquidBook : null,
+  hyperliquidContext: realtimeHyperliquidContext && "markPrice" in realtimeHyperliquidContext ? realtimeHyperliquidContext : null,
+  references: {
+    BINANCE: realtimeBinance,
+    CHAINLINK: { asset: "BTC", source: "CHAINLINK", price: 98.9, updatedAt: new Date(realtimeNow.getTime() - 1_000) },
+  },
+  now: realtimeNow,
+  intervalMs: 5_000,
+});
+assert.ok(realtimeAssetTick);
+assert.equal(realtimeAssetTick.synchronizationVersion, "websocket-asset-v1");
+assert.equal(realtimeAssetTick.chainlinkPrice, 98.9);
+assert.equal(realtimeAssetTick.binancePrice, 99);
+assert.equal(realtimeAssetTick.captureSkewMs, 1_500);
 const unchangedPolymarketTick = buildRealtimeMarketTick({
   market: realtimeMarket,
   positiveBook: { ...polymarketUpdates[0]!, updatedAt: new Date(realtimeNow.getTime() - 90_000) },
@@ -560,6 +591,23 @@ assert.equal(incompleteAudit.auditedPositions, 0);
 assert.equal(incompleteAudit.missingEntry, 1);
 assert.equal(incompleteAudit.missingExit, 1);
 assert.equal(incompleteAudit.missingResolution, 1);
+const independentAssetExitAudit = evaluateExactExecutionAudit({
+  ...auditConfig,
+  positions: [auditPositions[0]],
+  controlPositions: [],
+  ticks: [auditTicks[1]],
+  assetTicks: [{
+    asset: "BTC",
+    hyperliquidBestBid: 101,
+    hyperliquidBestAsk: 101.1,
+    hyperliquidUpdatedAt: new Date("2026-01-01T00:15:03Z"),
+    capturedAt: new Date("2026-01-01T00:15:04Z"),
+  }],
+  resolutions: [{ marketId: "audit-long", resolved: true, result: 1 }],
+});
+assert.equal(independentAssetExitAudit.auditedPositions, 1);
+assert.equal(independentAssetExitAudit.missingEntry, 0);
+assert.equal(independentAssetExitAudit.missingExit, 0);
 const filteredAudit = evaluateExactExecutionAudit({
   ...auditConfig,
   positions: [auditPositions[0]],
