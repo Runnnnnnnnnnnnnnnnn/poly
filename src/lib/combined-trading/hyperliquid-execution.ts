@@ -332,14 +332,18 @@ export async function reconcileHyperliquidTestnetOrders() {
   const orders = await prisma.combinedExecutionOrder.findMany({
     where: { environment: "TESTNET", status: { in: ["SUBMITTED", "PENDING", "UNKNOWN", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] } },
     orderBy: [{ lastReconciledAt: "asc" }, { createdAt: "asc" }],
-    take: 25,
   });
-  const response = await runReadOnlyExecutor({ action: "reconcile", clientOrderIds: orders.map((order) => order.clientOrderId) });
-  if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet reconciliation failed");
+  const responses: ExecutorResponse[] = [];
+  for (const clientOrderIds of planTestnetReconciliationBatches(orders.map((order) => order.clientOrderId))) {
+    responses.push(await runReadOnlyExecutor({ action: "reconcile", clientOrderIds }));
+  }
+  const response = responses.at(-1);
+  if (!response) throw new Error("Hyperliquid testnet reconciliation returned no account state");
+  const orderStatuses = responses.flatMap((item) => item.orderStatuses ?? []);
 
   const fillsByOrder = aggregateHyperliquidFills(response.recentFills ?? []);
   let updatedOrders = 0;
-  for (const status of response.orderStatuses ?? []) {
+  for (const status of orderStatuses) {
     if (!status.clientOrderId) continue;
     const evidence = parseHyperliquidOrderEvidence(status.result, "query");
     if (!evidence.recognized) continue;
@@ -646,6 +650,17 @@ async function assertRecentTestnetReconciliation(now = new Date()) {
 
 export function deriveHyperliquidCloid(clientOrderId: string) {
   return `0x${createHash("sha256").update(clientOrderId).digest("hex").slice(0, 32)}`;
+}
+
+export function planTestnetReconciliationBatches(clientOrderIds: string[], batchSize = 25) {
+  const size = Math.max(1, Math.min(25, Math.floor(batchSize)));
+  const uniqueIds = Array.from(new Set(clientOrderIds));
+  if (!uniqueIds.length) return [[]];
+  const batches: string[][] = [];
+  for (let index = 0; index < uniqueIds.length; index += size) {
+    batches.push(uniqueIds.slice(index, index + size));
+  }
+  return batches;
 }
 
 export function compareTestnetOpenOrders(

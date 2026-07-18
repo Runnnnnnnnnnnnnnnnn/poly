@@ -13,6 +13,7 @@ import {
   normalizeHyperliquidFillAgainstRequestedQuantity,
   normalizeTestnetSmokeOrderSize,
   parseHyperliquidOrderEvidence,
+  planTestnetReconciliationBatches,
   performHyperliquidTestnetEmergencyCleanup,
 } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
@@ -1213,6 +1214,13 @@ assert.equal(new HyperliquidDefinitiveOrderError("blocked").name, "HyperliquidDe
 assert.equal(normalizeTestnetSmokeOrderSize("BTC", 12, 64_000, 25), 0.00019);
 assert.equal(normalizeTestnetSmokeOrderSize("SOL", 12, 75, 25), 0.16);
 assert.throws(() => normalizeTestnetSmokeOrderSize("XRP", 12, 100, 9), /minimum notional/);
+assert.deepEqual(planTestnetReconciliationBatches([]), [[]]);
+const reconciliationBatches = planTestnetReconciliationBatches(
+  Array.from({ length: 61 }, (_, index) => `order-${index + 1}`),
+);
+assert.deepEqual(reconciliationBatches.map((batch) => batch.length), [25, 25, 11]);
+assert.equal(new Set(reconciliationBatches.flat()).size, 61);
+assert.deepEqual(planTestnetReconciliationBatches(["a", "a", "b"], 50), [["a", "b"]]);
 
 const emergencySequence: string[] = [];
 const verifiedEmergencyCleanup = await performHyperliquidTestnetEmergencyCleanup({
