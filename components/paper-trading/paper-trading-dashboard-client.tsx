@@ -524,12 +524,35 @@ type MonitoringSnapshot = {
       installed: boolean;
       accountConfigured: boolean;
       apiWalletConfigured: boolean;
+      apiWalletKeySource: "environment" | "file" | null;
       enabled: boolean;
       autoMirrorEnabled: boolean;
       ready: boolean;
       verifiedReady: boolean;
       maximumNotionalUsd: number;
       mainnetSupported: false;
+      verification: {
+        id: string;
+        status: string;
+        asset: string | null;
+        requestedNotionalUsd: number | null;
+        sdkVersion: string | null;
+        connectivityPassed: boolean;
+        openFillPassed: boolean;
+        closeFillPassed: boolean;
+        restingOrderPassed: boolean;
+        cancelPassed: boolean;
+        partialFillObserved: boolean;
+        reconnectPassed: boolean;
+        reconciliationPassed: boolean;
+        emergencyCleanupPassed: boolean;
+        orphanOrderCount: number;
+        positionMismatchCount: number;
+        startedAt: string;
+        completedAt: string | null;
+        error: string | null;
+        failedChecks: string[];
+      } | null;
       reconciliation: {
         status: string;
         lastSuccessAt: string | null;
@@ -1097,7 +1120,22 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
   const drawdownReady = sampleReady && (auditedDrawdown ?? Number.POSITIVE_INFINITY) <= 0.05;
   const dataReady = snapshot?.collection.realtimePrices?.status === "healthy";
   const settlementReady = settlementResolution?.status === "healthy";
-  const testnetReady = snapshot?.combinedShadow.testnet.verifiedReady === true;
+  const testnet = snapshot?.combinedShadow.testnet;
+  const testnetReady = testnet?.verifiedReady === true;
+  const testnetLabel = testnetReady
+    ? "検証済み"
+    : testnet?.verification?.status === "PARTIAL"
+      ? "一部検証"
+      : testnet?.accountConfigured && testnet.apiWalletConfigured
+        ? "実API検証待ち"
+        : "未設定";
+  const testnetNote = testnetReady
+    ? "発注・取消・照合済み"
+    : testnet?.verification?.status === "PARTIAL"
+      ? "部分約定の実測待ち"
+      : testnet?.accountConfigured && testnet.apiWalletConfigured
+        ? "検証スイート未完了"
+        : "専用口座を設定してください";
   const liveEnabled = snapshot?.tradeReadiness.realTradingEnabled === true;
   const promising = audit?.readinessStatus === "promising" && sampleReady && netPositive && edgePositive && drawdownReady;
   const verdict = liveEnabled
@@ -1135,7 +1173,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
         <ExecutiveMetric icon={TrendingUp} label="実板純損益" value={verifiedTrades ? formatSignedPct(auditedNetReturn) : "未判定"} note="全コスト控除後" tone={pnlTone} />
         <ExecutiveMetric icon={BarChart3} label="最良比較との差" value={verifiedTrades ? formatSignedPct(auditedExcessReturn) : "未判定"} note={audit?.benchmarkLabel ?? "同期間の対照比"} tone={edgeTone} />
         <ExecutiveMetric icon={TrendingDown} label="最大下落" value={verifiedTrades ? formatPct(auditedDrawdown) : "未判定"} note="上限 5.00%" tone={drawdownTone} />
-        <ExecutiveMetric icon={LockKeyhole} label="運用可否" value={liveEnabled ? "運用中" : "不可"} note={testnetReady ? "テストネット接続済み" : "テストネット未接続"} tone={liveEnabled ? "good" : "bad"} />
+        <ExecutiveMetric icon={LockKeyhole} label="運用可否" value={liveEnabled ? "運用中" : "不可"} note={testnetNote} tone={liveEnabled ? "good" : "bad"} />
       </div>
 
       <div className="grid grid-cols-2 border-t sm:grid-cols-6">
@@ -1150,7 +1188,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
         <ExecutiveGate label="独立枠" value={sampleReady ? "合格" : `${verifiedTrades}/${minimumTrades}`} tone={sampleReady ? "good" : "watch"} />
         <ExecutiveGate label="純損益" value={netPositive ? "合格" : trades ? "未合格" : "未判定"} tone={netPositive ? "good" : trades ? "bad" : "neutral"} />
         <ExecutiveGate label="95%下限" value={edgePositive ? "合格" : auditedConfidenceLower === null ? "未判定" : sampleReady ? "未合格" : formatSignedPct(auditedConfidenceLower)} tone={edgePositive ? "good" : auditedConfidenceLower === null ? "neutral" : sampleReady ? "bad" : "watch"} />
-        <ExecutiveGate label="テストネット" value={testnetReady ? "接続済み" : "未接続"} tone={testnetReady ? "good" : "neutral"} />
+        <ExecutiveGate label="テストネット" value={testnetLabel} tone={testnetReady ? "good" : testnet?.verification ? "watch" : "neutral"} />
       </div>
 
       <div className="grid grid-cols-3 items-stretch border-t md:grid-cols-[minmax(0,1fr)_28px_minmax(0,1fr)_28px_minmax(0,1fr)]">

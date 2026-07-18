@@ -9,6 +9,7 @@ import {
   getHyperliquidExecutionReadiness,
   reconcileHyperliquidTestnetOrders,
   runHyperliquidTestnetSmokeTest,
+  runHyperliquidTestnetVerificationSuite,
 } from "@/src/lib/combined-trading/hyperliquid-execution";
 import { fetchHyperliquidMarketStates } from "@/src/lib/monitoring/hyperliquid";
 
@@ -20,7 +21,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const parsed = z.object({
-    action: z.enum(["check", "reconcile", "cancel", "cancel-all", "flatten", "smoke-test"]).optional(),
+    action: z.enum(["check", "reconcile", "cancel", "cancel-all", "flatten", "smoke-test", "verification-suite"]).optional(),
     asset: z.enum(["BTC", "ETH", "SOL", "XRP"]).optional(),
     clientOrderId: z.string().min(1).max(100).optional(),
     notionalUsd: z.number().min(10).max(15).optional(),
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
   if (parsed.data.action === "reconcile") return NextResponse.json(await reconcileHyperliquidTestnetOrders());
   if (parsed.data.action === "cancel-all") return NextResponse.json(await cancelOutstandingHyperliquidTestnetOrders());
   if (parsed.data.action === "flatten") return NextResponse.json(await flattenHyperliquidTestnetPositions());
-  if (parsed.data.action === "smoke-test") {
+  if (parsed.data.action === "smoke-test" || parsed.data.action === "verification-suite") {
     if (parsed.data.confirmation !== "TESTNET_ONLY") {
       return NextResponse.json({ error: "confirmation TESTNET_ONLY is required" }, { status: 400 });
     }
@@ -39,11 +40,14 @@ export async function POST(request: Request) {
     const referencePrice = states.find((state) => state.asset === asset)?.midPrice ?? null;
     if (!referencePrice) return NextResponse.json({ error: `${asset} reference price is unavailable` }, { status: 503 });
     try {
-      return NextResponse.json(await runHyperliquidTestnetSmokeTest({
+      const input = {
         asset,
         notionalUsd: parsed.data.notionalUsd ?? 12,
         referencePrice,
-      }));
+      };
+      return NextResponse.json(parsed.data.action === "verification-suite"
+        ? await runHyperliquidTestnetVerificationSuite(input)
+        : await runHyperliquidTestnetSmokeTest(input));
     } catch (error) {
       return NextResponse.json({ error: error instanceof Error ? error.message : "testnet smoke test failed" }, { status: 409 });
     }

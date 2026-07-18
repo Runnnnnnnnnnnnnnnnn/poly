@@ -2,6 +2,8 @@ import json
 import hashlib
 import os
 import sys
+from importlib.metadata import version
+from pathlib import Path
 
 import eth_account
 from hyperliquid.exchange import Exchange
@@ -14,14 +16,42 @@ def output(payload):
     print(json.dumps(payload, separators=(",", ":")))
 
 
+def load_api_wallet_private_key():
+    direct_key = os.environ.get("HYPERLIQUID_API_WALLET_PRIVATE_KEY", "").strip()
+    if direct_key:
+        return direct_key
+    configured_path = os.environ.get("HYPERLIQUID_API_WALLET_KEY_FILE", "").strip()
+    if not configured_path:
+        default_path = Path.home() / ".polymarket-watch" / "secrets" / "hyperliquid-testnet-api-wallet.key"
+        configured_path = str(default_path) if default_path.exists() else ""
+    if not configured_path:
+        return ""
+    key_path = Path(configured_path).expanduser().resolve()
+    mode = key_path.stat().st_mode & 0o777
+    if mode & 0o077:
+        raise ValueError(f"Hyperliquid API wallet key file permissions must be 600, found {mode:o}")
+    return key_path.read_text(encoding="utf-8").strip()
+
+
 def main():
     request = json.load(sys.stdin)
     action = request.get("action")
+    info = Info(constants.TESTNET_API_URL, skip_ws=True)
+    if action == "diagnostics":
+        universe = [item.get("name") for item in info.meta().get("universe", []) if item.get("name")]
+        output({
+            "ok": True,
+            "environment": "testnet",
+            "sdkVersion": version("hyperliquid-python-sdk"),
+            "apiUrl": constants.TESTNET_API_URL,
+            "availableAssets": universe,
+        })
+        return
+
     account_address = os.environ.get("HYPERLIQUID_ACCOUNT_ADDRESS", "").strip()
     if not account_address:
         raise ValueError("HYPERLIQUID_ACCOUNT_ADDRESS is not configured")
 
-    info = Info(constants.TESTNET_API_URL, skip_ws=True)
     user_state = info.user_state(account_address)
     account_value = float(user_state.get("marginSummary", {}).get("accountValue", 0))
     if action == "readiness":
@@ -62,7 +92,7 @@ def main():
         })
         return
 
-    secret_key = os.environ.get("HYPERLIQUID_API_WALLET_PRIVATE_KEY", "").strip()
+    secret_key = load_api_wallet_private_key()
     if not secret_key:
         raise ValueError("HYPERLIQUID_API_WALLET_PRIVATE_KEY is not configured")
 
@@ -138,7 +168,24 @@ def main():
         raise ValueError("size must be positive")
 
     exchange.update_leverage(1, asset, is_cross=False)
-    if action == "open":
+    if action == "rest":
+        is_buy = bool(request["isBuy"])
+        limit_price = exchange._slippage_price(
+            asset,
+            not is_buy,
+            float(request.get("restingDistance", 0.03)),
+            float(request["referencePrice"]),
+        )
+        result = exchange.order(
+            asset,
+            is_buy,
+            size,
+            limit_price,
+            order_type={"limit": {"tif": "Alo"}},
+            reduce_only=False,
+            cloid=cloid,
+        )
+    elif action == "open":
         result = exchange.market_open(
             asset,
             bool(request["isBuy"]),

@@ -60,6 +60,10 @@ export function dashboardStateFingerprint(snapshot) {
       verifiedReady: testnet.verifiedReady ?? null,
       enabled: testnet.enabled ?? null,
       reconciliationStatus: testnet.reconciliation?.status ?? null,
+      verificationStatus: testnet.verification?.status ?? null,
+      partialFillObserved: testnet.verification?.partialFillObserved ?? null,
+      orphanOrderCount: testnet.verification?.orphanOrderCount ?? null,
+      positionMismatchCount: testnet.verification?.positionMismatchCount ?? null,
     },
     modelEvaluation: {
       id: latestEvaluation.id ?? null,

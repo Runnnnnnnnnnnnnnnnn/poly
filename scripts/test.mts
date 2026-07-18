@@ -7,6 +7,7 @@ import {
   compareTestnetOpenOrders,
   compareTestnetPositions,
   deriveHyperliquidCloid,
+  evaluateHyperliquidTestnetVerificationReadiness,
   evaluateTestnetAccountSafety,
   HyperliquidDefinitiveOrderError,
   normalizeExchangeOrderStatus,
@@ -1473,6 +1474,50 @@ assert.deepEqual(evaluateTestnetAccountSafety({
   orderMismatchCount: 0,
   positionMismatchCount: 0,
 }).issues, ["account-value-unavailable"]);
+const testnetVerificationNow = new Date("2026-01-08T00:00:00Z");
+const completeTestnetVerification = {
+  status: "PASSED",
+  connectivityPassed: true,
+  openFillPassed: true,
+  closeFillPassed: true,
+  restingOrderPassed: true,
+  cancelPassed: true,
+  partialFillObserved: true,
+  reconnectPassed: true,
+  reconciliationPassed: true,
+  emergencyCleanupPassed: true,
+  orphanOrderCount: 0,
+  positionMismatchCount: 0,
+  completedAt: new Date("2026-01-07T23:00:00Z"),
+};
+const cleanTestnetAccount = {
+  healthy: true,
+  openOrderCount: 0,
+  positionCount: 0,
+  orderMismatchCount: 0,
+  positionMismatchCount: 0,
+  capturedAt: new Date("2026-01-07T23:59:00Z"),
+};
+assert.equal(evaluateHyperliquidTestnetVerificationReadiness({
+  executionReady: true,
+  verification: completeTestnetVerification,
+  account: cleanTestnetAccount,
+  now: testnetVerificationNow,
+}).ready, true);
+const partialFillUnverified = evaluateHyperliquidTestnetVerificationReadiness({
+  executionReady: true,
+  verification: { ...completeTestnetVerification, status: "PARTIAL", partialFillObserved: false },
+  account: cleanTestnetAccount,
+  now: testnetVerificationNow,
+});
+assert.equal(partialFillUnverified.ready, false);
+assert.ok(partialFillUnverified.failedChecks.includes("partialFill"));
+assert.equal(evaluateHyperliquidTestnetVerificationReadiness({
+  executionReady: true,
+  verification: completeTestnetVerification,
+  account: { ...cleanTestnetAccount, openOrderCount: 1 },
+  now: testnetVerificationNow,
+}).failedChecks.includes("zeroExposure"), true);
 assert.equal(new HyperliquidDefinitiveOrderError("blocked").name, "HyperliquidDefinitiveOrderError");
 assert.equal(normalizeTestnetSmokeOrderSize("BTC", 12, 64_000, 25), 0.00019);
 assert.equal(normalizeTestnetSmokeOrderSize("SOL", 12, 75, 25), 0.16);

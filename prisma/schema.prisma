@@ -528,3 +528,29 @@ model CombinedExecutionAccountSnapshot {
 
   @@index([environment, capturedAt])
 }
+
+model HyperliquidTestnetVerificationRun {
+  id                       String    @id
+  status                   String
+  asset                    String?
+  requestedNotionalUsd     Float?
+  sdkVersion               String?
+  connectivityPassed       Boolean   @default(false)
+  openFillPassed           Boolean   @default(false)
+  closeFillPassed          Boolean   @default(false)
+  restingOrderPassed       Boolean   @default(false)
+  cancelPassed             Boolean   @default(false)
+  partialFillObserved      Boolean   @default(false)
+  reconnectPassed          Boolean   @default(false)
+  reconciliationPassed     Boolean   @default(false)
+  emergencyCleanupPassed   Boolean   @default(false)
+  orphanOrderCount         Int       @default(0)
+  positionMismatchCount    Int       @default(0)
+  resultJson               String?
+  error                    String?
+  startedAt                DateTime  @default(now())
+  completedAt              DateTime?
+
+  @@index([status, startedAt])
+  @@index([completedAt])
+}

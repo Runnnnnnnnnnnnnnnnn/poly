@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/src/lib/server/prisma";
 
 type TestnetOrderRequest = {
-  action: "open" | "close";
+  action: "open" | "close" | "rest";
   asset: "BTC" | "ETH" | "SOL" | "XRP";
   isBuy: boolean;
   size: number;
@@ -46,6 +46,9 @@ type ExecutorResponse = {
   ok: boolean;
   environment: "testnet";
   accountValue?: number;
+  sdkVersion?: string;
+  apiUrl?: string;
+  availableAssets?: string[];
   result?: unknown;
   positions?: Array<{ coin?: string; size?: number; entryPrice?: number; positionValue?: number; unrealizedPnl?: number; liquidationPrice?: number }>;
   openOrders?: unknown[];
@@ -86,7 +89,12 @@ export function getHyperliquidExecutionReadiness() {
   const python = executorPython();
   const installed = existsSync(python) && existsSync(executorScript());
   const accountConfigured = Boolean(process.env.HYPERLIQUID_ACCOUNT_ADDRESS?.trim());
-  const apiWalletConfigured = Boolean(process.env.HYPERLIQUID_API_WALLET_PRIVATE_KEY?.trim());
+  const directApiWalletConfigured = Boolean(process.env.HYPERLIQUID_API_WALLET_PRIVATE_KEY?.trim());
+  const defaultApiWalletKeyFile = resolve(homedir(), ".polymarket-watch/secrets/hyperliquid-testnet-api-wallet.key");
+  const apiWalletKeyFile = process.env.HYPERLIQUID_API_WALLET_KEY_FILE?.trim()
+    || (existsSync(defaultApiWalletKeyFile) ? defaultApiWalletKeyFile : null);
+  const apiWalletKeyFileConfigured = apiWalletKeyFile ? securePrivateKeyFileExists(apiWalletKeyFile) : false;
+  const apiWalletConfigured = directApiWalletConfigured || apiWalletKeyFileConfigured;
   const enabled = process.env.HYPERLIQUID_TESTNET_ENABLED === "1";
   const autoMirrorEnabled = process.env.HYPERLIQUID_TESTNET_AUTO_MIRROR === "1";
   const supportedAssets = supportedTestnetAssets();
@@ -95,6 +103,7 @@ export function getHyperliquidExecutionReadiness() {
     installed,
     accountConfigured,
     apiWalletConfigured,
+    apiWalletKeySource: directApiWalletConfigured ? "environment" as const : apiWalletKeyFileConfigured ? "file" as const : null,
     enabled,
     autoMirrorEnabled,
     supportedAssets,
@@ -106,9 +115,25 @@ export function getHyperliquidExecutionReadiness() {
 
 export async function checkHyperliquidTestnetConnection() {
   const readiness = getHyperliquidExecutionReadiness();
-  if (!readiness.installed || !readiness.accountConfigured) return { ...readiness, connected: false };
+  if (!readiness.installed) return { ...readiness, transportConnected: false, connected: false };
+  const transport = await checkHyperliquidTestnetTransport();
+  if (!readiness.accountConfigured) return { ...readiness, ...transport, connected: false };
   const response = await runReadOnlyExecutor({ action: "readiness" });
-  return { ...readiness, connected: response.ok, accountValue: response.accountValue ?? null };
+  return { ...readiness, ...transport, connected: response.ok, accountValue: response.accountValue ?? null };
+}
+
+export async function checkHyperliquidTestnetTransport() {
+  const readiness = getHyperliquidExecutionReadiness();
+  if (!readiness.installed) {
+    return { transportConnected: false, sdkVersion: null, apiUrl: null, availableAssets: [] as string[] };
+  }
+  const response = await runReadOnlyExecutor({ action: "diagnostics" });
+  return {
+    transportConnected: response.ok,
+    sdkVersion: response.sdkVersion ?? null,
+    apiUrl: response.apiUrl ?? null,
+    availableAssets: response.availableAssets ?? [],
+  };
 }
 
 export async function executeHyperliquidTestnetOrder(request: TestnetOrderRequest) {
@@ -121,10 +146,10 @@ export async function executeHyperliquidTestnetOrder(request: TestnetOrderReques
     throw new HyperliquidDefinitiveOrderError("invalid Hyperliquid testnet order size or price");
   }
   const notional = request.size * request.referencePrice;
-  if (request.action === "open" && notional > readiness.maximumNotionalUsd + 0.0001) {
+  if (request.action !== "close" && notional > readiness.maximumNotionalUsd + 0.0001) {
     throw new HyperliquidDefinitiveOrderError(`Hyperliquid testnet order exceeds $${readiness.maximumNotionalUsd} limit`);
   }
-  if (request.action === "open") await assertRecentTestnetReconciliation();
+  if (request.action !== "close") await assertRecentTestnetReconciliation();
   const response = await runExecutor({ ...request, slippage: 0.01 });
   if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet order failed");
   const evidence = normalizeHyperliquidFillAgainstRequestedQuantity(
@@ -144,6 +169,16 @@ export async function cancelHyperliquidTestnetOrder(request: TestnetCancelReques
   if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet cancellation failed");
   const evidence = parseHyperliquidOrderEvidence(response.result, "cancel");
   if (evidence.status === "REJECTED") throw new Error(evidence.reason ?? "Hyperliquid testnet cancellation was rejected");
+  await prisma.combinedExecutionOrder.updateMany({
+    where: { environment: "TESTNET", clientOrderId: request.clientOrderId },
+    data: {
+      status: evidence.status,
+      exchangeStatus: evidence.exchangeStatus,
+      ...(evidence.exchangeOrderId ? { exchangeOrderId: evidence.exchangeOrderId } : {}),
+      responseJson: JSON.stringify(response.result ?? null),
+      lastReconciledAt: new Date(),
+    },
+  });
   return { ...response, evidence };
 }
 
@@ -517,6 +552,217 @@ export async function runHyperliquidTestnetSmokeTest(input: {
   }
 }
 
+export async function runHyperliquidTestnetVerificationSuite(input: {
+  asset: "BTC" | "ETH" | "SOL" | "XRP";
+  notionalUsd: number;
+  referencePrice: number;
+}) {
+  const recentRunning = await prisma.hyperliquidTestnetVerificationRun.findFirst({
+    where: {
+      status: "RUNNING",
+      startedAt: { gte: new Date(Date.now() - 15 * 60_000) },
+    },
+    orderBy: { startedAt: "desc" },
+  });
+  if (recentRunning) throw new HyperliquidDefinitiveOrderError("a Hyperliquid testnet verification is already running");
+
+  const verification = await prisma.hyperliquidTestnetVerificationRun.create({
+    data: {
+      id: crypto.randomUUID(),
+      status: "RUNNING",
+      asset: input.asset,
+      requestedNotionalUsd: input.notionalUsd,
+    },
+  });
+  const checks = {
+    connectivityPassed: false,
+    openFillPassed: false,
+    closeFillPassed: false,
+    restingOrderPassed: false,
+    cancelPassed: false,
+    partialFillObserved: false,
+    reconnectPassed: false,
+    reconciliationPassed: false,
+    emergencyCleanupPassed: false,
+    orphanOrderCount: 0,
+    positionMismatchCount: 0,
+  };
+  let sdkVersion: string | null = null;
+  let verificationExposureMayExist = false;
+  const evidence: Record<string, unknown> = {};
+
+  try {
+    const readiness = getHyperliquidExecutionReadiness();
+    const firstTransport = await checkHyperliquidTestnetTransport();
+    sdkVersion = firstTransport.sdkVersion;
+    checks.connectivityPassed = firstTransport.transportConnected;
+    if (!checks.connectivityPassed) throw new Error("Hyperliquid testnet transport check failed");
+    if (!readiness.ready) throw new HyperliquidDefinitiveOrderError("Hyperliquid testnet account and dedicated API wallet are not armed");
+
+    const before = await reconcileHyperliquidTestnetOrders();
+    const beforePositions = before.positions.filter((position) => Math.abs(position.size ?? 0) > 1e-8);
+    if (!before.safety.healthy
+      || before.openOrders.length > 0
+      || beforePositions.length > 0
+      || before.orderMismatches.length > 0
+      || before.positionMismatches.length > 0) {
+      throw new HyperliquidDefinitiveOrderError("testnet verification requires a clean reconciled account");
+    }
+
+    const secondTransport = await checkHyperliquidTestnetTransport();
+    checks.reconnectPassed = secondTransport.transportConnected
+      && firstTransport.apiUrl === secondTransport.apiUrl
+      && firstTransport.sdkVersion === secondTransport.sdkVersion;
+    if (!checks.reconnectPassed) throw new Error("Hyperliquid testnet reconnect check failed");
+
+    const smoke = await runHyperliquidTestnetSmokeTest(input);
+    checks.openFillPassed = ["FILLED", "PARTIALLY_FILLED"].includes(smoke.openEvidence.status)
+      && smoke.openEvidence.filledQuantity > 0;
+    checks.closeFillPassed = ["FILLED", "PARTIALLY_FILLED"].includes(smoke.closeEvidence.status)
+      && smoke.closeEvidence.filledQuantity >= smoke.openEvidence.filledQuantity * 0.99;
+    checks.partialFillObserved = smoke.openEvidence.status === "PARTIALLY_FILLED"
+      || smoke.closeEvidence.status === "PARTIALLY_FILLED";
+    if (!checks.openFillPassed || !checks.closeFillPassed) throw new Error("testnet open/close fill verification failed");
+    evidence.smoke = smoke;
+
+    const run = await prisma.combinedShadowRun.findFirst({ where: { status: "running" }, orderBy: { startedAt: "desc" } });
+    if (!run) throw new HyperliquidDefinitiveOrderError("testnet verification requires an active shadow run");
+    const quantity = normalizeTestnetSmokeOrderSize(
+      input.asset,
+      input.notionalUsd,
+      input.referencePrice,
+      readiness.maximumNotionalUsd,
+    );
+    verificationExposureMayExist = true;
+    const resting = await executeTrackedTestnetOrder({
+      runId: run.id,
+      asset: input.asset,
+      side: "LONG",
+      action: "VERIFY_REST",
+      isBuy: true,
+      quantity,
+      referencePrice: input.referencePrice,
+      reason: "manual testnet resting-order verification",
+    });
+    checks.restingOrderPassed = resting.status === "OPEN";
+    checks.partialFillObserved ||= resting.status === "PARTIALLY_FILLED";
+    if (!checks.restingOrderPassed) throw new Error("testnet post-only order did not rest on the book");
+    const restingOrder = await prisma.combinedExecutionOrder.findFirst({
+      where: { runId: run.id, environment: "TESTNET", action: "VERIFY_REST" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!restingOrder) throw new Error("testnet resting order was not persisted");
+    const cancellation = await cancelHyperliquidTestnetOrder({
+      asset: input.asset,
+      clientOrderId: restingOrder.clientOrderId,
+    });
+    checks.cancelPassed = cancellation.evidence.status === "CANCELLED";
+    if (!checks.cancelPassed) throw new Error("testnet order cancellation was not verified");
+    evidence.restingOrder = { resting, cancellation: cancellation.evidence };
+
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
+    const afterCancellation = await reconcileHyperliquidTestnetOrders();
+    const positionsAfterCancellation = afterCancellation.positions.filter((position) => Math.abs(position.size ?? 0) > 1e-8);
+    if (afterCancellation.openOrders.length > 0
+      || positionsAfterCancellation.length > 0
+      || afterCancellation.orderMismatches.length > 0
+      || afterCancellation.positionMismatches.length > 0) {
+      throw new Error("testnet cancellation did not reconcile to zero exposure");
+    }
+    verificationExposureMayExist = true;
+    const emergencyResting = await executeTrackedTestnetOrder({
+      runId: run.id,
+      asset: input.asset,
+      side: "LONG",
+      action: "VERIFY_REST",
+      isBuy: true,
+      quantity,
+      referencePrice: input.referencePrice,
+      reason: "manual testnet emergency-cleanup verification",
+    });
+    checks.partialFillObserved ||= emergencyResting.status === "PARTIALLY_FILLED";
+    if (emergencyResting.status !== "OPEN") throw new Error("testnet emergency-cleanup order did not rest on the book");
+    const cleanup = await performHyperliquidTestnetEmergencyCleanup();
+    checks.emergencyCleanupPassed = cleanup.verified
+      && (cleanup.cancellation?.attempted ?? 0) >= 1
+      && cleanup.final?.openOrders === 0
+      && cleanup.final?.positions === 0;
+    if (!checks.emergencyCleanupPassed) throw new Error("testnet emergency cleanup was not verified");
+    verificationExposureMayExist = !cleanup.verified;
+    evidence.emergencyCleanup = cleanup;
+
+    const finalReconciliation = await reconcileHyperliquidTestnetOrders();
+    const remainingPositions = finalReconciliation.positions.filter((position) => Math.abs(position.size ?? 0) > 1e-8);
+    checks.orphanOrderCount = finalReconciliation.orderMismatches.length;
+    checks.positionMismatchCount = finalReconciliation.positionMismatches.length;
+    checks.reconciliationPassed = finalReconciliation.safety.healthy
+      && finalReconciliation.openOrders.length === 0
+      && remainingPositions.length === 0
+      && checks.orphanOrderCount === 0
+      && checks.positionMismatchCount === 0;
+    if (!checks.reconciliationPassed) throw new Error("testnet final account reconciliation failed");
+    evidence.finalReconciliation = {
+      capturedAt: finalReconciliation.capturedAt,
+      accountValue: finalReconciliation.accountValue,
+      openOrders: finalReconciliation.openOrders.length,
+      positions: remainingPositions.length,
+      orderMismatches: checks.orphanOrderCount,
+      positionMismatches: checks.positionMismatchCount,
+    };
+
+    const operationalChecksPassed = checks.connectivityPassed
+      && checks.openFillPassed
+      && checks.closeFillPassed
+      && checks.restingOrderPassed
+      && checks.cancelPassed
+      && checks.reconnectPassed
+      && checks.reconciliationPassed
+      && checks.emergencyCleanupPassed;
+    const status = operationalChecksPassed && checks.partialFillObserved ? "PASSED" : operationalChecksPassed ? "PARTIAL" : "FAILED";
+    const completedAt = new Date();
+    await prisma.hyperliquidTestnetVerificationRun.update({
+      where: { id: verification.id },
+      data: {
+        status,
+        sdkVersion,
+        ...checks,
+        resultJson: JSON.stringify(evidence),
+        completedAt,
+      },
+    });
+    return {
+      id: verification.id,
+      status,
+      sdkVersion,
+      ...checks,
+      completedAt: completedAt.toISOString(),
+      partialFillNote: checks.partialFillObserved
+        ? "an actual partial fill was observed"
+        : "all operational checks passed, but an actual partial fill has not been observed",
+    };
+  } catch (error) {
+    const readiness = getHyperliquidExecutionReadiness();
+    let cleanup: Awaited<ReturnType<typeof performHyperliquidTestnetEmergencyCleanup>> | null = null;
+    if (readiness.ready && verificationExposureMayExist) {
+      cleanup = await performHyperliquidTestnetEmergencyCleanup().catch(() => null);
+    }
+    const message = errorMessage(error);
+    await prisma.hyperliquidTestnetVerificationRun.update({
+      where: { id: verification.id },
+      data: {
+        status: "FAILED",
+        sdkVersion,
+        ...checks,
+        emergencyCleanupPassed: checks.emergencyCleanupPassed || cleanup?.verified === true,
+        resultJson: JSON.stringify({ ...evidence, failureCleanup: cleanup }),
+        error: message,
+        completedAt: new Date(),
+      },
+    });
+    throw error;
+  }
+}
+
 export function normalizeTestnetSmokeOrderSize(
   asset: "BTC" | "ETH" | "SOL" | "XRP",
   notionalUsd: number,
@@ -541,7 +787,7 @@ async function executeTrackedTestnetOrder(input: {
   runId: string;
   asset: "BTC" | "ETH" | "SOL" | "XRP";
   side: "LONG" | "SHORT";
-  action: "OPEN" | "CLOSE";
+  action: "OPEN" | "CLOSE" | "VERIFY_REST";
   isBuy: boolean;
   quantity: number;
   referencePrice: number;
@@ -565,7 +811,7 @@ async function executeTrackedTestnetOrder(input: {
   });
   try {
     const response = await executeHyperliquidTestnetOrder({
-      action: input.action === "OPEN" ? "open" : "close",
+      action: input.action === "OPEN" ? "open" : input.action === "CLOSE" ? "close" : "rest",
       asset: input.asset,
       isBuy: input.isBuy,
       size: input.quantity,
@@ -633,6 +879,69 @@ export function evaluateTestnetAccountSafety(input: {
     maximumAccountLossPct,
     issues,
   };
+}
+
+export function evaluateHyperliquidTestnetVerificationReadiness(input: {
+  executionReady: boolean;
+  verification: {
+    status: string;
+    connectivityPassed: boolean;
+    openFillPassed: boolean;
+    closeFillPassed: boolean;
+    restingOrderPassed: boolean;
+    cancelPassed: boolean;
+    partialFillObserved: boolean;
+    reconnectPassed: boolean;
+    reconciliationPassed: boolean;
+    emergencyCleanupPassed: boolean;
+    orphanOrderCount: number;
+    positionMismatchCount: number;
+    completedAt: Date | null;
+  } | null;
+  account: {
+    healthy: boolean;
+    openOrderCount: number;
+    positionCount: number;
+    orderMismatchCount: number;
+    positionMismatchCount: number;
+    capturedAt: Date;
+  } | null;
+  now?: Date;
+  maximumVerificationAgeMs?: number;
+  maximumReconciliationAgeMs?: number;
+}) {
+  const now = input.now ?? new Date();
+  const maximumVerificationAgeMs = input.maximumVerificationAgeMs ?? 7 * 24 * 60 * 60_000;
+  const maximumReconciliationAgeMs = input.maximumReconciliationAgeMs ?? 3 * 60_000;
+  const verification = input.verification;
+  const account = input.account;
+  const verificationAgeMs = verification?.completedAt
+    ? now.getTime() - verification.completedAt.getTime()
+    : Number.POSITIVE_INFINITY;
+  const reconciliationAgeMs = account
+    ? now.getTime() - account.capturedAt.getTime()
+    : Number.POSITIVE_INFINITY;
+  const checks = {
+    executionArmed: input.executionReady,
+    verificationPassed: verification?.status === "PASSED",
+    connectivity: verification?.connectivityPassed === true,
+    openFill: verification?.openFillPassed === true,
+    closeFill: verification?.closeFillPassed === true,
+    restingOrder: verification?.restingOrderPassed === true,
+    cancellation: verification?.cancelPassed === true,
+    partialFill: verification?.partialFillObserved === true,
+    reconnect: verification?.reconnectPassed === true,
+    finalReconciliation: verification?.reconciliationPassed === true,
+    emergencyCleanup: verification?.emergencyCleanupPassed === true,
+    noVerificationMismatch: verification?.orphanOrderCount === 0 && verification?.positionMismatchCount === 0,
+    verificationFresh: verificationAgeMs >= 0 && verificationAgeMs <= maximumVerificationAgeMs,
+    accountHealthy: account?.healthy === true,
+    zeroExposure: account?.openOrderCount === 0 && account?.positionCount === 0,
+    noAccountMismatch: account?.orderMismatchCount === 0 && account?.positionMismatchCount === 0,
+    reconciliationFresh: reconciliationAgeMs >= 0 && reconciliationAgeMs <= maximumReconciliationAgeMs,
+  };
+  const failedChecks = Object.entries(checks).flatMap(([key, passed]) => passed ? [] : [key]);
+  return { ready: failedChecks.length === 0, checks, failedChecks };
 }
 
 async function assertRecentTestnetReconciliation(now = new Date()) {
@@ -799,6 +1108,18 @@ function executorPython() {
 
 function executorScript() {
   return resolve(process.env.POLYMARKET_PROJECT_ROOT ?? process.cwd(), "scripts/hyperliquid-testnet-executor.py");
+}
+
+function securePrivateKeyFileExists(configuredPath: string) {
+  try {
+    const expanded = configuredPath.startsWith("~/")
+      ? resolve(homedir(), configuredPath.slice(2))
+      : configuredPath;
+    if (!existsSync(expanded)) return false;
+    return (statSync(expanded).mode & 0o077) === 0;
+  } catch {
+    return false;
+  }
 }
 
 function maximumTestnetNotional() {

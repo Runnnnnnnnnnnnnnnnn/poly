@@ -12,7 +12,10 @@ import {
   forwardStrategyExperimentKey,
 } from "@/src/lib/combined-trading/forward-evaluation";
 import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
-import { getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
+import {
+  evaluateHyperliquidTestnetVerificationReadiness,
+  getHyperliquidExecutionReadiness,
+} from "@/src/lib/combined-trading/hyperliquid-execution";
 import {
   shortTermDirectionControlKey,
   shortTermDirectionSpecification,
@@ -138,6 +141,7 @@ export async function getMonitoringSnapshot() {
     combinedSnapshotAggregate,
     combinedSnapshotsLast24Hours,
     latestTestnetAccount,
+    latestTestnetVerification,
   ] = await Promise.all([
     prisma.marketSnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
     prisma.marketSnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
@@ -267,6 +271,7 @@ export async function getMonitoringSnapshot() {
     prisma.combinedShadowEquitySnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
     prisma.combinedShadowEquitySnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
     prisma.combinedExecutionAccountSnapshot.findFirst({ where: { environment: "TESTNET" }, orderBy: { capturedAt: "desc" } }),
+    prisma.hyperliquidTestnetVerificationRun.findFirst({ orderBy: { startedAt: "desc" } }),
   ]);
 
   const usableBacktests = backtestRuns
@@ -558,9 +563,13 @@ export async function getMonitoringSnapshot() {
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
   const executionReadiness = getHyperliquidExecutionReadiness();
-  const testnetVerifiedReady = executionReadiness.ready
-    && latestTestnetAccount?.healthy === true
-    && now.getTime() - latestTestnetAccount.capturedAt.getTime() <= 3 * 60_000;
+  const testnetVerificationReadiness = evaluateHyperliquidTestnetVerificationReadiness({
+    executionReady: executionReadiness.ready,
+    verification: latestTestnetVerification,
+    account: latestTestnetAccount,
+    now,
+  });
+  const testnetVerifiedReady = testnetVerificationReadiness.ready;
   const testnetReconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
   const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
   const realtimeHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "realtime-market-data");
@@ -791,6 +800,28 @@ export async function getMonitoringSnapshot() {
       testnet: {
         ...executionReadiness,
         verifiedReady: testnetVerifiedReady,
+        verification: latestTestnetVerification ? {
+          id: latestTestnetVerification.id,
+          status: latestTestnetVerification.status,
+          asset: latestTestnetVerification.asset,
+          requestedNotionalUsd: latestTestnetVerification.requestedNotionalUsd,
+          sdkVersion: latestTestnetVerification.sdkVersion,
+          connectivityPassed: latestTestnetVerification.connectivityPassed,
+          openFillPassed: latestTestnetVerification.openFillPassed,
+          closeFillPassed: latestTestnetVerification.closeFillPassed,
+          restingOrderPassed: latestTestnetVerification.restingOrderPassed,
+          cancelPassed: latestTestnetVerification.cancelPassed,
+          partialFillObserved: latestTestnetVerification.partialFillObserved,
+          reconnectPassed: latestTestnetVerification.reconnectPassed,
+          reconciliationPassed: latestTestnetVerification.reconciliationPassed,
+          emergencyCleanupPassed: latestTestnetVerification.emergencyCleanupPassed,
+          orphanOrderCount: latestTestnetVerification.orphanOrderCount,
+          positionMismatchCount: latestTestnetVerification.positionMismatchCount,
+          startedAt: latestTestnetVerification.startedAt.toISOString(),
+          completedAt: latestTestnetVerification.completedAt?.toISOString() ?? null,
+          error: latestTestnetVerification.error,
+          failedChecks: testnetVerificationReadiness.failedChecks,
+        } : null,
         reconciliation: {
           status: testnetReconciliation?.status ?? "not_configured",
           lastSuccessAt: testnetReconciliation?.lastSuccessAt?.toISOString() ?? null,
