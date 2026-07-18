@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-18T11:09:31.145Z",
+  "generatedAt": "2026-07-18T11:40:08.211Z",
   "methodology": {
     "status": "exploratory_replay_only",
     "warning": "This replay selects a candidate on calibration data. It cannot modify or authorize the active 50-window forward cohort.",
@@ -15,7 +15,7 @@
     }
   },
   "specification": {
-    "version": 1,
+    "version": 2,
     "purpose": "diagnostic_only",
     "promotionPolicy": "new_forward_cohort_required",
     "synchronizationVersion": "websocket-v6-near-term-discovery",
@@ -31,6 +31,7 @@
       "fair_value"
     ],
     "strategyTrials": 9,
+    "randomBenchmarkTrials": 200,
     "marketProbabilityThreshold": 0.58,
     "fairValueMinimumEdge": 0.03,
     "trendMinimumLogReturn": 0,
@@ -53,18 +54,18 @@
     "minimumHoldoutWindows": 20
   },
   "coverage": {
-    "marketTicks": 12764,
-    "assetTicks": 6748,
-    "discoveredMarkets": 76,
-    "completeMarkets": 72,
-    "replayableMarkets": 34,
-    "independentWindows": 12,
-    "selectedTrades": 132,
+    "marketTicks": 14304,
+    "assetTicks": 8108,
+    "discoveredMarkets": 84,
+    "completeMarkets": 80,
+    "replayableMarkets": 35,
+    "independentWindows": 13,
+    "selectedTrades": 141,
     "skipped": {
       "end_boundary_or_exit_missing": 8,
-      "entry_120s_missing": 8,
-      "entry_30s_missing": 12,
-      "entry_60s_missing": 8
+      "entry_120s_missing": 12,
+      "entry_30s_missing": 16,
+      "entry_60s_missing": 12
     }
   },
   "selection": {
@@ -96,26 +97,58 @@
         "hyperliquidNetReturnPct": -0.00045715201404589157,
         "polymarketAverageReturnPct": -0.370927212709247,
         "polymarketNetReturnPct": -0.09273180317731176,
-        "maximumDrawdownPct": 0.046594477595678696
+        "maximumDrawdownPct": 0.046594477595678696,
+        "bestBenchmarkId": "always_short",
+        "bestBenchmarkNetReturnPct": 0.08401089744728393,
+        "excessReturnPct": -0.13060537504296277,
+        "excessAverageReturnPct": -0.03265134376074069,
+        "excessConfidenceInterval95": [
+          -0.10400391163130962,
+          0.038701224109828236
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": -0.09273180317731176,
+          "hyperliquidOnlyNetReturnPct": -0.00045715201404589157,
+          "alwaysLongNetReturnPct": -0.04659447759567883,
+          "alwaysShortNetReturnPct": 0.08401089744728393,
+          "randomMedianNetReturnPct": 0.01993899588161127
+        }
       },
       "holdout": {
-        "independentWindows": 2,
-        "trades": 5,
-        "correctTrades": 5,
+        "independentWindows": 3,
+        "trades": 6,
+        "correctTrades": 6,
         "directionAccuracy": 1,
         "equalWeightWinRate": 1,
-        "equalWeightAverageReturnPct": 0.29313225046365055,
-        "equalWeightNetReturnPct": 0.07328306261591264,
+        "equalWeightAverageReturnPct": 0.28987793468913203,
+        "equalWeightNetReturnPct": 0.08696338040673961,
         "equalWeightConfidenceInterval95": [
-          0.021138069688377538,
-          0.0521449929275351
+          0.005932542265781372,
+          0.05204304467204503
         ],
         "deflatedSharpeProbability": null,
-        "hyperliquidAverageReturnPct": -0.0006138594637848463,
-        "hyperliquidNetReturnPct": -0.0001534648659462116,
-        "polymarketAverageReturnPct": 0.586878360391086,
-        "polymarketNetReturnPct": 0.14671959009777147,
-        "maximumDrawdownPct": 0
+        "hyperliquidAverageReturnPct": -0.0005141596901413167,
+        "hyperliquidNetReturnPct": -0.00015424790704239504,
+        "polymarketAverageReturnPct": 0.5802700290684054,
+        "polymarketNetReturnPct": 0.1740810087205216,
+        "maximumDrawdownPct": 0,
+        "bestBenchmarkId": "polymarket_only",
+        "bestBenchmarkNetReturnPct": 0.1740810087205216,
+        "excessReturnPct": -0.08711762831378199,
+        "excessAverageReturnPct": -0.02903920943792733,
+        "excessConfidenceInterval95": [
+          -0.052171524390114445,
+          -0.005906894485740215
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": 0.1740810087205216,
+          "hyperliquidOnlyNetReturnPct": -0.00015424790704239504,
+          "alwaysLongNetReturnPct": 0.08696338040673961,
+          "alwaysShortNetReturnPct": -0.1503271282630126,
+          "randomMedianNetReturnPct": -0.031639658264312635
+        }
       },
       "walkForward": {
         "folds": [
@@ -137,7 +170,23 @@
             "hyperliquidNetReturnPct": -0.0002798818886769501,
             "polymarketAverageReturnPct": -0.49196904669007663,
             "polymarketNetReturnPct": -0.0737953570035115,
-            "maximumDrawdownPct": 0.03703761944609418
+            "maximumDrawdownPct": 0.03703761944609418,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.06758682297403142,
+            "excessReturnPct": -0.10462444242012564,
+            "excessAverageReturnPct": -0.05231222121006282,
+            "excessConfidenceInterval95": [
+              -0.10228230103341612,
+              -0.0023421413867095106
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.0737953570035115,
+              "hyperliquidOnlyNetReturnPct": -0.0002798818886769501,
+              "alwaysLongNetReturnPct": -0.037037619446094225,
+              "alwaysShortNetReturnPct": 0.06758682297403142,
+              "randomMedianNetReturnPct": 0.03327535097987397
+            }
           },
           {
             "fold": 2,
@@ -154,7 +203,20 @@
             "hyperliquidNetReturnPct": -0.00004492135100940105,
             "polymarketAverageReturnPct": 0.6212710765239948,
             "polymarketNetReturnPct": 0.03106355382619974,
-            "maximumDrawdownPct": 0
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.03106355382619974,
+            "excessReturnPct": -0.015554237588604572,
+            "excessAverageReturnPct": -0.015554237588604572,
+            "excessConfidenceInterval95": null,
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.03106355382619974,
+              "hyperliquidOnlyNetReturnPct": -0.00004492135100940105,
+              "alwaysLongNetReturnPct": 0.01550931623759517,
+              "alwaysShortNetReturnPct": -0.025043224616857814,
+              "randomMedianNetReturnPct": 0.01550931623759517
+            }
           },
           {
             "fold": 3,
@@ -174,27 +236,63 @@
             "hyperliquidNetReturnPct": -0.00022884512804117926,
             "polymarketAverageReturnPct": 0.1727459995294511,
             "polymarketNetReturnPct": 0.03454919990589021,
-            "maximumDrawdownPct": 0.02506617438717973
+            "maximumDrawdownPct": 0.02506617438717973,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.03454919990589021,
+            "excessReturnPct": -0.01738902251696569,
+            "excessAverageReturnPct": -0.008694511258482845,
+            "excessConfidenceInterval95": [
+              -0.10204677441322019,
+              0.08465775189625449
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.03454919990589021,
+              "hyperliquidOnlyNetReturnPct": -0.00022884512804117926,
+              "alwaysLongNetReturnPct": 0.017160177388924523,
+              "alwaysShortNetReturnPct": -0.03368370512593045,
+              "randomMedianNetReturnPct": 0.004456441314430855
+            }
           },
           {
             "fold": 4,
-            "independentWindows": 1,
-            "trades": 2,
-            "correctTrades": 2,
+            "independentWindows": 2,
+            "trades": 3,
+            "correctTrades": 3,
             "directionAccuracy": 1,
             "equalWeightWinRate": 1,
-            "equalWeightAverageReturnPct": 0.31056710839808344,
-            "equalWeightNetReturnPct": 0.031056710839808342,
-            "equalWeightConfidenceInterval95": null,
+            "equalWeightAverageReturnPct": 0.29824685753756874,
+            "equalWeightNetReturnPct": 0.04473702863063531,
+            "equalWeightConfidenceInterval95": [
+              -0.001749919236668486,
+              0.0464869478673038
+            ],
             "deflatedSharpeProbability": null,
-            "hyperliquidAverageReturnPct": -0.0005696851226457279,
-            "hyperliquidNetReturnPct": -0.000056968512264572796,
-            "polymarketAverageReturnPct": 0.6217039019188126,
-            "polymarketNetReturnPct": 0.06217039019188126,
-            "maximumDrawdownPct": 0
+            "hyperliquidAverageReturnPct": -0.0003850103557383748,
+            "hyperliquidNetReturnPct": -0.000057751553360756234,
+            "polymarketAverageReturnPct": 0.596878725430876,
+            "polymarketNetReturnPct": 0.08953180881463138,
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.08953180881463138,
+            "excessReturnPct": -0.04479478018399607,
+            "excessAverageReturnPct": -0.022397390091998037,
+            "excessConfidenceInterval95": [
+              -0.046593809077965904,
+              0.0017990288939698298
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.08953180881463138,
+              "hyperliquidOnlyNetReturnPct": -0.000057751553360756234,
+              "alwaysLongNetReturnPct": 0.04473702863063531,
+              "alwaysShortNetReturnPct": -0.07517612404697183,
+              "randomMedianNetReturnPct": -0.03392992036946846
+            }
           }
         ],
         "profitableFolds": 3,
+        "benchmarkBeatingFolds": 0,
         "totalFolds": 4
       }
     },
@@ -219,26 +317,58 @@
         "hyperliquidNetReturnPct": -0.001492381912436734,
         "polymarketAverageReturnPct": -0.30730114353283855,
         "polymarketNetReturnPct": -0.23047585764962894,
-        "maximumDrawdownPct": 0.13514467084654
+        "maximumDrawdownPct": 0.13514467084654,
+        "bestBenchmarkId": "always_short",
+        "bestBenchmarkNetReturnPct": 0.14081646385162505,
+        "excessReturnPct": -0.2568005836326579,
+        "excessAverageReturnPct": -0.04280009727210965,
+        "excessConfidenceInterval95": [
+          -0.07839019863164737,
+          -0.007209995912571925
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": -0.23047585764962894,
+          "hyperliquidOnlyNetReturnPct": -0.001492381912436734,
+          "alwaysLongNetReturnPct": -0.08661012349378158,
+          "alwaysShortNetReturnPct": 0.14081646385162505,
+          "randomMedianNetReturnPct": 0.01837313859478555
+        }
       },
       "holdout": {
-        "independentWindows": 4,
-        "trades": 6,
-        "correctTrades": 6,
+        "independentWindows": 5,
+        "trades": 7,
+        "correctTrades": 7,
         "directionAccuracy": 1,
         "equalWeightWinRate": 1,
-        "equalWeightAverageReturnPct": 0.27346509184577306,
-        "equalWeightNetReturnPct": 0.08203952755373192,
+        "equalWeightAverageReturnPct": 0.26866504804230634,
+        "equalWeightNetReturnPct": 0.09403276681480723,
         "equalWeightConfidenceInterval95": [
-          0.010244580839668796,
-          0.030775182937197165
+          0.015004382769484126,
+          0.022608723956438766
         ],
         "deflatedSharpeProbability": null,
-        "hyperliquidAverageReturnPct": -0.0006857873116894877,
-        "hyperliquidNetReturnPct": -0.00020573619350684633,
-        "polymarketAverageReturnPct": 0.5476159710032357,
-        "polymarketNetReturnPct": 0.1642847913009707,
-        "maximumDrawdownPct": 0
+        "hyperliquidAverageReturnPct": -0.0006163362305982588,
+        "hyperliquidNetReturnPct": -0.00021571768070939058,
+        "polymarketAverageReturnPct": 0.537946432315211,
+        "polymarketNetReturnPct": 0.18828125131032386,
+        "maximumDrawdownPct": 0,
+        "bestBenchmarkId": "polymarket_only",
+        "bestBenchmarkNetReturnPct": 0.18828125131032386,
+        "excessReturnPct": -0.09424848449551664,
+        "excessAverageReturnPct": -0.018849696899103326,
+        "excessConfidenceInterval95": [
+          -0.022673655834235272,
+          -0.015025737963971376
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": 0.18828125131032386,
+          "hyperliquidOnlyNetReturnPct": -0.00021571768070939058,
+          "alwaysLongNetReturnPct": 0.05586261049443685,
+          "alwaysShortNetReturnPct": -0.13719394335903298,
+          "randomMedianNetReturnPct": -0.02697212769622296
+        }
       },
       "walkForward": {
         "folds": [
@@ -260,7 +390,23 @@
             "hyperliquidNetReturnPct": -0.0005949414383037695,
             "polymarketAverageReturnPct": -0.1116810710664091,
             "polymarketNetReturnPct": -0.03908837487324319,
-            "maximumDrawdownPct": 0.04108604344502558
+            "maximumDrawdownPct": 0.04108604344502558,
+            "bestBenchmarkId": "always_long",
+            "bestBenchmarkNetReturnPct": 0.009532338131477774,
+            "excessReturnPct": -0.02937399628725125,
+            "excessAverageReturnPct": -0.009791332095750416,
+            "excessConfidenceInterval95": [
+              -0.16607143010183575,
+              0.1464887659103349
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.03908837487324319,
+              "hyperliquidOnlyNetReturnPct": -0.0005949414383037695,
+              "alwaysLongNetReturnPct": 0.009532338131477774,
+              "alwaysShortNetReturnPct": 0.0017883295819422981,
+              "randomMedianNetReturnPct": 0.00851470990942009
+            }
           },
           {
             "fold": 2,
@@ -280,7 +426,23 @@
             "hyperliquidNetReturnPct": -0.0005040513019789908,
             "polymarketAverageReturnPct": -0.16554993110554286,
             "polymarketNetReturnPct": -0.04138748277638572,
-            "maximumDrawdownPct": 0.04542935868725362
+            "maximumDrawdownPct": 0.04542935868725362,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.02267851872986773,
+            "excessReturnPct": -0.043624285769050086,
+            "excessAverageReturnPct": -0.021812142884525043,
+            "excessConfidenceInterval95": [
+              -0.28933747254904635,
+              0.24571318677999626
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.04138748277638572,
+              "hyperliquidOnlyNetReturnPct": -0.0005040513019789908,
+              "alwaysLongNetReturnPct": -0.020945767039182352,
+              "alwaysShortNetReturnPct": 0.02267851872986773,
+              "randomMedianNetReturnPct": 0.0098830110191526
+            }
           },
           {
             "fold": 3,
@@ -300,30 +462,63 @@
             "hyperliquidNetReturnPct": -0.0004803881793275349,
             "polymarketAverageReturnPct": -0.24682319782639095,
             "polymarketNetReturnPct": -0.0740469593479173,
-            "maximumDrawdownPct": 0.07519669458607703
+            "maximumDrawdownPct": 0.07519669458607703,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.07936208877888382,
+            "excessReturnPct": -0.11662576254250624,
+            "excessAverageReturnPct": -0.03887525418083541,
+            "excessConfidenceInterval95": [
+              -0.2591236995133982,
+              0.18137319115172737
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.0740469593479173,
+              "hyperliquidOnlyNetReturnPct": -0.0004803881793275349,
+              "alwaysLongNetReturnPct": -0.07543383008399279,
+              "alwaysShortNetReturnPct": 0.07936208877888382,
+              "randomMedianNetReturnPct": 0.010961355157532757
+            }
           },
           {
             "fold": 4,
-            "independentWindows": 2,
-            "trades": 3,
-            "correctTrades": 3,
+            "independentWindows": 3,
+            "trades": 4,
+            "correctTrades": 4,
             "directionAccuracy": 1,
             "equalWeightWinRate": 1,
-            "equalWeightAverageReturnPct": 0.29404337820851567,
-            "equalWeightNetReturnPct": 0.04410650673127735,
+            "equalWeightAverageReturnPct": 0.2804987299617633,
+            "equalWeightNetReturnPct": 0.05609974599235265,
             "equalWeightConfidenceInterval95": [
-              0.0038722406853234255,
-              0.040234266045953926
+              0.004670016279240725,
+              0.03272981438232771
             ],
             "deflatedSharpeProbability": null,
-            "hyperliquidAverageReturnPct": -0.000791581242221901,
-            "hyperliquidNetReturnPct": -0.00011873718633328516,
-            "polymarketAverageReturnPct": 0.5888783376592532,
-            "polymarketNetReturnPct": 0.08833175064888799,
-            "maximumDrawdownPct": 0
+            "hyperliquidAverageReturnPct": -0.0006435933676791471,
+            "hyperliquidNetReturnPct": -0.00012871867353582943,
+            "polymarketAverageReturnPct": 0.5616410532912057,
+            "polymarketNetReturnPct": 0.11232821065824114,
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.11232821065824114,
+            "excessReturnPct": -0.05622846466588849,
+            "excessAverageReturnPct": -0.018742821555296163,
+            "excessConfidenceInterval95": [
+              -0.03280740293984934,
+              -0.004678240170742988
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.11232821065824114,
+              "hyperliquidOnlyNetReturnPct": -0.00012871867353582943,
+              "alwaysLongNetReturnPct": 0.05609974599235265,
+              "alwaysShortNetReturnPct": -0.10020641659810176,
+              "randomMedianNetReturnPct": -0.02259385996246721
+            }
           }
         ],
         "profitableFolds": 1,
+        "benchmarkBeatingFolds": 0,
         "totalFolds": 4
       }
     },
@@ -348,26 +543,58 @@
         "hyperliquidNetReturnPct": -0.0012244032545722055,
         "polymarketAverageReturnPct": 0.01816938930198494,
         "polymarketNetReturnPct": 0.013627041976488702,
-        "maximumDrawdownPct": 0.049146394523804086
+        "maximumDrawdownPct": 0.049146394523804086,
+        "bestBenchmarkId": "always_short",
+        "bestBenchmarkNetReturnPct": 0.10987741125959019,
+        "excessReturnPct": -0.10367609189863194,
+        "excessAverageReturnPct": -0.014810870271233135,
+        "excessConfidenceInterval95": [
+          -0.04558747468911205,
+          0.011231577322023298
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": 0.013627041976488702,
+          "hyperliquidOnlyNetReturnPct": -0.0012244032545722055,
+          "alwaysLongNetReturnPct": -0.07813173503691474,
+          "alwaysShortNetReturnPct": 0.10987741125959019,
+          "randomMedianNetReturnPct": 0.019025334235443024
+        }
       },
       "holdout": {
-        "independentWindows": 5,
-        "trades": 7,
-        "correctTrades": 7,
+        "independentWindows": 6,
+        "trades": 8,
+        "correctTrades": 8,
         "directionAccuracy": 1,
         "equalWeightWinRate": 1,
-        "equalWeightAverageReturnPct": 0.23675342589691287,
-        "equalWeightNetReturnPct": 0.0828636990639195,
+        "equalWeightAverageReturnPct": 0.22866358690759375,
+        "equalWeightNetReturnPct": 0.09146543476303749,
         "equalWeightConfidenceInterval95": [
-          0.013013452073000217,
-          0.020132027552567582
+          0.011127053807341686,
+          0.018211247603311196
         ],
         "deflatedSharpeProbability": null,
-        "hyperliquidAverageReturnPct": -0.000800572439890332,
-        "hyperliquidNetReturnPct": -0.0002802003539616162,
-        "polymarketAverageReturnPct": 0.47430742423371614,
-        "polymarketNetReturnPct": 0.16600759848180063,
-        "maximumDrawdownPct": 0
+        "hyperliquidAverageReturnPct": -0.0007484292323101994,
+        "hyperliquidNetReturnPct": -0.00029937169292407976,
+        "polymarketAverageReturnPct": 0.4580756030474977,
+        "polymarketNetReturnPct": 0.18323024121899908,
+        "maximumDrawdownPct": 0,
+        "bestBenchmarkId": "polymarket_only",
+        "bestBenchmarkNetReturnPct": 0.18323024121899908,
+        "excessReturnPct": -0.09176480645596159,
+        "excessAverageReturnPct": -0.01529413440932693,
+        "excessConfidenceInterval95": [
+          -0.018283113773176936,
+          -0.01114851337433633
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": 0.18323024121899908,
+          "hyperliquidOnlyNetReturnPct": -0.00029937169292407976,
+          "alwaysLongNetReturnPct": -0.016197968002746185,
+          "alwaysShortNetReturnPct": -0.09273223134781851,
+          "randomMedianNetReturnPct": -0.05673036188215917
+        }
       },
       "walkForward": {
         "folds": [
@@ -389,7 +616,23 @@
             "hyperliquidNetReturnPct": -0.0005827218352232758,
             "polymarketAverageReturnPct": -0.0454712325667147,
             "polymarketNetReturnPct": -0.01591493139835015,
-            "maximumDrawdownPct": 0.018240435193155193
+            "maximumDrawdownPct": 0.018240435193155193,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.024890271155570604,
+            "excessReturnPct": -0.033139097772357316,
+            "excessAverageReturnPct": -0.011046365924119105,
+            "excessConfidenceInterval95": [
+              -0.041711077729473744,
+              0.01961834588123553
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.01591493139835015,
+              "hyperliquidOnlyNetReturnPct": -0.0005827218352232758,
+              "alwaysLongNetReturnPct": 0.021356846746689327,
+              "alwaysShortNetReturnPct": 0.024890271155570604,
+              "randomMedianNetReturnPct": 0.021356846746689327
+            }
           },
           {
             "fold": 2,
@@ -409,7 +652,23 @@
             "hyperliquidNetReturnPct": -0.0005695602083525545,
             "polymarketAverageReturnPct": -0.05707702563836875,
             "polymarketNetReturnPct": -0.017123107691510625,
-            "maximumDrawdownPct": 0.04600891618181176
+            "maximumDrawdownPct": 0.04600891618181176,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.06169066017634302,
+            "excessReturnPct": -0.07053699412627461,
+            "excessAverageReturnPct": -0.023512331375424873,
+            "excessConfidenceInterval95": [
+              -0.19921226038898965,
+              0.15218759763813988
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.017123107691510625,
+              "hyperliquidOnlyNetReturnPct": -0.0005695602083525545,
+              "alwaysLongNetReturnPct": -0.0493873997416822,
+              "alwaysShortNetReturnPct": 0.06169066017634302,
+              "randomMedianNetReturnPct": 0.013105415932759755
+            }
           },
           {
             "fold": 3,
@@ -429,30 +688,63 @@
             "hyperliquidNetReturnPct": -0.00021257625498676173,
             "polymarketAverageReturnPct": 0.38948764526892027,
             "polymarketNetReturnPct": 0.1168462935806761,
-            "maximumDrawdownPct": 0
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.1168462935806761,
+            "excessReturnPct": -0.05852943491783143,
+            "excessAverageReturnPct": -0.019509811639277144,
+            "excessConfidenceInterval95": [
+              -0.034844215941734376,
+              -0.004175407336819911
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.1168462935806761,
+              "hyperliquidOnlyNetReturnPct": -0.00021257625498676173,
+              "alwaysLongNetReturnPct": -0.08152118845679465,
+              "alwaysShortNetReturnPct": -0.010463601408767273,
+              "randomMedianNetReturnPct": -0.044564405299077466
+            }
           },
           {
             "fold": 4,
-            "independentWindows": 3,
-            "trades": 3,
-            "correctTrades": 3,
+            "independentWindows": 4,
+            "trades": 4,
+            "correctTrades": 4,
             "directionAccuracy": 1,
             "equalWeightWinRate": 1,
-            "equalWeightAverageReturnPct": 0.31895546885834253,
-            "equalWeightNetReturnPct": 0.04784332032875139,
+            "equalWeightAverageReturnPct": 0.2822252801393469,
+            "equalWeightNetReturnPct": 0.05644505602786939,
             "equalWeightConfidenceInterval95": [
-              0.01533789049073067,
-              0.01655765639510359
+              0.00899490651259006,
+              0.019227621501344633
             ],
             "deflatedSharpeProbability": null,
-            "hyperliquidAverageReturnPct": -0.0009316353998081983,
-            "hyperliquidNetReturnPct": -0.00013974530997122974,
-            "polymarketAverageReturnPct": 0.6388425731164934,
-            "polymarketNetReturnPct": 0.095826385967474,
-            "maximumDrawdownPct": 0
+            "hyperliquidAverageReturnPct": -0.0007945832446684664,
+            "hyperliquidNetReturnPct": -0.0001589166489336933,
+            "polymarketAverageReturnPct": 0.5652451435233623,
+            "polymarketNetReturnPct": 0.11304902870467246,
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.11304902870467246,
+            "excessReturnPct": -0.05660397267680307,
+            "excessAverageReturnPct": -0.014150993169200769,
+            "excessConfidenceInterval95": [
+              -0.019286293349829148,
+              -0.00901569298857239
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.11304902870467246,
+              "hyperliquidOnlyNetReturnPct": -0.0001589166489336933,
+              "alwaysLongNetReturnPct": 0.015222038412126602,
+              "alwaysShortNetReturnPct": -0.05897215001137471,
+              "randomMedianNetReturnPct": -0.018439756131961697
+            }
           }
         ],
         "profitableFolds": 2,
+        "benchmarkBeatingFolds": 0,
         "totalFolds": 4
       }
     },
@@ -477,26 +769,58 @@
         "hyperliquidNetReturnPct": -0.00045715201404589157,
         "polymarketAverageReturnPct": -0.370927212709247,
         "polymarketNetReturnPct": -0.09273180317731176,
-        "maximumDrawdownPct": 0.046594477595678696
+        "maximumDrawdownPct": 0.046594477595678696,
+        "bestBenchmarkId": "always_short",
+        "bestBenchmarkNetReturnPct": 0.08401089744728393,
+        "excessReturnPct": -0.13060537504296277,
+        "excessAverageReturnPct": -0.03265134376074069,
+        "excessConfidenceInterval95": [
+          -0.10400391163130962,
+          0.038701224109828236
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": -0.09273180317731176,
+          "hyperliquidOnlyNetReturnPct": -0.00045715201404589157,
+          "alwaysLongNetReturnPct": -0.04659447759567883,
+          "alwaysShortNetReturnPct": 0.08401089744728393,
+          "randomMedianNetReturnPct": 0.01993899588161127
+        }
       },
       "holdout": {
-        "independentWindows": 2,
-        "trades": 5,
-        "correctTrades": 5,
+        "independentWindows": 3,
+        "trades": 6,
+        "correctTrades": 6,
         "directionAccuracy": 1,
         "equalWeightWinRate": 1,
-        "equalWeightAverageReturnPct": 0.29313225046365055,
-        "equalWeightNetReturnPct": 0.07328306261591264,
+        "equalWeightAverageReturnPct": 0.28987793468913203,
+        "equalWeightNetReturnPct": 0.08696338040673961,
         "equalWeightConfidenceInterval95": [
-          0.021138069688377538,
-          0.0521449929275351
+          0.005932542265781372,
+          0.05204304467204503
         ],
         "deflatedSharpeProbability": null,
-        "hyperliquidAverageReturnPct": -0.0006138594637848463,
-        "hyperliquidNetReturnPct": -0.0001534648659462116,
-        "polymarketAverageReturnPct": 0.586878360391086,
-        "polymarketNetReturnPct": 0.14671959009777147,
-        "maximumDrawdownPct": 0
+        "hyperliquidAverageReturnPct": -0.0005141596901413167,
+        "hyperliquidNetReturnPct": -0.00015424790704239504,
+        "polymarketAverageReturnPct": 0.5802700290684054,
+        "polymarketNetReturnPct": 0.1740810087205216,
+        "maximumDrawdownPct": 0,
+        "bestBenchmarkId": "polymarket_only",
+        "bestBenchmarkNetReturnPct": 0.1740810087205216,
+        "excessReturnPct": -0.08711762831378199,
+        "excessAverageReturnPct": -0.02903920943792733,
+        "excessConfidenceInterval95": [
+          -0.052171524390114445,
+          -0.005906894485740215
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": 0.1740810087205216,
+          "hyperliquidOnlyNetReturnPct": -0.00015424790704239504,
+          "alwaysLongNetReturnPct": 0.08696338040673961,
+          "alwaysShortNetReturnPct": -0.1503271282630126,
+          "randomMedianNetReturnPct": -0.031639658264312635
+        }
       },
       "walkForward": {
         "folds": [
@@ -518,7 +842,23 @@
             "hyperliquidNetReturnPct": -0.0002798818886769501,
             "polymarketAverageReturnPct": -0.49196904669007663,
             "polymarketNetReturnPct": -0.0737953570035115,
-            "maximumDrawdownPct": 0.03703761944609418
+            "maximumDrawdownPct": 0.03703761944609418,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.06758682297403142,
+            "excessReturnPct": -0.10462444242012564,
+            "excessAverageReturnPct": -0.05231222121006282,
+            "excessConfidenceInterval95": [
+              -0.10228230103341612,
+              -0.0023421413867095106
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.0737953570035115,
+              "hyperliquidOnlyNetReturnPct": -0.0002798818886769501,
+              "alwaysLongNetReturnPct": -0.037037619446094225,
+              "alwaysShortNetReturnPct": 0.06758682297403142,
+              "randomMedianNetReturnPct": 0.03327535097987397
+            }
           },
           {
             "fold": 2,
@@ -535,7 +875,20 @@
             "hyperliquidNetReturnPct": -0.00004492135100940105,
             "polymarketAverageReturnPct": 0.6212710765239948,
             "polymarketNetReturnPct": 0.03106355382619974,
-            "maximumDrawdownPct": 0
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.03106355382619974,
+            "excessReturnPct": -0.015554237588604572,
+            "excessAverageReturnPct": -0.015554237588604572,
+            "excessConfidenceInterval95": null,
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.03106355382619974,
+              "hyperliquidOnlyNetReturnPct": -0.00004492135100940105,
+              "alwaysLongNetReturnPct": 0.01550931623759517,
+              "alwaysShortNetReturnPct": -0.025043224616857814,
+              "randomMedianNetReturnPct": 0.01550931623759517
+            }
           },
           {
             "fold": 3,
@@ -555,27 +908,63 @@
             "hyperliquidNetReturnPct": -0.00022884512804117926,
             "polymarketAverageReturnPct": 0.1727459995294511,
             "polymarketNetReturnPct": 0.03454919990589021,
-            "maximumDrawdownPct": 0.02506617438717973
+            "maximumDrawdownPct": 0.02506617438717973,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.03454919990589021,
+            "excessReturnPct": -0.01738902251696569,
+            "excessAverageReturnPct": -0.008694511258482845,
+            "excessConfidenceInterval95": [
+              -0.10204677441322019,
+              0.08465775189625449
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.03454919990589021,
+              "hyperliquidOnlyNetReturnPct": -0.00022884512804117926,
+              "alwaysLongNetReturnPct": 0.017160177388924523,
+              "alwaysShortNetReturnPct": -0.03368370512593045,
+              "randomMedianNetReturnPct": 0.004456441314430855
+            }
           },
           {
             "fold": 4,
-            "independentWindows": 1,
-            "trades": 2,
-            "correctTrades": 2,
+            "independentWindows": 2,
+            "trades": 3,
+            "correctTrades": 3,
             "directionAccuracy": 1,
             "equalWeightWinRate": 1,
-            "equalWeightAverageReturnPct": 0.31056710839808344,
-            "equalWeightNetReturnPct": 0.031056710839808342,
-            "equalWeightConfidenceInterval95": null,
+            "equalWeightAverageReturnPct": 0.29824685753756874,
+            "equalWeightNetReturnPct": 0.04473702863063531,
+            "equalWeightConfidenceInterval95": [
+              -0.001749919236668486,
+              0.0464869478673038
+            ],
             "deflatedSharpeProbability": null,
-            "hyperliquidAverageReturnPct": -0.0005696851226457279,
-            "hyperliquidNetReturnPct": -0.000056968512264572796,
-            "polymarketAverageReturnPct": 0.6217039019188126,
-            "polymarketNetReturnPct": 0.06217039019188126,
-            "maximumDrawdownPct": 0
+            "hyperliquidAverageReturnPct": -0.0003850103557383748,
+            "hyperliquidNetReturnPct": -0.000057751553360756234,
+            "polymarketAverageReturnPct": 0.596878725430876,
+            "polymarketNetReturnPct": 0.08953180881463138,
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.08953180881463138,
+            "excessReturnPct": -0.04479478018399607,
+            "excessAverageReturnPct": -0.022397390091998037,
+            "excessConfidenceInterval95": [
+              -0.046593809077965904,
+              0.0017990288939698298
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.08953180881463138,
+              "hyperliquidOnlyNetReturnPct": -0.000057751553360756234,
+              "alwaysLongNetReturnPct": 0.04473702863063531,
+              "alwaysShortNetReturnPct": -0.07517612404697183,
+              "randomMedianNetReturnPct": -0.03392992036946846
+            }
           }
         ],
         "profitableFolds": 3,
+        "benchmarkBeatingFolds": 0,
         "totalFolds": 4
       }
     },
@@ -600,26 +989,58 @@
         "hyperliquidNetReturnPct": -0.0014546302421515416,
         "polymarketAverageReturnPct": -0.3755103910289515,
         "polymarketNetReturnPct": -0.262857273720266,
-        "maximumDrawdownPct": 0.13731720992109656
+        "maximumDrawdownPct": 0.13731720992109656,
+        "bestBenchmarkId": "always_short",
+        "bestBenchmarkNetReturnPct": 0.1246446316514491,
+        "excessReturnPct": -0.2568005836326579,
+        "excessAverageReturnPct": -0.04280009727210965,
+        "excessConfidenceInterval95": [
+          -0.07839019863164737,
+          -0.007209995912571925
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": -0.262857273720266,
+          "hyperliquidOnlyNetReturnPct": -0.0014546302421515416,
+          "alwaysLongNetReturnPct": -0.06156131624467111,
+          "alwaysShortNetReturnPct": 0.1246446316514491,
+          "randomMedianNetReturnPct": 0.020240145514503927
+        }
       },
       "holdout": {
-        "independentWindows": 4,
-        "trades": 6,
-        "correctTrades": 6,
+        "independentWindows": 5,
+        "trades": 7,
+        "correctTrades": 7,
         "directionAccuracy": 1,
         "equalWeightWinRate": 1,
-        "equalWeightAverageReturnPct": 0.27346509184577306,
-        "equalWeightNetReturnPct": 0.08203952755373192,
+        "equalWeightAverageReturnPct": 0.26866504804230634,
+        "equalWeightNetReturnPct": 0.09403276681480723,
         "equalWeightConfidenceInterval95": [
-          0.010244580839668796,
-          0.030775182937197165
+          0.015004382769484126,
+          0.022608723956438766
         ],
         "deflatedSharpeProbability": null,
-        "hyperliquidAverageReturnPct": -0.0006857873116894877,
-        "hyperliquidNetReturnPct": -0.00020573619350684633,
-        "polymarketAverageReturnPct": 0.5476159710032357,
-        "polymarketNetReturnPct": 0.1642847913009707,
-        "maximumDrawdownPct": 0
+        "hyperliquidAverageReturnPct": -0.0006163362305982588,
+        "hyperliquidNetReturnPct": -0.00021571768070939058,
+        "polymarketAverageReturnPct": 0.537946432315211,
+        "polymarketNetReturnPct": 0.18828125131032386,
+        "maximumDrawdownPct": 0,
+        "bestBenchmarkId": "polymarket_only",
+        "bestBenchmarkNetReturnPct": 0.18828125131032386,
+        "excessReturnPct": -0.09424848449551664,
+        "excessAverageReturnPct": -0.018849696899103326,
+        "excessConfidenceInterval95": [
+          -0.022673655834235272,
+          -0.015025737963971376
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": 0.18828125131032386,
+          "hyperliquidOnlyNetReturnPct": -0.00021571768070939058,
+          "alwaysLongNetReturnPct": 0.05586261049443685,
+          "alwaysShortNetReturnPct": -0.13719394335903298,
+          "randomMedianNetReturnPct": -0.02697212769622296
+        }
       },
       "walkForward": {
         "folds": [
@@ -641,7 +1062,23 @@
             "hyperliquidNetReturnPct": -0.0005571897680185769,
             "polymarketAverageReturnPct": -0.23823263647960105,
             "polymarketNetReturnPct": -0.07146979094388031,
-            "maximumDrawdownPct": 0.041746528495927845
+            "maximumDrawdownPct": 0.041746528495927845,
+            "bestBenchmarkId": "always_long",
+            "bestBenchmarkNetReturnPct": 0.03458114538058825,
+            "excessReturnPct": -0.0705946357365377,
+            "excessAverageReturnPct": -0.023531545245512566,
+            "excessConfidenceInterval95": [
+              -0.15046120352310186,
+              0.10339811303207672
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.07146979094388031,
+              "hyperliquidOnlyNetReturnPct": -0.0005571897680185769,
+              "alwaysLongNetReturnPct": 0.03458114538058825,
+              "alwaysShortNetReturnPct": -0.014383502618233672,
+              "randomMedianNetReturnPct": 0.005416008511966686
+            }
           },
           {
             "fold": 2,
@@ -661,7 +1098,23 @@
             "hyperliquidNetReturnPct": -0.0005040513019789908,
             "polymarketAverageReturnPct": -0.16554993110554286,
             "polymarketNetReturnPct": -0.04138748277638572,
-            "maximumDrawdownPct": 0.04542935868725362
+            "maximumDrawdownPct": 0.04542935868725362,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.02267851872986773,
+            "excessReturnPct": -0.043624285769050086,
+            "excessAverageReturnPct": -0.021812142884525043,
+            "excessConfidenceInterval95": [
+              -0.28933747254904635,
+              0.24571318677999626
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.04138748277638572,
+              "hyperliquidOnlyNetReturnPct": -0.0005040513019789908,
+              "alwaysLongNetReturnPct": -0.020945767039182352,
+              "alwaysShortNetReturnPct": 0.02267851872986773,
+              "randomMedianNetReturnPct": 0.0098830110191526
+            }
           },
           {
             "fold": 3,
@@ -681,30 +1134,63 @@
             "hyperliquidNetReturnPct": -0.0004803881793275349,
             "polymarketAverageReturnPct": -0.24682319782639095,
             "polymarketNetReturnPct": -0.0740469593479173,
-            "maximumDrawdownPct": 0.07519669458607703
+            "maximumDrawdownPct": 0.07519669458607703,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.07936208877888382,
+            "excessReturnPct": -0.11662576254250624,
+            "excessAverageReturnPct": -0.03887525418083541,
+            "excessConfidenceInterval95": [
+              -0.2591236995133982,
+              0.18137319115172737
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.0740469593479173,
+              "hyperliquidOnlyNetReturnPct": -0.0004803881793275349,
+              "alwaysLongNetReturnPct": -0.07543383008399279,
+              "alwaysShortNetReturnPct": 0.07936208877888382,
+              "randomMedianNetReturnPct": 0.010961355157532757
+            }
           },
           {
             "fold": 4,
-            "independentWindows": 2,
-            "trades": 3,
-            "correctTrades": 3,
+            "independentWindows": 3,
+            "trades": 4,
+            "correctTrades": 4,
             "directionAccuracy": 1,
             "equalWeightWinRate": 1,
-            "equalWeightAverageReturnPct": 0.29404337820851567,
-            "equalWeightNetReturnPct": 0.04410650673127735,
+            "equalWeightAverageReturnPct": 0.2804987299617633,
+            "equalWeightNetReturnPct": 0.05609974599235265,
             "equalWeightConfidenceInterval95": [
-              0.0038722406853234255,
-              0.040234266045953926
+              0.004670016279240725,
+              0.03272981438232771
             ],
             "deflatedSharpeProbability": null,
-            "hyperliquidAverageReturnPct": -0.000791581242221901,
-            "hyperliquidNetReturnPct": -0.00011873718633328516,
-            "polymarketAverageReturnPct": 0.5888783376592532,
-            "polymarketNetReturnPct": 0.08833175064888799,
-            "maximumDrawdownPct": 0
+            "hyperliquidAverageReturnPct": -0.0006435933676791471,
+            "hyperliquidNetReturnPct": -0.00012871867353582943,
+            "polymarketAverageReturnPct": 0.5616410532912057,
+            "polymarketNetReturnPct": 0.11232821065824114,
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.11232821065824114,
+            "excessReturnPct": -0.05622846466588849,
+            "excessAverageReturnPct": -0.018742821555296163,
+            "excessConfidenceInterval95": [
+              -0.03280740293984934,
+              -0.004678240170742988
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.11232821065824114,
+              "hyperliquidOnlyNetReturnPct": -0.00012871867353582943,
+              "alwaysLongNetReturnPct": 0.05609974599235265,
+              "alwaysShortNetReturnPct": -0.10020641659810176,
+              "randomMedianNetReturnPct": -0.02259385996246721
+            }
           }
         ],
         "profitableFolds": 1,
+        "benchmarkBeatingFolds": 0,
         "totalFolds": 4
       }
     },
@@ -729,26 +1215,58 @@
         "hyperliquidNetReturnPct": -0.0012244032545722055,
         "polymarketAverageReturnPct": 0.01816938930198494,
         "polymarketNetReturnPct": 0.013627041976488702,
-        "maximumDrawdownPct": 0.049146394523804086
+        "maximumDrawdownPct": 0.049146394523804086,
+        "bestBenchmarkId": "always_short",
+        "bestBenchmarkNetReturnPct": 0.10987741125959019,
+        "excessReturnPct": -0.10367609189863194,
+        "excessAverageReturnPct": -0.014810870271233135,
+        "excessConfidenceInterval95": [
+          -0.04558747468911205,
+          0.011231577322023298
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": 0.013627041976488702,
+          "hyperliquidOnlyNetReturnPct": -0.0012244032545722055,
+          "alwaysLongNetReturnPct": -0.07813173503691474,
+          "alwaysShortNetReturnPct": 0.10987741125959019,
+          "randomMedianNetReturnPct": 0.019025334235443024
+        }
       },
       "holdout": {
-        "independentWindows": 5,
-        "trades": 7,
-        "correctTrades": 7,
+        "independentWindows": 6,
+        "trades": 8,
+        "correctTrades": 8,
         "directionAccuracy": 1,
         "equalWeightWinRate": 1,
-        "equalWeightAverageReturnPct": 0.23675342589691287,
-        "equalWeightNetReturnPct": 0.0828636990639195,
+        "equalWeightAverageReturnPct": 0.22866358690759375,
+        "equalWeightNetReturnPct": 0.09146543476303749,
         "equalWeightConfidenceInterval95": [
-          0.013013452073000217,
-          0.020132027552567582
+          0.011127053807341686,
+          0.018211247603311196
         ],
         "deflatedSharpeProbability": null,
-        "hyperliquidAverageReturnPct": -0.000800572439890332,
-        "hyperliquidNetReturnPct": -0.0002802003539616162,
-        "polymarketAverageReturnPct": 0.47430742423371614,
-        "polymarketNetReturnPct": 0.16600759848180063,
-        "maximumDrawdownPct": 0
+        "hyperliquidAverageReturnPct": -0.0007484292323101994,
+        "hyperliquidNetReturnPct": -0.00029937169292407976,
+        "polymarketAverageReturnPct": 0.4580756030474977,
+        "polymarketNetReturnPct": 0.18323024121899908,
+        "maximumDrawdownPct": 0,
+        "bestBenchmarkId": "polymarket_only",
+        "bestBenchmarkNetReturnPct": 0.18323024121899908,
+        "excessReturnPct": -0.09176480645596159,
+        "excessAverageReturnPct": -0.01529413440932693,
+        "excessConfidenceInterval95": [
+          -0.018283113773176936,
+          -0.01114851337433633
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": 0.18323024121899908,
+          "hyperliquidOnlyNetReturnPct": -0.00029937169292407976,
+          "alwaysLongNetReturnPct": -0.016197968002746185,
+          "alwaysShortNetReturnPct": -0.09273223134781851,
+          "randomMedianNetReturnPct": -0.05673036188215917
+        }
       },
       "walkForward": {
         "folds": [
@@ -770,7 +1288,23 @@
             "hyperliquidNetReturnPct": -0.0005827218352232758,
             "polymarketAverageReturnPct": -0.0454712325667147,
             "polymarketNetReturnPct": -0.01591493139835015,
-            "maximumDrawdownPct": 0.018240435193155193
+            "maximumDrawdownPct": 0.018240435193155193,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.024890271155570604,
+            "excessReturnPct": -0.033139097772357316,
+            "excessAverageReturnPct": -0.011046365924119105,
+            "excessConfidenceInterval95": [
+              -0.041711077729473744,
+              0.01961834588123553
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.01591493139835015,
+              "hyperliquidOnlyNetReturnPct": -0.0005827218352232758,
+              "alwaysLongNetReturnPct": 0.021356846746689327,
+              "alwaysShortNetReturnPct": 0.024890271155570604,
+              "randomMedianNetReturnPct": 0.021356846746689327
+            }
           },
           {
             "fold": 2,
@@ -790,7 +1324,23 @@
             "hyperliquidNetReturnPct": -0.0005695602083525545,
             "polymarketAverageReturnPct": -0.05707702563836875,
             "polymarketNetReturnPct": -0.017123107691510625,
-            "maximumDrawdownPct": 0.04600891618181176
+            "maximumDrawdownPct": 0.04600891618181176,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.06169066017634302,
+            "excessReturnPct": -0.07053699412627461,
+            "excessAverageReturnPct": -0.023512331375424873,
+            "excessConfidenceInterval95": [
+              -0.19921226038898965,
+              0.15218759763813988
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.017123107691510625,
+              "hyperliquidOnlyNetReturnPct": -0.0005695602083525545,
+              "alwaysLongNetReturnPct": -0.0493873997416822,
+              "alwaysShortNetReturnPct": 0.06169066017634302,
+              "randomMedianNetReturnPct": 0.013105415932759755
+            }
           },
           {
             "fold": 3,
@@ -810,30 +1360,63 @@
             "hyperliquidNetReturnPct": -0.00021257625498676173,
             "polymarketAverageReturnPct": 0.38948764526892027,
             "polymarketNetReturnPct": 0.1168462935806761,
-            "maximumDrawdownPct": 0
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.1168462935806761,
+            "excessReturnPct": -0.05852943491783143,
+            "excessAverageReturnPct": -0.019509811639277144,
+            "excessConfidenceInterval95": [
+              -0.034844215941734376,
+              -0.004175407336819911
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.1168462935806761,
+              "hyperliquidOnlyNetReturnPct": -0.00021257625498676173,
+              "alwaysLongNetReturnPct": -0.08152118845679465,
+              "alwaysShortNetReturnPct": -0.010463601408767273,
+              "randomMedianNetReturnPct": -0.044564405299077466
+            }
           },
           {
             "fold": 4,
-            "independentWindows": 3,
-            "trades": 3,
-            "correctTrades": 3,
+            "independentWindows": 4,
+            "trades": 4,
+            "correctTrades": 4,
             "directionAccuracy": 1,
             "equalWeightWinRate": 1,
-            "equalWeightAverageReturnPct": 0.31895546885834253,
-            "equalWeightNetReturnPct": 0.04784332032875139,
+            "equalWeightAverageReturnPct": 0.2822252801393469,
+            "equalWeightNetReturnPct": 0.05644505602786939,
             "equalWeightConfidenceInterval95": [
-              0.01533789049073067,
-              0.01655765639510359
+              0.00899490651259006,
+              0.019227621501344633
             ],
             "deflatedSharpeProbability": null,
-            "hyperliquidAverageReturnPct": -0.0009316353998081983,
-            "hyperliquidNetReturnPct": -0.00013974530997122974,
-            "polymarketAverageReturnPct": 0.6388425731164934,
-            "polymarketNetReturnPct": 0.095826385967474,
-            "maximumDrawdownPct": 0
+            "hyperliquidAverageReturnPct": -0.0007945832446684664,
+            "hyperliquidNetReturnPct": -0.0001589166489336933,
+            "polymarketAverageReturnPct": 0.5652451435233623,
+            "polymarketNetReturnPct": 0.11304902870467246,
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.11304902870467246,
+            "excessReturnPct": -0.05660397267680307,
+            "excessAverageReturnPct": -0.014150993169200769,
+            "excessConfidenceInterval95": [
+              -0.019286293349829148,
+              -0.00901569298857239
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.11304902870467246,
+              "hyperliquidOnlyNetReturnPct": -0.0001589166489336933,
+              "alwaysLongNetReturnPct": 0.015222038412126602,
+              "alwaysShortNetReturnPct": -0.05897215001137471,
+              "randomMedianNetReturnPct": -0.018439756131961697
+            }
           }
         ],
         "profitableFolds": 2,
+        "benchmarkBeatingFolds": 0,
         "totalFolds": 4
       }
     },
@@ -858,23 +1441,58 @@
         "hyperliquidNetReturnPct": -0.00019934531412021925,
         "polymarketAverageReturnPct": -1,
         "polymarketNetReturnPct": -0.1,
-        "maximumDrawdownPct": 0.05009967265706006
+        "maximumDrawdownPct": 0.05009967265706006,
+        "bestBenchmarkId": "always_short",
+        "bestBenchmarkNetReturnPct": 0.06764260287206633,
+        "excessReturnPct": -0.11774227552912644,
+        "excessAverageReturnPct": -0.05887113776456322,
+        "excessConfidenceInterval95": [
+          -0.09063366523262342,
+          -0.027108610296503022
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": -0.1,
+          "hyperliquidOnlyNetReturnPct": -0.00019934531412021925,
+          "alwaysLongNetReturnPct": -0.05009967265706011,
+          "alwaysShortNetReturnPct": 0.06764260287206633,
+          "randomMedianNetReturnPct": 0.02021329776890808
+        }
       },
       "holdout": {
-        "independentWindows": 1,
-        "trades": 2,
-        "correctTrades": 0,
-        "directionAccuracy": 0,
-        "equalWeightWinRate": 0,
-        "equalWeightAverageReturnPct": -0.5009821938408805,
-        "equalWeightNetReturnPct": -0.05009821938408805,
-        "equalWeightConfidenceInterval95": null,
+        "independentWindows": 2,
+        "trades": 3,
+        "correctTrades": 1,
+        "directionAccuracy": 0.3333333333333333,
+        "equalWeightWinRate": 0.3333333333333333,
+        "equalWeightAverageReturnPct": -0.24278601062174054,
+        "equalWeightNetReturnPct": -0.03641790159326108,
+        "equalWeightConfidenceInterval95": [
+          -0.10673356039541258,
+          0.0703156588021515
+        ],
         "deflatedSharpeProbability": null,
-        "hyperliquidAverageReturnPct": -0.001964387681761117,
-        "hyperliquidNetReturnPct": -0.0001964387681761117,
-        "polymarketAverageReturnPct": -1,
-        "polymarketNetReturnPct": -0.1,
-        "maximumDrawdownPct": 0.050098219384088094
+        "hyperliquidAverageReturnPct": -0.0013148120618153008,
+        "hyperliquidNetReturnPct": -0.00019722180927229515,
+        "polymarketAverageReturnPct": -0.48425720918166587,
+        "polymarketNetReturnPct": -0.07263858137724988,
+        "maximumDrawdownPct": 0.050098219384088094,
+        "bestBenchmarkId": "always_long",
+        "bestBenchmarkNetReturnPct": 0.04281930795852268,
+        "excessReturnPct": -0.07923720955178376,
+        "excessAverageReturnPct": -0.03961860477589188,
+        "excessConfidenceInterval95": [
+          -0.14959985163376774,
+          0.07036264208198398
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": -0.07263858137724988,
+          "hyperliquidOnlyNetReturnPct": -0.00019722180927229515,
+          "alwaysLongNetReturnPct": 0.04281930795852268,
+          "alwaysShortNetReturnPct": -0.07516749057804857,
+          "randomMedianNetReturnPct": -0.0352314009071001
+        }
       },
       "walkForward": {
         "folds": [
@@ -893,7 +1511,20 @@
             "hyperliquidNetReturnPct": -0.00009635906562945599,
             "polymarketAverageReturnPct": -1,
             "polymarketNetReturnPct": -0.05,
-            "maximumDrawdownPct": 0.025048179532814685
+            "maximumDrawdownPct": 0.025048179532814685,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.04526479089315347,
+            "excessReturnPct": -0.0703129704259682,
+            "excessAverageReturnPct": -0.0703129704259682,
+            "excessConfidenceInterval95": null,
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.05,
+              "hyperliquidOnlyNetReturnPct": -0.00009635906562945599,
+              "alwaysLongNetReturnPct": -0.02504817953281473,
+              "alwaysShortNetReturnPct": 0.04526479089315347,
+              "randomMedianNetReturnPct": 0.04526479089315347
+            }
           },
           {
             "fold": 2,
@@ -910,7 +1541,20 @@
             "hyperliquidNetReturnPct": 0,
             "polymarketAverageReturnPct": null,
             "polymarketNetReturnPct": 0,
-            "maximumDrawdownPct": 0
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": null,
+            "bestBenchmarkNetReturnPct": null,
+            "excessReturnPct": null,
+            "excessAverageReturnPct": null,
+            "excessConfidenceInterval95": null,
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0,
+              "hyperliquidOnlyNetReturnPct": 0,
+              "alwaysLongNetReturnPct": 0,
+              "alwaysShortNetReturnPct": 0,
+              "randomMedianNetReturnPct": 0
+            }
           },
           {
             "fold": 3,
@@ -930,27 +1574,57 @@
             "hyperliquidNetReturnPct": -0.000299425016666875,
             "polymarketAverageReturnPct": -1,
             "polymarketNetReturnPct": -0.15000000000000002,
-            "maximumDrawdownPct": 0.07514971250833347
+            "maximumDrawdownPct": 0.07514971250833347,
+            "bestBenchmarkId": "always_long",
+            "bestBenchmarkNetReturnPct": 0.004087497043450322,
+            "excessReturnPct": -0.07923720955178376,
+            "excessAverageReturnPct": -0.03961860477589188,
+            "excessConfidenceInterval95": [
+              -0.14959985163376774,
+              0.07036264208198398
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.15000000000000002,
+              "hyperliquidOnlyNetReturnPct": -0.000299425016666875,
+              "alwaysLongNetReturnPct": 0.004087497043450322,
+              "alwaysShortNetReturnPct": -0.027720407405175188,
+              "randomMedianNetReturnPct": 0.004087497043450322
+            }
           },
           {
             "fold": 4,
-            "independentWindows": 0,
-            "trades": 0,
-            "correctTrades": 0,
-            "directionAccuracy": null,
-            "equalWeightWinRate": null,
-            "equalWeightAverageReturnPct": null,
-            "equalWeightNetReturnPct": 0,
+            "independentWindows": 1,
+            "trades": 1,
+            "correctTrades": 1,
+            "directionAccuracy": 1,
+            "equalWeightWinRate": 1,
+            "equalWeightAverageReturnPct": 0.2736063558165394,
+            "equalWeightNetReturnPct": 0.01368031779082697,
             "equalWeightConfidenceInterval95": null,
             "deflatedSharpeProbability": null,
-            "hyperliquidAverageReturnPct": null,
-            "hyperliquidNetReturnPct": 0,
-            "polymarketAverageReturnPct": null,
-            "polymarketNetReturnPct": 0,
-            "maximumDrawdownPct": 0
+            "hyperliquidAverageReturnPct": -0.000015660821923668783,
+            "hyperliquidNetReturnPct": -7.830410961834392e-7,
+            "polymarketAverageReturnPct": 0.5472283724550026,
+            "polymarketNetReturnPct": 0.027361418622750128,
+            "maximumDrawdownPct": 0,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.027361418622750128,
+            "excessReturnPct": -0.013681100831923157,
+            "excessAverageReturnPct": -0.013681100831923157,
+            "excessConfidenceInterval95": null,
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.027361418622750128,
+              "hyperliquidOnlyNetReturnPct": -7.830410961834392e-7,
+              "alwaysLongNetReturnPct": 0.01368031779082697,
+              "alwaysShortNetReturnPct": -0.02506927119396052,
+              "randomMedianNetReturnPct": 0.01368031779082697
+            }
           }
         ],
-        "profitableFolds": 0,
+        "profitableFolds": 1,
+        "benchmarkBeatingFolds": 0,
         "totalFolds": 4
       }
     },
@@ -975,26 +1649,58 @@
         "hyperliquidNetReturnPct": -0.0005375327763541499,
         "polymarketAverageReturnPct": -0.643360259633731,
         "polymarketNetReturnPct": -0.1930080778901193,
-        "maximumDrawdownPct": 0.12178679629698401
+        "maximumDrawdownPct": 0.12178679629698401,
+        "bestBenchmarkId": "always_short",
+        "bestBenchmarkNetReturnPct": 0.0628286579173995,
+        "excessReturnPct": -0.15960146325063623,
+        "excessAverageReturnPct": -0.03192029265012724,
+        "excessConfidenceInterval95": [
+          -0.05546201591326333,
+          -0.008378569386991153
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": -0.1930080778901193,
+          "hyperliquidOnlyNetReturnPct": -0.0005375327763541499,
+          "alwaysLongNetReturnPct": -0.0676091899843698,
+          "alwaysShortNetReturnPct": 0.0628286579173995,
+          "randomMedianNetReturnPct": -0.0017734664754669657
+        }
       },
       "holdout": {
-        "independentWindows": 3,
-        "trades": 5,
-        "correctTrades": 1,
-        "directionAccuracy": 0.2,
-        "equalWeightWinRate": 0.2,
-        "equalWeightAverageReturnPct": -0.2867377426841751,
-        "equalWeightNetReturnPct": -0.07168443567104378,
+        "independentWindows": 4,
+        "trades": 6,
+        "correctTrades": 2,
+        "directionAccuracy": 0.3333333333333333,
+        "equalWeightWinRate": 0.3333333333333333,
+        "equalWeightAverageReturnPct": -0.19897065469989492,
+        "equalWeightNetReturnPct": -0.05969119640996848,
         "equalWeightConfidenceInterval95": [
-          -0.09665808749146626,
-          0.048868463710770416
+          -0.07208547303698598,
+          0.04223987483200175
         ],
         "deflatedSharpeProbability": null,
-        "hyperliquidAverageReturnPct": -0.001443173807873081,
-        "hyperliquidNetReturnPct": -0.0003607934519682703,
-        "polymarketAverageReturnPct": -0.5720323115604772,
-        "polymarketNetReturnPct": -0.1430080778901193,
-        "maximumDrawdownPct": 0.09743312981265373
+        "hyperliquidAverageReturnPct": -0.001235916463902715,
+        "hyperliquidNetReturnPct": -0.00037077493917081456,
+        "polymarketAverageReturnPct": -0.3967053929358871,
+        "polymarketNetReturnPct": -0.11901161788076614,
+        "maximumDrawdownPct": 0.09743312981265373,
+        "bestBenchmarkId": "always_short",
+        "bestBenchmarkNetReturnPct": 0.0020387092141782026,
+        "excessReturnPct": -0.06172990562414668,
+        "excessAverageReturnPct": -0.01543247640603667,
+        "excessConfidenceInterval95": [
+          -0.09628540750642245,
+          0.06542045469434912
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": -0.11901161788076614,
+          "hyperliquidOnlyNetReturnPct": -0.00037077493917081456,
+          "alwaysLongNetReturnPct": -0.03149495158628421,
+          "alwaysShortNetReturnPct": 0.0020387092141782026,
+          "randomMedianNetReturnPct": -0.014529574531842393
+        }
       },
       "walkForward": {
         "folds": [
@@ -1016,7 +1722,23 @@
             "hyperliquidNetReturnPct": -0.00011248788578131397,
             "polymarketAverageReturnPct": 0.0699192210988071,
             "polymarketNetReturnPct": 0.006991922109880713,
-            "maximumDrawdownPct": 0.024349561338281214
+            "maximumDrawdownPct": 0.024349561338281214,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.045332564047005475,
+            "excessReturnPct": -0.04189284693495578,
+            "excessAverageReturnPct": -0.020946423467477885,
+            "excessConfidenceInterval95": [
+              -0.07909369501319649,
+              0.037200848078240714
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.006991922109880713,
+              "hyperliquidOnlyNetReturnPct": -0.00011248788578131397,
+              "alwaysLongNetReturnPct": -0.050095600728436586,
+              "alwaysShortNetReturnPct": 0.045332564047005475,
+              "randomMedianNetReturnPct": 0.0034397171120497012
+            }
           },
           {
             "fold": 2,
@@ -1036,7 +1758,23 @@
             "hyperliquidNetReturnPct": -0.00016493993691238444,
             "polymarketAverageReturnPct": -1,
             "polymarketNetReturnPct": -0.1,
-            "maximumDrawdownPct": 0.05008246996845622
+            "maximumDrawdownPct": 0.05008246996845622,
+            "bestBenchmarkId": "always_long",
+            "bestBenchmarkNetReturnPct": 0.03261646322089703,
+            "excessReturnPct": -0.08269893318935323,
+            "excessAverageReturnPct": -0.041349466594676615,
+            "excessConfidenceInterval95": [
+              -0.05340282963756481,
+              -0.029296103551788417
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.1,
+              "hyperliquidOnlyNetReturnPct": -0.00016493993691238444,
+              "alwaysLongNetReturnPct": 0.03261646322089703,
+              "alwaysShortNetReturnPct": -0.050082469968456195,
+              "randomMedianNetReturnPct": -0.0043910138050158275
+            }
           },
           {
             "fold": 3,
@@ -1056,27 +1794,63 @@
             "hyperliquidNetReturnPct": -0.0003824799802144758,
             "polymarketAverageReturnPct": -0.5720323115604772,
             "polymarketNetReturnPct": -0.1430080778901193,
-            "maximumDrawdownPct": 0.07169527893516692
+            "maximumDrawdownPct": 0.07169527893516692,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.04601333738051356,
+            "excessReturnPct": -0.11770861631568044,
+            "excessAverageReturnPct": -0.03923620543856015,
+            "excessConfidenceInterval95": [
+              -0.1481559117360031,
+              0.06968350085888281
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.1430080778901193,
+              "hyperliquidOnlyNetReturnPct": -0.0003824799802144758,
+              "alwaysLongNetReturnPct": -0.04349903411148262,
+              "alwaysShortNetReturnPct": 0.04601333738051356,
+              "randomMedianNetReturnPct": -0.0032945453138158234
+            }
           },
           {
             "fold": 4,
-            "independentWindows": 1,
-            "trades": 2,
-            "correctTrades": 0,
-            "directionAccuracy": 0,
-            "equalWeightWinRate": 0,
-            "equalWeightAverageReturnPct": -0.5011920921270712,
-            "equalWeightNetReturnPct": -0.05011920921270713,
-            "equalWeightConfidenceInterval95": null,
+            "independentWindows": 2,
+            "trades": 3,
+            "correctTrades": 1,
+            "directionAccuracy": 0.3333333333333333,
+            "equalWeightWinRate": 0.3333333333333333,
+            "equalWeightAverageReturnPct": -0.2541731330108788,
+            "equalWeightNetReturnPct": -0.038125969951631825,
+            "equalWeightConfidenceInterval95": [
+              -0.10527506345742593,
+              0.0671490935057941
+            ],
             "deflatedSharpeProbability": null,
-            "hyperliquidAverageReturnPct": -0.002384184254142459,
-            "hyperliquidNetReturnPct": -0.00023841842541424588,
-            "polymarketAverageReturnPct": -1,
-            "polymarketNetReturnPct": -0.1,
-            "maximumDrawdownPct": 0.05011920921270718
+            "hyperliquidAverageReturnPct": -0.0016559994174452676,
+            "hyperliquidNetReturnPct": -0.00024839991261679014,
+            "polymarketAverageReturnPct": -0.5066902666043124,
+            "polymarketNetReturnPct": -0.07600353999064685,
+            "maximumDrawdownPct": 0.05011920921270718,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.02360393567251486,
+            "excessReturnPct": -0.06172990562414668,
+            "excessAverageReturnPct": -0.03086495281207334,
+            "excessConfidenceInterval95": [
+              -0.2194187981318289,
+              0.15768889250768225
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.07600353999064685,
+              "hyperliquidOnlyNetReturnPct": -0.00024839991261679014,
+              "alwaysLongNetReturnPct": -0.038125969951631825,
+              "alwaysShortNetReturnPct": 0.02360393567251486,
+              "randomMedianNetReturnPct": -0.023830083261747844
+            }
           }
         ],
         "profitableFolds": 1,
+        "benchmarkBeatingFolds": 0,
         "totalFolds": 4
       }
     },
@@ -1101,26 +1875,58 @@
         "hyperliquidNetReturnPct": -0.0007027595723899775,
         "polymarketAverageReturnPct": -0.622964323319861,
         "polymarketNetReturnPct": -0.2180375131619513,
-        "maximumDrawdownPct": 0.10937013636717063
+        "maximumDrawdownPct": 0.10937013636717063,
+        "bestBenchmarkId": "always_short",
+        "bestBenchmarkNetReturnPct": 0.06784790904634877,
+        "excessReturnPct": -0.17721804541351943,
+        "excessAverageReturnPct": -0.03544360908270388,
+        "excessConfidenceInterval95": [
+          -0.06441423693436435,
+          -0.006472981231043412
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": -0.2180375131619513,
+          "hyperliquidOnlyNetReturnPct": -0.0007027595723899775,
+          "alwaysLongNetReturnPct": 0.026905091097547934,
+          "alwaysShortNetReturnPct": 0.06784790904634877,
+          "randomMedianNetReturnPct": 0.04798548195549447
+        }
       },
       "holdout": {
-        "independentWindows": 4,
-        "trades": 5,
-        "correctTrades": 2,
-        "directionAccuracy": 0.4,
-        "equalWeightWinRate": 0.4,
-        "equalWeightAverageReturnPct": -0.1800559265482282,
-        "equalWeightNetReturnPct": -0.045013981637057054,
+        "independentWindows": 5,
+        "trades": 6,
+        "correctTrades": 3,
+        "directionAccuracy": 0.5,
+        "equalWeightWinRate": 0.5,
+        "equalWeightAverageReturnPct": -0.1213741531264635,
+        "equalWeightNetReturnPct": -0.036412245937939056,
         "equalWeightConfidenceInterval95": [
-          -0.04280704094776616,
-          0.020300050129237635
+          -0.023503692021229056,
+          0.008938793646053435
         ],
         "deflatedSharpeProbability": null,
-        "hyperliquidAverageReturnPct": -0.0013440660082934166,
-        "hyperliquidNetReturnPct": -0.00033601650207335415,
-        "polymarketAverageReturnPct": -0.3587677870881629,
-        "polymarketNetReturnPct": -0.08969194677204075,
-        "maximumDrawdownPct": 0.0659418186967972
+        "hyperliquidAverageReturnPct": -0.0011839594701193925,
+        "hyperliquidNetReturnPct": -0.00035518784103581773,
+        "polymarketAverageReturnPct": -0.24156434678280758,
+        "polymarketNetReturnPct": -0.07246930403484228,
+        "maximumDrawdownPct": 0.0659418186967972,
+        "bestBenchmarkId": "always_long",
+        "bestBenchmarkNetReturnPct": 0.008892523059916441,
+        "excessReturnPct": -0.045304768997855495,
+        "excessAverageReturnPct": -0.009060953799571099,
+        "excessConfidenceInterval95": [
+          -0.03647152551068446,
+          0.01834961791154225
+        ],
+        "excessDeflatedSharpeProbability": null,
+        "benchmarks": {
+          "polymarketOnlyNetReturnPct": -0.07246930403484228,
+          "hyperliquidOnlyNetReturnPct": -0.00035518784103581773,
+          "alwaysLongNetReturnPct": 0.008892523059916441,
+          "alwaysShortNetReturnPct": -0.07007404048202735,
+          "randomMedianNetReturnPct": -0.03230822644501035
+        }
       },
       "walkForward": {
         "folds": [
@@ -1142,7 +1948,23 @@
             "hyperliquidNetReturnPct": -0.0004816091165394463,
             "polymarketAverageReturnPct": -0.4721500526478053,
             "polymarketNetReturnPct": -0.11803751316195132,
-            "maximumDrawdownPct": 0.059259561139245354
+            "maximumDrawdownPct": 0.059259561139245354,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.04553149101963106,
+            "excessReturnPct": -0.10479105215887644,
+            "excessAverageReturnPct": -0.034930350719625476,
+            "excessConfidenceInterval95": [
+              -0.09307905393993307,
+              0.02321835250068212
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.11803751316195132,
+              "hyperliquidOnlyNetReturnPct": -0.0004816091165394463,
+              "alwaysLongNetReturnPct": 0.03213714881079267,
+              "alwaysShortNetReturnPct": 0.04553149101963106,
+              "randomMedianNetReturnPct": 0.04553149101963106
+            }
           },
           {
             "fold": 2,
@@ -1162,7 +1984,23 @@
             "hyperliquidNetReturnPct": -0.0002211504558505313,
             "polymarketAverageReturnPct": -1,
             "polymarketNetReturnPct": -0.1,
-            "maximumDrawdownPct": 0.05011057522792528
+            "maximumDrawdownPct": 0.05011057522792528,
+            "bestBenchmarkId": "always_short",
+            "bestBenchmarkNetReturnPct": 0.02231641802671771,
+            "excessReturnPct": -0.07242699325464297,
+            "excessAverageReturnPct": -0.036213496627321484,
+            "excessConfidenceInterval95": [
+              -0.1367421632647659,
+              0.06431517001012295
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.1,
+              "hyperliquidOnlyNetReturnPct": -0.0002211504558505313,
+              "alwaysLongNetReturnPct": -0.005232057713244736,
+              "alwaysShortNetReturnPct": 0.02231641802671771,
+              "randomMedianNetReturnPct": -0.005232057713244736
+            }
           },
           {
             "fold": 3,
@@ -1182,42 +2020,75 @@
             "hyperliquidNetReturnPct": -0.0001376237849427001,
             "polymarketAverageReturnPct": 0.06872035485306176,
             "polymarketNetReturnPct": 0.01030805322795926,
-            "maximumDrawdownPct": 0.016940510472775783
+            "maximumDrawdownPct": 0.016940510472775783,
+            "bestBenchmarkId": "polymarket_only",
+            "bestBenchmarkNetReturnPct": 0.01030805322795926,
+            "excessReturnPct": -0.005222838506450982,
+            "excessAverageReturnPct": -0.002611419253225491,
+            "excessConfidenceInterval95": [
+              -0.057496510144573,
+              0.052273671638122014
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": 0.01030805322795926,
+              "hyperliquidOnlyNetReturnPct": -0.0001376237849427001,
+              "alwaysLongNetReturnPct": -0.039176788115397036,
+              "alwaysShortNetReturnPct": 0.005085214721508278,
+              "randomMedianNetReturnPct": -0.00640743368109414
+            }
           },
           {
             "fold": 4,
-            "independentWindows": 2,
-            "trades": 2,
-            "correctTrades": 0,
-            "directionAccuracy": 0,
-            "equalWeightWinRate": 0,
-            "equalWeightAverageReturnPct": -0.5009919635856532,
-            "equalWeightNetReturnPct": -0.05009919635856533,
+            "independentWindows": 3,
+            "trades": 3,
+            "correctTrades": 1,
+            "directionAccuracy": 0.3333333333333333,
+            "equalWeightWinRate": 0.3333333333333333,
+            "equalWeightAverageReturnPct": -0.27664973772964885,
+            "equalWeightNetReturnPct": -0.04149746065944733,
             "equalWeightConfidenceInterval95": [
-              -0.025082028016568583,
-              -0.025017168341996746
+              -0.04497119346438024,
+              0.017306219691415353
             ],
             "deflatedSharpeProbability": null,
-            "hyperliquidAverageReturnPct": -0.00198392717130654,
-            "hyperliquidNetReturnPct": -0.00019839271713065405,
-            "polymarketAverageReturnPct": -1,
-            "polymarketNetReturnPct": -0.1,
-            "maximumDrawdownPct": 0.0500991963585653
+            "hyperliquidAverageReturnPct": -0.0014504270406207837,
+            "hyperliquidNetReturnPct": -0.0002175640560931176,
+            "polymarketAverageReturnPct": -0.551849048418677,
+            "polymarketNetReturnPct": -0.08277735726280155,
+            "maximumDrawdownPct": 0.0500991963585653,
+            "bestBenchmarkId": "always_long",
+            "bestBenchmarkNetReturnPct": 0.048069311175313476,
+            "excessReturnPct": -0.0895667718347608,
+            "excessAverageReturnPct": -0.029855590611586935,
+            "excessConfidenceInterval95": [
+              -0.07169107115318726,
+              0.0119798899300134
+            ],
+            "excessDeflatedSharpeProbability": null,
+            "benchmarks": {
+              "polymarketOnlyNetReturnPct": -0.08277735726280155,
+              "hyperliquidOnlyNetReturnPct": -0.0002175640560931176,
+              "alwaysLongNetReturnPct": 0.048069311175313476,
+              "alwaysShortNetReturnPct": -0.07515925520353563,
+              "randomMedianNetReturnPct": -0.026793232873701618
+            }
           }
         ],
         "profitableFolds": 1,
+        "benchmarkBeatingFolds": 0,
         "totalFolds": 4
       }
     }
   ],
   "reproducibility": {
-    "runId": "2026-07-18T11-09-31.145Z",
-    "codeRevision": "39258658687a6443df28e64f80a37f4890d762f0",
+    "runId": "2026-07-18T11-40-08.211Z",
+    "codeRevision": "e64f2afe84373fccaa4a43449fb99aa69c0cda9c",
     "hashAlgorithm": "sha256",
-    "specificationSha256": "0fbc77629f342025cd17eacc5e5ce1d2f6a4587f593b2b018d6c161cfca890f1",
-    "datasetSha256": "8a4424593a448c7cb6e898d815c332479ce5b524f0f1d361d217aa71a393f2d2",
-    "tradeRows": 132,
-    "tradesCsvSha256": "09964ad2a1031829ce0eb9f39451ccc3211d6d31fb93a695825f6c133f9085d1"
+    "specificationSha256": "fbe61f9c498a26d911fbe3178cf3c8f8c5d16d00a908626954a269ccb2ac8497",
+    "datasetSha256": "56b56e4f3f1b1720c97445a89632d124fe701efecbfa2f5c5a7503e9c03343df",
+    "tradeRows": 141,
+    "tradesCsvSha256": "4e95c37e7fac60cc1fc9cc568896d321bda0fd36964035e00b70182560c0e385"
   },
   "trades": [
     {
@@ -1251,7 +2122,9 @@
       "hyperliquidEntryPrice": 1846.06914,
       "hyperliquidExitPrice": 1842.93134,
       "hyperliquidReturnPct": -0.0026016603670149198,
-      "equalWeightReturnPct": -0.5013008301835075
+      "equalWeightReturnPct": -0.5013008301835075,
+      "longEqualWeightReturnPct": -0.5013008301835075,
+      "shortEqualWeightReturnPct": 0.9472220898896798
     },
     {
       "variantId": "fair_value-60s",
@@ -1284,7 +2157,9 @@
       "hyperliquidEntryPrice": 74.920013,
       "hyperliquidExitPrice": 74.89197539999999,
       "hyperliquidReturnPct": -0.0005255346587632595,
-      "equalWeightReturnPct": 0.5696564537694255
+      "equalWeightReturnPct": 0.5696564537694255,
+      "longEqualWeightReturnPct": -0.5010499030403002,
+      "shortEqualWeightReturnPct": 0.5696564537694255
     },
     {
       "variantId": "market_direction-120s",
@@ -1317,7 +2192,9 @@
       "hyperliquidEntryPrice": 63989.795399999995,
       "hyperliquidExitPrice": 63975.2024,
       "hyperliquidReturnPct": -0.0011306549505878958,
-      "equalWeightReturnPct": 0.284990500406282
+      "equalWeightReturnPct": 0.284990500406282,
+      "longEqualWeightReturnPct": 0.284990500406282,
+      "shortEqualWeightReturnPct": -0.5007504642197591
     },
     {
       "variantId": "market_direction-120s",
@@ -1350,7 +2227,9 @@
       "hyperliquidEntryPrice": 1846.06914,
       "hyperliquidExitPrice": 1842.93134,
       "hyperliquidReturnPct": -0.0026016603670149198,
-      "equalWeightReturnPct": -0.5013008301835075
+      "equalWeightReturnPct": -0.5013008301835075,
+      "longEqualWeightReturnPct": -0.5013008301835075,
+      "shortEqualWeightReturnPct": 0.9472220898896798
     },
     {
       "variantId": "market_direction-30s",
@@ -1383,7 +2262,9 @@
       "hyperliquidEntryPrice": 63985.7946,
       "hyperliquidExitPrice": 63975.2024,
       "hyperliquidReturnPct": -0.0010684835279627406,
-      "equalWeightReturnPct": 0.2615121882009036
+      "equalWeightReturnPct": 0.2615121882009036,
+      "longEqualWeightReturnPct": 0.2615121882009036,
+      "shortEqualWeightReturnPct": -0.5007816045551069
     },
     {
       "variantId": "market_direction-30s",
@@ -1416,7 +2297,9 @@
       "hyperliquidEntryPrice": 1846.06914,
       "hyperliquidExitPrice": 1842.93134,
       "hyperliquidReturnPct": -0.002601972932987142,
-      "equalWeightReturnPct": -0.5013009864664936
+      "equalWeightReturnPct": -0.5013009864664936,
+      "longEqualWeightReturnPct": -0.5013009864664936,
+      "shortEqualWeightReturnPct": 0.9472222461726659
     },
     {
       "variantId": "market_direction-60s",
@@ -1449,7 +2332,9 @@
       "hyperliquidEntryPrice": 63988.7952,
       "hyperliquidExitPrice": 63975.2024,
       "hyperliquidReturnPct": -0.001115243067892008,
-      "equalWeightReturnPct": 0.29733211967849527
+      "equalWeightReturnPct": 0.29733211967849527,
+      "longEqualWeightReturnPct": 0.29733211967849527,
+      "shortEqualWeightReturnPct": -0.5007581838164699
     },
     {
       "variantId": "market_direction-60s",
@@ -1482,7 +2367,9 @@
       "hyperliquidEntryPrice": 1845.8691,
       "hyperliquidExitPrice": 1842.93134,
       "hyperliquidReturnPct": -0.0024937299198918733,
-      "equalWeightReturnPct": -0.501246864959946
+      "equalWeightReturnPct": -0.501246864959946,
+      "longEqualWeightReturnPct": -0.501246864959946,
+      "shortEqualWeightReturnPct": 0.7294431932893345
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -1515,7 +2402,9 @@
       "hyperliquidEntryPrice": 63989.795399999995,
       "hyperliquidExitPrice": 63975.2024,
       "hyperliquidReturnPct": -0.0011306549505878958,
-      "equalWeightReturnPct": 0.284990500406282
+      "equalWeightReturnPct": 0.284990500406282,
+      "longEqualWeightReturnPct": 0.284990500406282,
+      "shortEqualWeightReturnPct": -0.5007504642197591
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -1548,7 +2437,9 @@
       "hyperliquidEntryPrice": 1846.06914,
       "hyperliquidExitPrice": 1842.93134,
       "hyperliquidReturnPct": -0.0026016603670149198,
-      "equalWeightReturnPct": -0.5013008301835075
+      "equalWeightReturnPct": -0.5013008301835075,
+      "longEqualWeightReturnPct": -0.5013008301835075,
+      "shortEqualWeightReturnPct": 0.9472220898896798
     },
     {
       "variantId": "trend_confirmed-30s",
@@ -1581,7 +2472,9 @@
       "hyperliquidEntryPrice": 63985.7946,
       "hyperliquidExitPrice": 63975.2024,
       "hyperliquidReturnPct": -0.0010684835279627406,
-      "equalWeightReturnPct": 0.2615121882009036
+      "equalWeightReturnPct": 0.2615121882009036,
+      "longEqualWeightReturnPct": 0.2615121882009036,
+      "shortEqualWeightReturnPct": -0.5007816045551069
     },
     {
       "variantId": "trend_confirmed-30s",
@@ -1614,7 +2507,9 @@
       "hyperliquidEntryPrice": 1846.06914,
       "hyperliquidExitPrice": 1842.93134,
       "hyperliquidReturnPct": -0.002601972932987142,
-      "equalWeightReturnPct": -0.5013009864664936
+      "equalWeightReturnPct": -0.5013009864664936,
+      "longEqualWeightReturnPct": -0.5013009864664936,
+      "shortEqualWeightReturnPct": 0.9472222461726659
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -1647,7 +2542,9 @@
       "hyperliquidEntryPrice": 63988.7952,
       "hyperliquidExitPrice": 63975.2024,
       "hyperliquidReturnPct": -0.001115243067892008,
-      "equalWeightReturnPct": 0.29733211967849527
+      "equalWeightReturnPct": 0.29733211967849527,
+      "longEqualWeightReturnPct": 0.29733211967849527,
+      "shortEqualWeightReturnPct": -0.5007581838164699
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -1680,7 +2577,9 @@
       "hyperliquidEntryPrice": 1845.8691,
       "hyperliquidExitPrice": 1842.93134,
       "hyperliquidReturnPct": -0.0024937299198918733,
-      "equalWeightReturnPct": -0.501246864959946
+      "equalWeightReturnPct": -0.501246864959946,
+      "longEqualWeightReturnPct": -0.501246864959946,
+      "shortEqualWeightReturnPct": 0.7294431932893345
     },
     {
       "variantId": "fair_value-120s",
@@ -1713,7 +2612,9 @@
       "hyperliquidEntryPrice": 1845.369,
       "hyperliquidExitPrice": 1844.03112,
       "hyperliquidReturnPct": -0.001627365958849267,
-      "equalWeightReturnPct": -0.5008136829794246
+      "equalWeightReturnPct": -0.5008136829794246,
+      "longEqualWeightReturnPct": -0.5008136829794246,
+      "shortEqualWeightReturnPct": 0.14648444012491663
     },
     {
       "variantId": "fair_value-120s",
@@ -1746,7 +2647,9 @@
       "hyperliquidEntryPrice": 74.97100280000001,
       "hyperliquidExitPrice": 74.939985,
       "hyperliquidReturnPct": -0.00048675427178775246,
-      "equalWeightReturnPct": 0.2733708090916074
+      "equalWeightReturnPct": 0.2733708090916074,
+      "longEqualWeightReturnPct": -0.5010692503471053,
+      "shortEqualWeightReturnPct": 0.2733708090916074
     },
     {
       "variantId": "market_direction-120s",
@@ -1779,7 +2682,9 @@
       "hyperliquidEntryPrice": 1844.5310200000001,
       "hyperliquidExitPrice": 1844.8689,
       "hyperliquidReturnPct": -0.00108056279128668,
-      "equalWeightReturnPct": 0.14648444012491663
+      "equalWeightReturnPct": 0.14648444012491663,
+      "longEqualWeightReturnPct": -0.5008136829794246,
+      "shortEqualWeightReturnPct": 0.14648444012491663
     },
     {
       "variantId": "market_direction-120s",
@@ -1812,7 +2717,9 @@
       "hyperliquidEntryPrice": 74.97100280000001,
       "hyperliquidExitPrice": 74.939985,
       "hyperliquidReturnPct": -0.00048675427178775246,
-      "equalWeightReturnPct": 0.2733708090916074
+      "equalWeightReturnPct": 0.2733708090916074,
+      "longEqualWeightReturnPct": -0.5010692503471053,
+      "shortEqualWeightReturnPct": 0.2733708090916074
     },
     {
       "variantId": "market_direction-60s",
@@ -1845,7 +2752,9 @@
       "hyperliquidEntryPrice": 1845.1309,
       "hyperliquidExitPrice": 1844.8689,
       "hyperliquidReturnPct": -0.000755033405703848,
-      "equalWeightReturnPct": 0.3234366440035194
+      "equalWeightReturnPct": 0.3234366440035194,
+      "longEqualWeightReturnPct": -0.5009761449822093,
+      "shortEqualWeightReturnPct": 0.3234366440035194
     },
     {
       "variantId": "market_direction-60s",
@@ -1878,7 +2787,9 @@
       "hyperliquidEntryPrice": 74.97100280000001,
       "hyperliquidExitPrice": 74.939985,
       "hyperliquidReturnPct": -0.00048686129423547463,
-      "equalWeightReturnPct": 0.3235707300592536
+      "equalWeightReturnPct": 0.3235707300592536,
+      "longEqualWeightReturnPct": -0.5010691968358814,
+      "shortEqualWeightReturnPct": 0.3235707300592536
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -1911,7 +2822,9 @@
       "hyperliquidEntryPrice": 1844.5310200000001,
       "hyperliquidExitPrice": 1844.8689,
       "hyperliquidReturnPct": -0.00108056279128668,
-      "equalWeightReturnPct": 0.14648444012491663
+      "equalWeightReturnPct": 0.14648444012491663,
+      "longEqualWeightReturnPct": -0.5008136829794246,
+      "shortEqualWeightReturnPct": 0.14648444012491663
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -1944,7 +2857,9 @@
       "hyperliquidEntryPrice": 74.97100280000001,
       "hyperliquidExitPrice": 74.939985,
       "hyperliquidReturnPct": -0.00048675427178775246,
-      "equalWeightReturnPct": 0.2733708090916074
+      "equalWeightReturnPct": 0.2733708090916074,
+      "longEqualWeightReturnPct": -0.5010692503471053,
+      "shortEqualWeightReturnPct": 0.2733708090916074
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -1977,7 +2892,9 @@
       "hyperliquidEntryPrice": 74.97100280000001,
       "hyperliquidExitPrice": 74.939985,
       "hyperliquidReturnPct": -0.00048686129423547463,
-      "equalWeightReturnPct": 0.3235707300592536
+      "equalWeightReturnPct": 0.3235707300592536,
+      "longEqualWeightReturnPct": -0.5010691968358814,
+      "shortEqualWeightReturnPct": 0.3235707300592536
     },
     {
       "variantId": "fair_value-120s",
@@ -2010,7 +2927,9 @@
       "hyperliquidEntryPrice": 1842.6314,
       "hyperliquidExitPrice": 1845.26898,
       "hyperliquidReturnPct": -0.002329365586177682,
-      "equalWeightReturnPct": -0.5011646827930888
+      "equalWeightReturnPct": -0.5011646827930888,
+      "longEqualWeightReturnPct": 2.6459476836602134,
+      "shortEqualWeightReturnPct": -0.5011646827930888
     },
     {
       "variantId": "fair_value-120s",
@@ -2043,7 +2962,9 @@
       "hyperliquidEntryPrice": 74.7590452,
       "hyperliquidExitPrice": 74.884974,
       "hyperliquidReturnPct": -0.002587036146959304,
-      "equalWeightReturnPct": 0.04471716407950594
+      "equalWeightReturnPct": 0.04471716407950594,
+      "longEqualWeightReturnPct": -0.5000209439343225,
+      "shortEqualWeightReturnPct": 0.04471716407950594
     },
     {
       "variantId": "fair_value-30s",
@@ -2076,7 +2997,9 @@
       "hyperliquidEntryPrice": 64016.8008,
       "hyperliquidExitPrice": 63951.207200000004,
       "hyperliquidReturnPct": -0.0019271813125891196,
-      "equalWeightReturnPct": -0.5009635906562946
+      "equalWeightReturnPct": -0.5009635906562946,
+      "longEqualWeightReturnPct": -0.5009635906562946,
+      "shortEqualWeightReturnPct": 0.9052958178630692
     },
     {
       "variantId": "fair_value-60s",
@@ -2109,7 +3032,9 @@
       "hyperliquidEntryPrice": 64003.7982,
       "hyperliquidExitPrice": 63951.207200000004,
       "hyperliquidReturnPct": -0.0017242230568630197,
-      "equalWeightReturnPct": -0.5008621115284315
+      "equalWeightReturnPct": -0.5008621115284315,
+      "longEqualWeightReturnPct": -0.5008621115284315,
+      "shortEqualWeightReturnPct": 0.33699482717068385
     },
     {
       "variantId": "market_direction-120s",
@@ -2142,7 +3067,9 @@
       "hyperliquidEntryPrice": 63943.2088,
       "hyperliquidExitPrice": 63977.793,
       "hyperliquidReturnPct": -0.0014384025906512812,
-      "equalWeightReturnPct": 0.08792606693855012
+      "equalWeightReturnPct": 0.08792606693855012,
+      "longEqualWeightReturnPct": -0.500596541688349,
+      "shortEqualWeightReturnPct": 0.08792606693855012
     },
     {
       "variantId": "market_direction-120s",
@@ -2175,7 +3102,9 @@
       "hyperliquidEntryPrice": 1842.6314,
       "hyperliquidExitPrice": 1845.26898,
       "hyperliquidReturnPct": -0.002329365586177682,
-      "equalWeightReturnPct": -0.5011646827930888
+      "equalWeightReturnPct": -0.5011646827930888,
+      "longEqualWeightReturnPct": 2.6459476836602134,
+      "shortEqualWeightReturnPct": -0.5011646827930888
     },
     {
       "variantId": "market_direction-120s",
@@ -2208,7 +3137,9 @@
       "hyperliquidEntryPrice": 74.7590452,
       "hyperliquidExitPrice": 74.884974,
       "hyperliquidReturnPct": -0.002587036146959304,
-      "equalWeightReturnPct": 0.04471716407950594
+      "equalWeightReturnPct": 0.04471716407950594,
+      "longEqualWeightReturnPct": -0.5000209439343225,
+      "shortEqualWeightReturnPct": 0.04471716407950594
     },
     {
       "variantId": "market_direction-30s",
@@ -2241,7 +3172,9 @@
       "hyperliquidEntryPrice": 64016.8008,
       "hyperliquidExitPrice": 63951.207200000004,
       "hyperliquidReturnPct": -0.0019271813125891196,
-      "equalWeightReturnPct": -0.5009635906562946
+      "equalWeightReturnPct": -0.5009635906562946,
+      "longEqualWeightReturnPct": -0.5009635906562946,
+      "shortEqualWeightReturnPct": 0.9052958178630692
     },
     {
       "variantId": "market_direction-60s",
@@ -2274,7 +3207,9 @@
       "hyperliquidEntryPrice": 1843.23128,
       "hyperliquidExitPrice": 1845.26898,
       "hyperliquidReturnPct": -0.0020030945145758923,
-      "equalWeightReturnPct": -0.501001547257288
+      "equalWeightReturnPct": -0.501001547257288,
+      "longEqualWeightReturnPct": 0.9911511270464437,
+      "shortEqualWeightReturnPct": -0.501001547257288
     },
     {
       "variantId": "market_direction-60s",
@@ -2307,7 +3242,9 @@
       "hyperliquidEntryPrice": 74.8510268,
       "hyperliquidExitPrice": 74.884974,
       "hyperliquidReturnPct": -0.0013555561137819781,
-      "equalWeightReturnPct": 0.16292041058549328
+      "equalWeightReturnPct": 0.16292041058549328,
+      "longEqualWeightReturnPct": -0.5006422863599157,
+      "shortEqualWeightReturnPct": 0.16292041058549328
     },
     {
       "variantId": "market_direction-60s",
@@ -2340,7 +3277,9 @@
       "hyperliquidEntryPrice": 1.0876824200000001,
       "hyperliquidExitPrice": 1.0907181,
       "hyperliquidReturnPct": -0.0036893104499943125,
-      "equalWeightReturnPct": -0.5018446552249971
+      "equalWeightReturnPct": -0.5018446552249971,
+      "longEqualWeightReturnPct": 0.9060980090425689,
+      "shortEqualWeightReturnPct": -0.5018446552249971
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -2373,7 +3312,9 @@
       "hyperliquidEntryPrice": 63943.2088,
       "hyperliquidExitPrice": 63977.793,
       "hyperliquidReturnPct": -0.0014384025906512812,
-      "equalWeightReturnPct": 0.08792606693855012
+      "equalWeightReturnPct": 0.08792606693855012,
+      "longEqualWeightReturnPct": -0.500596541688349,
+      "shortEqualWeightReturnPct": 0.08792606693855012
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -2406,7 +3347,9 @@
       "hyperliquidEntryPrice": 1842.6314,
       "hyperliquidExitPrice": 1845.26898,
       "hyperliquidReturnPct": -0.002329365586177682,
-      "equalWeightReturnPct": -0.5011646827930888
+      "equalWeightReturnPct": -0.5011646827930888,
+      "longEqualWeightReturnPct": 2.6459476836602134,
+      "shortEqualWeightReturnPct": -0.5011646827930888
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -2439,7 +3382,9 @@
       "hyperliquidEntryPrice": 74.7590452,
       "hyperliquidExitPrice": 74.884974,
       "hyperliquidReturnPct": -0.002587036146959304,
-      "equalWeightReturnPct": 0.04471716407950594
+      "equalWeightReturnPct": 0.04471716407950594,
+      "longEqualWeightReturnPct": -0.5000209439343225,
+      "shortEqualWeightReturnPct": 0.04471716407950594
     },
     {
       "variantId": "trend_confirmed-30s",
@@ -2472,7 +3417,9 @@
       "hyperliquidEntryPrice": 64016.8008,
       "hyperliquidExitPrice": 63951.207200000004,
       "hyperliquidReturnPct": -0.0019271813125891196,
-      "equalWeightReturnPct": -0.5009635906562946
+      "equalWeightReturnPct": -0.5009635906562946,
+      "longEqualWeightReturnPct": -0.5009635906562946,
+      "shortEqualWeightReturnPct": 0.9052958178630692
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -2505,7 +3452,9 @@
       "hyperliquidEntryPrice": 1843.23128,
       "hyperliquidExitPrice": 1845.26898,
       "hyperliquidReturnPct": -0.0020030945145758923,
-      "equalWeightReturnPct": -0.501001547257288
+      "equalWeightReturnPct": -0.501001547257288,
+      "longEqualWeightReturnPct": 0.9911511270464437,
+      "shortEqualWeightReturnPct": -0.501001547257288
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -2538,7 +3487,9 @@
       "hyperliquidEntryPrice": 74.8510268,
       "hyperliquidExitPrice": 74.884974,
       "hyperliquidReturnPct": -0.0013555561137819781,
-      "equalWeightReturnPct": 0.16292041058549328
+      "equalWeightReturnPct": 0.16292041058549328,
+      "longEqualWeightReturnPct": -0.5006422863599157,
+      "shortEqualWeightReturnPct": 0.16292041058549328
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -2571,7 +3522,9 @@
       "hyperliquidEntryPrice": 1.0876824200000001,
       "hyperliquidExitPrice": 1.0907181,
       "hyperliquidReturnPct": -0.0036893104499943125,
-      "equalWeightReturnPct": -0.5018446552249971
+      "equalWeightReturnPct": -0.5018446552249971,
+      "longEqualWeightReturnPct": 0.9060980090425689,
+      "shortEqualWeightReturnPct": -0.5018446552249971
     },
     {
       "variantId": "fair_value-120s",
@@ -2604,7 +3557,9 @@
       "hyperliquidEntryPrice": 63948.207800000004,
       "hyperliquidExitPrice": 64008.7992,
       "hyperliquidReturnPct": -0.0018452414363744117,
-      "equalWeightReturnPct": -0.5009226207181872
+      "equalWeightReturnPct": -0.5009226207181872,
+      "longEqualWeightReturnPct": 0.39664772957542344,
+      "shortEqualWeightReturnPct": -0.5009226207181872
     },
     {
       "variantId": "fair_value-60s",
@@ -2637,7 +3592,9 @@
       "hyperliquidEntryPrice": 63951.207200000004,
       "hyperliquidExitPrice": 64008.7992,
       "hyperliquidReturnPct": -0.0017980661247376031,
-      "equalWeightReturnPct": -0.5008990330623688
+      "equalWeightReturnPct": -0.5008990330623688,
+      "longEqualWeightReturnPct": 0.4129300902064385,
+      "shortEqualWeightReturnPct": -0.5008990330623688
     },
     {
       "variantId": "market_direction-120s",
@@ -2670,7 +3627,9 @@
       "hyperliquidEntryPrice": 1.0900819400000001,
       "hyperliquidExitPrice": 1.09041804,
       "hyperliquidReturnPct": -0.0012057718518727067,
-      "equalWeightReturnPct": 0.31003265233606103
+      "equalWeightReturnPct": 0.31003265233606103,
+      "longEqualWeightReturnPct": -0.5007886634989511,
+      "shortEqualWeightReturnPct": 0.31003265233606103
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -2703,7 +3662,9 @@
       "hyperliquidEntryPrice": 1.0900819400000001,
       "hyperliquidExitPrice": 1.09041804,
       "hyperliquidReturnPct": -0.0012057718518727067,
-      "equalWeightReturnPct": 0.31003265233606103
+      "equalWeightReturnPct": 0.31003265233606103,
+      "longEqualWeightReturnPct": -0.5007886634989511,
+      "shortEqualWeightReturnPct": 0.31003265233606103
     },
     {
       "variantId": "fair_value-120s",
@@ -2736,7 +3697,9 @@
       "hyperliquidEntryPrice": 74.999997,
       "hyperliquidExitPrice": 74.8740222,
       "hyperliquidReturnPct": -0.002577767680636214,
-      "equalWeightReturnPct": -0.5012888838403181
+      "equalWeightReturnPct": -0.5012888838403181,
+      "longEqualWeightReturnPct": -0.5012888838403181,
+      "shortEqualWeightReturnPct": 0.9472509812525413
     },
     {
       "variantId": "market_direction-120s",
@@ -2769,7 +3732,9 @@
       "hyperliquidEntryPrice": 1849.66986,
       "hyperliquidExitPrice": 1846.5306200000002,
       "hyperliquidReturnPct": -0.002599119635485841,
-      "equalWeightReturnPct": 0.06823036157573724
+      "equalWeightReturnPct": 0.06823036157573724,
+      "longEqualWeightReturnPct": 0.06823036157573724,
+      "shortEqualWeightReturnPct": -0.5000534254124973
     },
     {
       "variantId": "market_direction-120s",
@@ -2802,7 +3767,9 @@
       "hyperliquidEntryPrice": 74.999997,
       "hyperliquidExitPrice": 74.8740222,
       "hyperliquidReturnPct": -0.002577767680636214,
-      "equalWeightReturnPct": -0.5012888838403181
+      "equalWeightReturnPct": -0.5012888838403181,
+      "longEqualWeightReturnPct": -0.5012888838403181,
+      "shortEqualWeightReturnPct": 0.9472509812525413
     },
     {
       "variantId": "market_direction-120s",
@@ -2835,7 +3802,9 @@
       "hyperliquidEntryPrice": 1.0909181399999999,
       "hyperliquidExitPrice": 1.08888218,
       "hyperliquidReturnPct": -0.0027681353732194325,
-      "equalWeightReturnPct": -0.5013840676866097
+      "equalWeightReturnPct": -0.5013840676866097,
+      "longEqualWeightReturnPct": -0.5013840676866097,
+      "shortEqualWeightReturnPct": 1.4780921047230346
     },
     {
       "variantId": "market_direction-60s",
@@ -2868,7 +3837,9 @@
       "hyperliquidEntryPrice": 1849.56984,
       "hyperliquidExitPrice": 1846.5306200000002,
       "hyperliquidReturnPct": -0.002545366630904968,
-      "equalWeightReturnPct": 0.09405258455115184
+      "equalWeightReturnPct": 0.09405258455115184,
+      "longEqualWeightReturnPct": 0.09405258455115184,
+      "shortEqualWeightReturnPct": -0.5000803522076823
     },
     {
       "variantId": "market_direction-60s",
@@ -2901,7 +3872,9 @@
       "hyperliquidEntryPrice": 74.994996,
       "hyperliquidExitPrice": 74.8740222,
       "hyperliquidReturnPct": -0.0025111728581168322,
-      "equalWeightReturnPct": -0.5012555864290584
+      "equalWeightReturnPct": -0.5012555864290584,
+      "longEqualWeightReturnPct": -0.5012555864290584,
+      "shortEqualWeightReturnPct": 0.8663434963020913
     },
     {
       "variantId": "market_direction-60s",
@@ -2934,7 +3907,9 @@
       "hyperliquidEntryPrice": 1.0909181399999999,
       "hyperliquidExitPrice": 1.08888218,
       "hyperliquidReturnPct": -0.002768343734330544,
-      "equalWeightReturnPct": -0.5013841718671652
+      "equalWeightReturnPct": -0.5013841718671652,
+      "longEqualWeightReturnPct": -0.5013841718671652,
+      "shortEqualWeightReturnPct": 1.0888084596242287
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -2967,7 +3942,9 @@
       "hyperliquidEntryPrice": 1849.66986,
       "hyperliquidExitPrice": 1846.5306200000002,
       "hyperliquidReturnPct": -0.002599119635485841,
-      "equalWeightReturnPct": 0.06823036157573724
+      "equalWeightReturnPct": 0.06823036157573724,
+      "longEqualWeightReturnPct": 0.06823036157573724,
+      "shortEqualWeightReturnPct": -0.5000534254124973
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -3000,7 +3977,9 @@
       "hyperliquidEntryPrice": 74.999997,
       "hyperliquidExitPrice": 74.8740222,
       "hyperliquidReturnPct": -0.002577767680636214,
-      "equalWeightReturnPct": -0.5012888838403181
+      "equalWeightReturnPct": -0.5012888838403181,
+      "longEqualWeightReturnPct": -0.5012888838403181,
+      "shortEqualWeightReturnPct": 0.9472509812525413
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -3033,7 +4012,9 @@
       "hyperliquidEntryPrice": 1.0909181399999999,
       "hyperliquidExitPrice": 1.08888218,
       "hyperliquidReturnPct": -0.0027681353732194325,
-      "equalWeightReturnPct": -0.5013840676866097
+      "equalWeightReturnPct": -0.5013840676866097,
+      "longEqualWeightReturnPct": -0.5013840676866097,
+      "shortEqualWeightReturnPct": 1.4780921047230346
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -3066,7 +4047,9 @@
       "hyperliquidEntryPrice": 1849.56984,
       "hyperliquidExitPrice": 1846.5306200000002,
       "hyperliquidReturnPct": -0.002545366630904968,
-      "equalWeightReturnPct": 0.09405258455115184
+      "equalWeightReturnPct": 0.09405258455115184,
+      "longEqualWeightReturnPct": 0.09405258455115184,
+      "shortEqualWeightReturnPct": -0.5000803522076823
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -3099,7 +4082,9 @@
       "hyperliquidEntryPrice": 74.994996,
       "hyperliquidExitPrice": 74.8740222,
       "hyperliquidReturnPct": -0.0025111728581168322,
-      "equalWeightReturnPct": -0.5012555864290584
+      "equalWeightReturnPct": -0.5012555864290584,
+      "longEqualWeightReturnPct": -0.5012555864290584,
+      "shortEqualWeightReturnPct": 0.8663434963020913
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -3132,7 +4117,9 @@
       "hyperliquidEntryPrice": 1.0909181399999999,
       "hyperliquidExitPrice": 1.08888218,
       "hyperliquidReturnPct": -0.002768343734330544,
-      "equalWeightReturnPct": -0.5013841718671652
+      "equalWeightReturnPct": -0.5013841718671652,
+      "longEqualWeightReturnPct": -0.5013841718671652,
+      "shortEqualWeightReturnPct": 1.0888084596242287
     },
     {
       "variantId": "fair_value-60s",
@@ -3165,7 +4152,9 @@
       "hyperliquidEntryPrice": 63961.205200000004,
       "hyperliquidExitPrice": 63999.797399999996,
       "hyperliquidReturnPct": -0.001500732613510086,
-      "equalWeightReturnPct": -0.5007503663067551
+      "equalWeightReturnPct": -0.5007503663067551,
+      "longEqualWeightReturnPct": 0.23939917421150203,
+      "shortEqualWeightReturnPct": -0.5007503663067551
     },
     {
       "variantId": "market_direction-120s",
@@ -3198,7 +4187,9 @@
       "hyperliquidEntryPrice": 63986.794799999996,
       "hyperliquidExitPrice": 63973.2028,
       "hyperliquidReturnPct": -0.001115022983225091,
-      "equalWeightReturnPct": 0.22886156456783222
+      "equalWeightReturnPct": 0.22886156456783222,
+      "longEqualWeightReturnPct": 0.22886156456783222,
+      "shortEqualWeightReturnPct": -0.500758294352973
     },
     {
       "variantId": "market_direction-120s",
@@ -3231,7 +4222,9 @@
       "hyperliquidEntryPrice": 74.9319834,
       "hyperliquidExitPrice": 74.91501400000001,
       "hyperliquidReturnPct": -0.0011253866426118029,
-      "equalWeightReturnPct": 0.21862169404866552
+      "equalWeightReturnPct": 0.21862169404866552,
+      "longEqualWeightReturnPct": 0.21862169404866552,
+      "shortEqualWeightReturnPct": -0.5007508150193063
     },
     {
       "variantId": "market_direction-30s",
@@ -3264,7 +4257,9 @@
       "hyperliquidEntryPrice": 74.91498,
       "hyperliquidExitPrice": 74.91501400000001,
       "hyperliquidReturnPct": -0.0008984270201880209,
-      "equalWeightReturnPct": 0.3101863247519034
+      "equalWeightReturnPct": 0.3101863247519034,
+      "longEqualWeightReturnPct": 0.3101863247519034,
+      "shortEqualWeightReturnPct": -0.5008644923371562
     },
     {
       "variantId": "market_direction-60s",
@@ -3297,7 +4292,9 @@
       "hyperliquidEntryPrice": 63987.795,
       "hyperliquidExitPrice": 63973.2028,
       "hyperliquidReturnPct": -0.0011308517640588912,
-      "equalWeightReturnPct": 0.23939917421150203
+      "equalWeightReturnPct": 0.23939917421150203,
+      "longEqualWeightReturnPct": 0.23939917421150203,
+      "shortEqualWeightReturnPct": -0.5007503663067551
     },
     {
       "variantId": "market_direction-60s",
@@ -3330,7 +4327,9 @@
       "hyperliquidEntryPrice": 74.9319834,
       "hyperliquidExitPrice": 74.91501400000001,
       "hyperliquidReturnPct": -0.0011252910521685807,
-      "equalWeightReturnPct": 0.2502726587499227
+      "equalWeightReturnPct": 0.2502726587499227,
+      "longEqualWeightReturnPct": 0.2502726587499227,
+      "shortEqualWeightReturnPct": -0.500750862814528
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -3363,7 +4362,9 @@
       "hyperliquidEntryPrice": 63986.794799999996,
       "hyperliquidExitPrice": 63973.2028,
       "hyperliquidReturnPct": -0.001115022983225091,
-      "equalWeightReturnPct": 0.22886156456783222
+      "equalWeightReturnPct": 0.22886156456783222,
+      "longEqualWeightReturnPct": 0.22886156456783222,
+      "shortEqualWeightReturnPct": -0.500758294352973
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -3396,7 +4397,9 @@
       "hyperliquidEntryPrice": 74.9319834,
       "hyperliquidExitPrice": 74.91501400000001,
       "hyperliquidReturnPct": -0.0011253866426118029,
-      "equalWeightReturnPct": 0.21862169404866552
+      "equalWeightReturnPct": 0.21862169404866552,
+      "longEqualWeightReturnPct": 0.21862169404866552,
+      "shortEqualWeightReturnPct": -0.5007508150193063
     },
     {
       "variantId": "trend_confirmed-30s",
@@ -3429,7 +4432,9 @@
       "hyperliquidEntryPrice": 74.91498,
       "hyperliquidExitPrice": 74.91501400000001,
       "hyperliquidReturnPct": -0.0008984270201880209,
-      "equalWeightReturnPct": 0.3101863247519034
+      "equalWeightReturnPct": 0.3101863247519034,
+      "longEqualWeightReturnPct": 0.3101863247519034,
+      "shortEqualWeightReturnPct": -0.5008644923371562
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -3462,7 +4467,9 @@
       "hyperliquidEntryPrice": 63987.795,
       "hyperliquidExitPrice": 63973.2028,
       "hyperliquidReturnPct": -0.0011308517640588912,
-      "equalWeightReturnPct": 0.23939917421150203
+      "equalWeightReturnPct": 0.23939917421150203,
+      "longEqualWeightReturnPct": 0.23939917421150203,
+      "shortEqualWeightReturnPct": -0.5007503663067551
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -3495,7 +4502,9 @@
       "hyperliquidEntryPrice": 74.9319834,
       "hyperliquidExitPrice": 74.91501400000001,
       "hyperliquidReturnPct": -0.0011252910521685807,
-      "equalWeightReturnPct": 0.2502726587499227
+      "equalWeightReturnPct": 0.2502726587499227,
+      "longEqualWeightReturnPct": 0.2502726587499227,
+      "shortEqualWeightReturnPct": -0.500750862814528
     },
     {
       "variantId": "fair_value-30s",
@@ -3528,7 +4537,9 @@
       "hyperliquidEntryPrice": 1848.2695800000001,
       "hyperliquidExitPrice": 1846.1307,
       "hyperliquidReturnPct": -0.002059724969815265,
-      "equalWeightReturnPct": -0.5010298624849077
+      "equalWeightReturnPct": -0.5010298624849077,
+      "longEqualWeightReturnPct": -0.5010298624849077,
+      "shortEqualWeightReturnPct": 0.4475562395782573
     },
     {
       "variantId": "fair_value-60s",
@@ -3561,7 +4572,9 @@
       "hyperliquidEntryPrice": 1848.66966,
       "hyperliquidExitPrice": 1846.1307,
       "hyperliquidReturnPct": -0.0022756881564556203,
-      "equalWeightReturnPct": -0.5011378440782278
+      "equalWeightReturnPct": -0.5011378440782278,
+      "longEqualWeightReturnPct": -0.5011378440782278,
+      "shortEqualWeightReturnPct": 0.4850198098083599
     },
     {
       "variantId": "fair_value-60s",
@@ -3594,7 +4607,9 @@
       "hyperliquidEntryPrice": 74.9789928,
       "hyperliquidExitPrice": 74.8270316,
       "hyperliquidReturnPct": -0.0029264109167534084,
-      "equalWeightReturnPct": -0.5014632054583767
+      "equalWeightReturnPct": -0.5014632054583767,
+      "longEqualWeightReturnPct": -0.5014632054583767,
+      "shortEqualWeightReturnPct": 0.8665514669686445
     },
     {
       "variantId": "market_direction-120s",
@@ -3627,7 +4642,9 @@
       "hyperliquidEntryPrice": 1846.83056,
       "hyperliquidExitPrice": 1846.96932,
       "hyperliquidReturnPct": -0.0009724685301088308,
-      "equalWeightReturnPct": 0.28506959361652157
+      "equalWeightReturnPct": 0.28506959361652157,
+      "longEqualWeightReturnPct": -0.5008675679692428,
+      "shortEqualWeightReturnPct": 0.28506959361652157
     },
     {
       "variantId": "market_direction-120s",
@@ -3660,7 +4677,9 @@
       "hyperliquidEntryPrice": 1.08818232,
       "hyperliquidExitPrice": 1.0877175,
       "hyperliquidReturnPct": -0.00046995568981867406,
-      "equalWeightReturnPct": 0.18086000493700943
+      "equalWeightReturnPct": 0.18086000493700943,
+      "longEqualWeightReturnPct": -0.5011560728691945,
+      "shortEqualWeightReturnPct": 0.18086000493700943
     },
     {
       "variantId": "market_direction-30s",
@@ -3693,7 +4712,9 @@
       "hyperliquidEntryPrice": 74.9579886,
       "hyperliquidExitPrice": 74.8270316,
       "hyperliquidReturnPct": -0.0026469754871908087,
-      "equalWeightReturnPct": -0.5013234877435954
+      "equalWeightReturnPct": -0.5013234877435954,
+      "longEqualWeightReturnPct": -0.5013234877435954,
+      "shortEqualWeightReturnPct": 0.8293459818022065
     },
     {
       "variantId": "market_direction-60s",
@@ -3726,7 +4747,9 @@
       "hyperliquidEntryPrice": 64004.7984,
       "hyperliquidExitPrice": 63941.209200000005,
       "hyperliquidReturnPct": -0.0018959674442042523,
-      "equalWeightReturnPct": -0.5009479837221021
+      "equalWeightReturnPct": -0.5009479837221021,
+      "longEqualWeightReturnPct": -0.5009479837221021,
+      "shortEqualWeightReturnPct": 0.6992489754205108
     },
     {
       "variantId": "market_direction-60s",
@@ -3759,7 +4782,9 @@
       "hyperliquidEntryPrice": 74.9789928,
       "hyperliquidExitPrice": 74.8270316,
       "hyperliquidReturnPct": -0.0029264109167534084,
-      "equalWeightReturnPct": -0.5014632054583767
+      "equalWeightReturnPct": -0.5014632054583767,
+      "longEqualWeightReturnPct": -0.5014632054583767,
+      "shortEqualWeightReturnPct": 0.8665514669686445
     },
     {
       "variantId": "market_direction-60s",
@@ -3792,7 +4817,9 @@
       "hyperliquidEntryPrice": 1.08951786,
       "hyperliquidExitPrice": 1.08718252,
       "hyperliquidReturnPct": -0.003045405082121814,
-      "equalWeightReturnPct": -0.5015227025410609
+      "equalWeightReturnPct": -0.5015227025410609,
+      "longEqualWeightReturnPct": -0.5015227025410609,
+      "shortEqualWeightReturnPct": 0.7611918684071457
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -3825,7 +4852,9 @@
       "hyperliquidEntryPrice": 1846.83056,
       "hyperliquidExitPrice": 1846.96932,
       "hyperliquidReturnPct": -0.0009724685301088308,
-      "equalWeightReturnPct": 0.28506959361652157
+      "equalWeightReturnPct": 0.28506959361652157,
+      "longEqualWeightReturnPct": -0.5008675679692428,
+      "shortEqualWeightReturnPct": 0.28506959361652157
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -3858,7 +4887,9 @@
       "hyperliquidEntryPrice": 1.08818232,
       "hyperliquidExitPrice": 1.0877175,
       "hyperliquidReturnPct": -0.00046995568981867406,
-      "equalWeightReturnPct": 0.18086000493700943
+      "equalWeightReturnPct": 0.18086000493700943,
+      "longEqualWeightReturnPct": -0.5011560728691945,
+      "shortEqualWeightReturnPct": 0.18086000493700943
     },
     {
       "variantId": "trend_confirmed-30s",
@@ -3891,7 +4922,9 @@
       "hyperliquidEntryPrice": 74.9579886,
       "hyperliquidExitPrice": 74.8270316,
       "hyperliquidReturnPct": -0.0026469754871908087,
-      "equalWeightReturnPct": -0.5013234877435954
+      "equalWeightReturnPct": -0.5013234877435954,
+      "longEqualWeightReturnPct": -0.5013234877435954,
+      "shortEqualWeightReturnPct": 0.8293459818022065
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -3924,7 +4957,9 @@
       "hyperliquidEntryPrice": 64004.7984,
       "hyperliquidExitPrice": 63941.209200000005,
       "hyperliquidReturnPct": -0.0018959674442042523,
-      "equalWeightReturnPct": -0.5009479837221021
+      "equalWeightReturnPct": -0.5009479837221021,
+      "longEqualWeightReturnPct": -0.5009479837221021,
+      "shortEqualWeightReturnPct": 0.6992489754205108
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -3957,7 +4992,9 @@
       "hyperliquidEntryPrice": 74.9789928,
       "hyperliquidExitPrice": 74.8270316,
       "hyperliquidReturnPct": -0.0029264109167534084,
-      "equalWeightReturnPct": -0.5014632054583767
+      "equalWeightReturnPct": -0.5014632054583767,
+      "longEqualWeightReturnPct": -0.5014632054583767,
+      "shortEqualWeightReturnPct": 0.8665514669686445
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -3990,7 +5027,9 @@
       "hyperliquidEntryPrice": 1.08951786,
       "hyperliquidExitPrice": 1.08718252,
       "hyperliquidReturnPct": -0.003045405082121814,
-      "equalWeightReturnPct": -0.5015227025410609
+      "equalWeightReturnPct": -0.5015227025410609,
+      "longEqualWeightReturnPct": -0.5015227025410609,
+      "shortEqualWeightReturnPct": 0.7611918684071457
     },
     {
       "variantId": "fair_value-120s",
@@ -4023,7 +5062,9 @@
       "hyperliquidEntryPrice": 1.08698256,
       "hyperliquidExitPrice": 1.08551706,
       "hyperliquidReturnPct": 0.0004515302630410658,
-      "equalWeightReturnPct": 0.448105642210458
+      "equalWeightReturnPct": 0.448105642210458,
+      "longEqualWeightReturnPct": -0.5016160922056607,
+      "shortEqualWeightReturnPct": 0.448105642210458
     },
     {
       "variantId": "fair_value-60s",
@@ -4056,7 +5097,9 @@
       "hyperliquidEntryPrice": 74.8280314,
       "hyperliquidExitPrice": 74.6639298,
       "hyperliquidReturnPct": 0.0012933671835703886,
-      "equalWeightReturnPct": 0.5705659046905923
+      "equalWeightReturnPct": 0.5705659046905923,
+      "longEqualWeightReturnPct": -0.5019578128338539,
+      "shortEqualWeightReturnPct": 0.5705659046905923
     },
     {
       "variantId": "market_direction-120s",
@@ -4089,7 +5132,9 @@
       "hyperliquidEntryPrice": 1845.5308200000002,
       "hyperliquidExitPrice": 1844.16876,
       "hyperliquidReturnPct": -0.00015894046279913375,
-      "equalWeightReturnPct": 0.172146957140585
+      "equalWeightReturnPct": 0.172146957140585,
+      "longEqualWeightReturnPct": -0.501273657174175,
+      "shortEqualWeightReturnPct": 0.172146957140585
     },
     {
       "variantId": "market_direction-60s",
@@ -4122,7 +5167,9 @@
       "hyperliquidEntryPrice": 1845.83076,
       "hyperliquidExitPrice": 1844.16876,
       "hyperliquidReturnPct": 0.0000037201828481109783,
-      "equalWeightReturnPct": 0.26204829005630903
+      "equalWeightReturnPct": 0.26204829005630903,
+      "longEqualWeightReturnPct": -0.5013548363510985,
+      "shortEqualWeightReturnPct": 0.26204829005630903
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -4155,7 +5202,9 @@
       "hyperliquidEntryPrice": 1845.5308200000002,
       "hyperliquidExitPrice": 1844.16876,
       "hyperliquidReturnPct": -0.00015894046279913375,
-      "equalWeightReturnPct": 0.172146957140585
+      "equalWeightReturnPct": 0.172146957140585,
+      "longEqualWeightReturnPct": -0.501273657174175,
+      "shortEqualWeightReturnPct": 0.172146957140585
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -4188,7 +5237,9 @@
       "hyperliquidEntryPrice": 1845.83076,
       "hyperliquidExitPrice": 1844.16876,
       "hyperliquidReturnPct": 0.0000037201828481109783,
-      "equalWeightReturnPct": 0.26204829005630903
+      "equalWeightReturnPct": 0.26204829005630903,
+      "longEqualWeightReturnPct": -0.5013548363510985,
+      "shortEqualWeightReturnPct": 0.26204829005630903
     },
     {
       "variantId": "fair_value-120s",
@@ -4221,7 +5272,9 @@
       "hyperliquidEntryPrice": 74.6460678,
       "hyperliquidExitPrice": 74.72794259999999,
       "hyperliquidReturnPct": -0.001998358028706645,
-      "equalWeightReturnPct": -0.5009991790143533
+      "equalWeightReturnPct": -0.5009991790143533,
+      "longEqualWeightReturnPct": 0.21886958734971707,
+      "shortEqualWeightReturnPct": -0.5009991790143533
     },
     {
       "variantId": "fair_value-120s",
@@ -4254,7 +5307,9 @@
       "hyperliquidEntryPrice": 1.0837832,
       "hyperliquidExitPrice": 1.08411678,
       "hyperliquidReturnPct": -0.001205647933188423,
-      "equalWeightReturnPct": 0.1545978312340609
+      "equalWeightReturnPct": 0.1545978312340609,
+      "longEqualWeightReturnPct": -0.500789257451997,
+      "shortEqualWeightReturnPct": 0.1545978312340609
     },
     {
       "variantId": "fair_value-30s",
@@ -4287,7 +5342,9 @@
       "hyperliquidEntryPrice": 63911.2152,
       "hyperliquidExitPrice": 63967.791,
       "hyperliquidReturnPct": -0.0017826158245668566,
-      "equalWeightReturnPct": -0.5008913079122834
+      "equalWeightReturnPct": -0.5008913079122834,
+      "longEqualWeightReturnPct": 0.2851310897044224,
+      "shortEqualWeightReturnPct": -0.5008913079122834
     },
     {
       "variantId": "fair_value-30s",
@@ -4320,7 +5377,9 @@
       "hyperliquidEntryPrice": 74.63507000000001,
       "hyperliquidExitPrice": 74.72794259999999,
       "hyperliquidReturnPct": -0.002146159538955377,
-      "equalWeightReturnPct": -0.5010730797694777
+      "equalWeightReturnPct": -0.5010730797694777,
+      "longEqualWeightReturnPct": 0.29764871364949175,
+      "shortEqualWeightReturnPct": -0.5010730797694777
     },
     {
       "variantId": "fair_value-60s",
@@ -4353,7 +5412,9 @@
       "hyperliquidEntryPrice": 63923.2128,
       "hyperliquidExitPrice": 63967.791,
       "hyperliquidReturnPct": -0.0015947816686423877,
-      "equalWeightReturnPct": -0.5007973908343212
+      "equalWeightReturnPct": -0.5007973908343212,
+      "longEqualWeightReturnPct": 0.29737124997068637,
+      "shortEqualWeightReturnPct": -0.5007973908343212
     },
     {
       "variantId": "fair_value-60s",
@@ -4386,7 +5447,9 @@
       "hyperliquidEntryPrice": 74.63507000000001,
       "hyperliquidExitPrice": 74.72794259999999,
       "hyperliquidReturnPct": -0.0021460860460084884,
-      "equalWeightReturnPct": -0.5010730430230043
+      "equalWeightReturnPct": -0.5010730430230043,
+      "longEqualWeightReturnPct": 0.3372069301701198,
+      "shortEqualWeightReturnPct": -0.5010730430230043
     },
     {
       "variantId": "market_direction-120s",
@@ -4419,7 +5482,9 @@
       "hyperliquidEntryPrice": 1844.8689,
       "hyperliquidExitPrice": 1845.0309200000002,
       "hyperliquidReturnPct": -0.0008149124433114645,
-      "equalWeightReturnPct": 0.1547931989789994
+      "equalWeightReturnPct": 0.1547931989789994,
+      "longEqualWeightReturnPct": 0.1547931989789994,
+      "shortEqualWeightReturnPct": -0.500947236089169
     },
     {
       "variantId": "market_direction-120s",
@@ -4452,7 +5517,9 @@
       "hyperliquidEntryPrice": 74.6769324,
       "hyperliquidExitPrice": 74.69705760000001,
       "hyperliquidReturnPct": -0.0006296000405087082,
-      "equalWeightReturnPct": 0.21886958734971707
+      "equalWeightReturnPct": 0.21886958734971707,
+      "longEqualWeightReturnPct": 0.21886958734971707,
+      "shortEqualWeightReturnPct": -0.5009991790143533
     },
     {
       "variantId": "market_direction-120s",
@@ -4485,7 +5552,9 @@
       "hyperliquidEntryPrice": 1.0837832,
       "hyperliquidExitPrice": 1.08411678,
       "hyperliquidReturnPct": -0.001205647933188423,
-      "equalWeightReturnPct": 0.1545978312340609
+      "equalWeightReturnPct": 0.1545978312340609,
+      "longEqualWeightReturnPct": -0.500789257451997,
+      "shortEqualWeightReturnPct": 0.1545978312340609
     },
     {
       "variantId": "market_direction-30s",
@@ -4518,7 +5587,9 @@
       "hyperliquidEntryPrice": 63937.784999999996,
       "hyperliquidExitPrice": 63941.209200000005,
       "hyperliquidReturnPct": -0.0008494763543070698,
-      "equalWeightReturnPct": 0.2851310897044224
+      "equalWeightReturnPct": 0.2851310897044224,
+      "longEqualWeightReturnPct": 0.2851310897044224,
+      "shortEqualWeightReturnPct": -0.5008913079122834
     },
     {
       "variantId": "market_direction-30s",
@@ -4551,7 +5622,9 @@
       "hyperliquidEntryPrice": 1844.4688199999998,
       "hyperliquidExitPrice": 1845.0309200000002,
       "hyperliquidReturnPct": -0.0005983955934266329,
-      "equalWeightReturnPct": 0.26174723216817164
+      "equalWeightReturnPct": 0.26174723216817164,
+      "longEqualWeightReturnPct": 0.26174723216817164,
+      "shortEqualWeightReturnPct": -0.5010556966390544
     },
     {
       "variantId": "market_direction-30s",
@@ -4584,7 +5657,9 @@
       "hyperliquidEntryPrice": 74.66593019999999,
       "hyperliquidExitPrice": 74.69705760000001,
       "hyperliquidReturnPct": -0.00048205512589907324,
-      "equalWeightReturnPct": 0.29764871364949175
+      "equalWeightReturnPct": 0.29764871364949175,
+      "longEqualWeightReturnPct": 0.29764871364949175,
+      "shortEqualWeightReturnPct": -0.5010730797694777
     },
     {
       "variantId": "market_direction-60s",
@@ -4617,7 +5692,9 @@
       "hyperliquidEntryPrice": 63949.7874,
       "hyperliquidExitPrice": 63941.209200000005,
       "hyperliquidReturnPct": -0.0010369824835098427,
-      "equalWeightReturnPct": 0.29737124997068637
+      "equalWeightReturnPct": 0.29737124997068637,
+      "longEqualWeightReturnPct": 0.29737124997068637,
+      "shortEqualWeightReturnPct": -0.5007973908343212
     },
     {
       "variantId": "market_direction-60s",
@@ -4650,7 +5727,9 @@
       "hyperliquidEntryPrice": 1844.66886,
       "hyperliquidExitPrice": 1845.0309200000002,
       "hyperliquidReturnPct": -0.0007067178428094914,
-      "equalWeightReturnPct": 0.1992408764220961
+      "equalWeightReturnPct": 0.1992408764220961,
+      "longEqualWeightReturnPct": 0.1992408764220961,
+      "shortEqualWeightReturnPct": -0.5010014344406126
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -4683,7 +5762,9 @@
       "hyperliquidEntryPrice": 1844.8689,
       "hyperliquidExitPrice": 1845.0309200000002,
       "hyperliquidReturnPct": -0.0008149124433114645,
-      "equalWeightReturnPct": 0.1547931989789994
+      "equalWeightReturnPct": 0.1547931989789994,
+      "longEqualWeightReturnPct": 0.1547931989789994,
+      "shortEqualWeightReturnPct": -0.500947236089169
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -4716,7 +5797,9 @@
       "hyperliquidEntryPrice": 74.6769324,
       "hyperliquidExitPrice": 74.69705760000001,
       "hyperliquidReturnPct": -0.0006296000405087082,
-      "equalWeightReturnPct": 0.21886958734971707
+      "equalWeightReturnPct": 0.21886958734971707,
+      "longEqualWeightReturnPct": 0.21886958734971707,
+      "shortEqualWeightReturnPct": -0.5009991790143533
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -4749,7 +5832,9 @@
       "hyperliquidEntryPrice": 1.0837832,
       "hyperliquidExitPrice": 1.08411678,
       "hyperliquidReturnPct": -0.001205647933188423,
-      "equalWeightReturnPct": 0.1545978312340609
+      "equalWeightReturnPct": 0.1545978312340609,
+      "longEqualWeightReturnPct": -0.500789257451997,
+      "shortEqualWeightReturnPct": 0.1545978312340609
     },
     {
       "variantId": "trend_confirmed-30s",
@@ -4782,7 +5867,9 @@
       "hyperliquidEntryPrice": 63937.784999999996,
       "hyperliquidExitPrice": 63941.209200000005,
       "hyperliquidReturnPct": -0.0008494763543070698,
-      "equalWeightReturnPct": 0.2851310897044224
+      "equalWeightReturnPct": 0.2851310897044224,
+      "longEqualWeightReturnPct": 0.2851310897044224,
+      "shortEqualWeightReturnPct": -0.5008913079122834
     },
     {
       "variantId": "trend_confirmed-30s",
@@ -4815,7 +5902,9 @@
       "hyperliquidEntryPrice": 1844.4688199999998,
       "hyperliquidExitPrice": 1845.0309200000002,
       "hyperliquidReturnPct": -0.0005983955934266329,
-      "equalWeightReturnPct": 0.26174723216817164
+      "equalWeightReturnPct": 0.26174723216817164,
+      "longEqualWeightReturnPct": 0.26174723216817164,
+      "shortEqualWeightReturnPct": -0.5010556966390544
     },
     {
       "variantId": "trend_confirmed-30s",
@@ -4848,7 +5937,9 @@
       "hyperliquidEntryPrice": 74.66593019999999,
       "hyperliquidExitPrice": 74.69705760000001,
       "hyperliquidReturnPct": -0.00048205512589907324,
-      "equalWeightReturnPct": 0.29764871364949175
+      "equalWeightReturnPct": 0.29764871364949175,
+      "longEqualWeightReturnPct": 0.29764871364949175,
+      "shortEqualWeightReturnPct": -0.5010730797694777
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -4881,7 +5972,9 @@
       "hyperliquidEntryPrice": 63949.7874,
       "hyperliquidExitPrice": 63941.209200000005,
       "hyperliquidReturnPct": -0.0010369824835098427,
-      "equalWeightReturnPct": 0.29737124997068637
+      "equalWeightReturnPct": 0.29737124997068637,
+      "longEqualWeightReturnPct": 0.29737124997068637,
+      "shortEqualWeightReturnPct": -0.5007973908343212
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -4914,7 +6007,9 @@
       "hyperliquidEntryPrice": 1844.66886,
       "hyperliquidExitPrice": 1845.0309200000002,
       "hyperliquidReturnPct": -0.0007067178428094914,
-      "equalWeightReturnPct": 0.1992408764220961
+      "equalWeightReturnPct": 0.1992408764220961,
+      "longEqualWeightReturnPct": 0.1992408764220961,
+      "shortEqualWeightReturnPct": -0.5010014344406126
     },
     {
       "variantId": "fair_value-120s",
@@ -4947,7 +6042,9 @@
       "hyperliquidEntryPrice": 63947.208,
       "hyperliquidExitPrice": 63986.794799999996,
       "hyperliquidReturnPct": -0.0015166384496075012,
-      "equalWeightReturnPct": -0.5007583192248037
+      "equalWeightReturnPct": -0.5007583192248037,
+      "longEqualWeightReturnPct": 0.32325667087373217,
+      "shortEqualWeightReturnPct": -0.5007583192248037
     },
     {
       "variantId": "market_direction-120s",
@@ -4980,7 +6077,9 @@
       "hyperliquidEntryPrice": 63973.792199999996,
       "hyperliquidExitPrice": 63960.2054,
       "hyperliquidReturnPct": -0.0011149796652782428,
-      "equalWeightReturnPct": 0.32325667087373217
+      "equalWeightReturnPct": 0.32325667087373217,
+      "longEqualWeightReturnPct": 0.32325667087373217,
+      "shortEqualWeightReturnPct": -0.5007583192248037
     },
     {
       "variantId": "market_direction-60s",
@@ -5013,7 +6112,9 @@
       "hyperliquidEntryPrice": 63973.792199999996,
       "hyperliquidExitPrice": 63960.2054,
       "hyperliquidReturnPct": -0.0011151880125004649,
-      "equalWeightReturnPct": 0.3100779442557472
+      "equalWeightReturnPct": 0.3100779442557472,
+      "longEqualWeightReturnPct": 0.3100779442557472,
+      "shortEqualWeightReturnPct": -0.5007582150511927
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -5046,7 +6147,9 @@
       "hyperliquidEntryPrice": 63973.792199999996,
       "hyperliquidExitPrice": 63960.2054,
       "hyperliquidReturnPct": -0.0011149796652782428,
-      "equalWeightReturnPct": 0.32325667087373217
+      "equalWeightReturnPct": 0.32325667087373217,
+      "longEqualWeightReturnPct": 0.32325667087373217,
+      "shortEqualWeightReturnPct": -0.5007583192248037
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -5079,7 +6182,9 @@
       "hyperliquidEntryPrice": 63973.792199999996,
       "hyperliquidExitPrice": 63960.2054,
       "hyperliquidReturnPct": -0.0011151880125004649,
-      "equalWeightReturnPct": 0.3100779442557472
+      "equalWeightReturnPct": 0.3100779442557472,
+      "longEqualWeightReturnPct": 0.3100779442557472,
+      "shortEqualWeightReturnPct": -0.5007582150511927
     },
     {
       "variantId": "fair_value-120s",
@@ -5112,7 +6217,9 @@
       "hyperliquidEntryPrice": 74.7760418,
       "hyperliquidExitPrice": 74.89197539999999,
       "hyperliquidReturnPct": -0.0024512158930055793,
-      "equalWeightReturnPct": -0.5012256079465028
+      "equalWeightReturnPct": -0.5012256079465028,
+      "longEqualWeightReturnPct": 0.4660948386501774,
+      "shortEqualWeightReturnPct": -0.5012256079465028
     },
     {
       "variantId": "market_direction-120s",
@@ -5145,7 +6252,9 @@
       "hyperliquidEntryPrice": 1.08711738,
       "hyperliquidExitPrice": 1.08708254,
       "hyperliquidReturnPct": -0.0009347197565162631,
-      "equalWeightReturnPct": 0.3101681783837393
+      "equalWeightReturnPct": 0.3101681783837393,
+      "longEqualWeightReturnPct": 0.3101681783837393,
+      "shortEqualWeightReturnPct": -0.5009250614208405
     },
     {
       "variantId": "market_direction-30s",
@@ -5178,7 +6287,9 @@
       "hyperliquidEntryPrice": 74.8089588,
       "hyperliquidExitPrice": 74.86102480000001,
       "hyperliquidReturnPct": -0.00020440804007705387,
-      "equalWeightReturnPct": 0.3237119566863328
+      "equalWeightReturnPct": 0.3237119566863328,
+      "longEqualWeightReturnPct": 0.3237119566863328,
+      "shortEqualWeightReturnPct": -0.5012121168637347
     },
     {
       "variantId": "market_direction-30s",
@@ -5211,7 +6322,9 @@
       "hyperliquidEntryPrice": 1.08711738,
       "hyperliquidExitPrice": 1.08708254,
       "hyperliquidReturnPct": -0.000934962205214402,
-      "equalWeightReturnPct": 0.2974222601098341
+      "equalWeightReturnPct": 0.2974222601098341,
+      "longEqualWeightReturnPct": 0.2974222601098341,
+      "shortEqualWeightReturnPct": -0.5009249401964915
     },
     {
       "variantId": "market_direction-60s",
@@ -5244,7 +6357,9 @@
       "hyperliquidEntryPrice": 74.81796059999999,
       "hyperliquidExitPrice": 74.86102480000001,
       "hyperliquidReturnPct": -0.00032468626172547514,
-      "equalWeightReturnPct": 0.26188408683402226
+      "equalWeightReturnPct": 0.26188408683402226,
+      "longEqualWeightReturnPct": 0.26188408683402226,
+      "shortEqualWeightReturnPct": -0.5011518729554351
     },
     {
       "variantId": "market_direction-60s",
@@ -5277,7 +6392,9 @@
       "hyperliquidEntryPrice": 1.08711738,
       "hyperliquidExitPrice": 1.08708254,
       "hyperliquidReturnPct": -0.0009348694524397631,
-      "equalWeightReturnPct": 0.3101681035357775
+      "equalWeightReturnPct": 0.3101681035357775,
+      "longEqualWeightReturnPct": 0.3101681035357775,
+      "shortEqualWeightReturnPct": -0.5009249865728788
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -5310,7 +6427,9 @@
       "hyperliquidEntryPrice": 1.08711738,
       "hyperliquidExitPrice": 1.08708254,
       "hyperliquidReturnPct": -0.0009347197565162631,
-      "equalWeightReturnPct": 0.3101681783837393
+      "equalWeightReturnPct": 0.3101681783837393,
+      "longEqualWeightReturnPct": 0.3101681783837393,
+      "shortEqualWeightReturnPct": -0.5009250614208405
     },
     {
       "variantId": "trend_confirmed-30s",
@@ -5343,7 +6462,9 @@
       "hyperliquidEntryPrice": 74.8089588,
       "hyperliquidExitPrice": 74.86102480000001,
       "hyperliquidReturnPct": -0.00020440804007705387,
-      "equalWeightReturnPct": 0.3237119566863328
+      "equalWeightReturnPct": 0.3237119566863328,
+      "longEqualWeightReturnPct": 0.3237119566863328,
+      "shortEqualWeightReturnPct": -0.5012121168637347
     },
     {
       "variantId": "trend_confirmed-30s",
@@ -5376,7 +6497,9 @@
       "hyperliquidEntryPrice": 1.08711738,
       "hyperliquidExitPrice": 1.08708254,
       "hyperliquidReturnPct": -0.000934962205214402,
-      "equalWeightReturnPct": 0.2974222601098341
+      "equalWeightReturnPct": 0.2974222601098341,
+      "longEqualWeightReturnPct": 0.2974222601098341,
+      "shortEqualWeightReturnPct": -0.5009249401964915
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -5409,7 +6532,9 @@
       "hyperliquidEntryPrice": 74.81796059999999,
       "hyperliquidExitPrice": 74.86102480000001,
       "hyperliquidReturnPct": -0.00032468626172547514,
-      "equalWeightReturnPct": 0.26188408683402226
+      "equalWeightReturnPct": 0.26188408683402226,
+      "longEqualWeightReturnPct": 0.26188408683402226,
+      "shortEqualWeightReturnPct": -0.5011518729554351
     },
     {
       "variantId": "trend_confirmed-60s",
@@ -5442,7 +6567,9 @@
       "hyperliquidEntryPrice": 1.08711738,
       "hyperliquidExitPrice": 1.08708254,
       "hyperliquidReturnPct": -0.0009348694524397631,
-      "equalWeightReturnPct": 0.3101681035357775
+      "equalWeightReturnPct": 0.3101681035357775,
+      "longEqualWeightReturnPct": 0.3101681035357775,
+      "shortEqualWeightReturnPct": -0.5009249865728788
     },
     {
       "variantId": "fair_value-60s",
@@ -5475,7 +6602,9 @@
       "hyperliquidEntryPrice": 1847.1693599999999,
       "hyperliquidExitPrice": 1843.93114,
       "hyperliquidReturnPct": -0.0026551986703469916,
-      "equalWeightReturnPct": -0.5013275993351735
+      "equalWeightReturnPct": -0.5013275993351735,
+      "longEqualWeightReturnPct": -0.5013275993351735,
+      "shortEqualWeightReturnPct": 0.5257481770665405
     },
     {
       "variantId": "fair_value-60s",
@@ -5508,7 +6637,9 @@
       "hyperliquidEntryPrice": 74.89597619999999,
       "hyperliquidExitPrice": 74.805036,
       "hyperliquidReturnPct": -0.002113169837937926,
-      "equalWeightReturnPct": -0.501056584918969
+      "equalWeightReturnPct": -0.501056584918969,
+      "longEqualWeightReturnPct": -0.501056584918969,
+      "shortEqualWeightReturnPct": 0.4476237937662851
     },
     {
       "variantId": "market_direction-120s",
@@ -5541,7 +6672,9 @@
       "hyperliquidEntryPrice": 1.08698256,
       "hyperliquidExitPrice": 1.08681732,
       "hyperliquidReturnPct": -0.0007452067776300888,
-      "equalWeightReturnPct": 0.32344155731755625
+      "equalWeightReturnPct": 0.32344155731755625,
+      "longEqualWeightReturnPct": -0.5010187949972994,
+      "shortEqualWeightReturnPct": 0.32344155731755625
     },
     {
       "variantId": "trend_confirmed-120s",
@@ -5574,7 +6707,324 @@
       "hyperliquidEntryPrice": 1.08698256,
       "hyperliquidExitPrice": 1.08681732,
       "hyperliquidReturnPct": -0.0007452067776300888,
-      "equalWeightReturnPct": 0.32344155731755625
+      "equalWeightReturnPct": 0.32344155731755625,
+      "longEqualWeightReturnPct": -0.5010187949972994,
+      "shortEqualWeightReturnPct": 0.32344155731755625
+    },
+    {
+      "variantId": "fair_value-120s",
+      "strategy": "fair_value",
+      "entryOffsetSeconds": 120,
+      "windowAt": "2026-07-18T11:15:00.000Z",
+      "marketId": "2958429",
+      "eventId": "713444",
+      "asset": "XRP",
+      "side": "LONG",
+      "officialResult": 1,
+      "correct": true,
+      "observedAt": "2026-07-18T11:17:00.000Z",
+      "entryAt": "2026-07-18T11:17:02.657Z",
+      "exitAt": "2026-07-18T11:30:02.763Z",
+      "entryDelayMs": 2657,
+      "exitDelayMs": 2763,
+      "startReferencePrice": 1.086221778005499,
+      "entryReferencePrice": 1.086884961782285,
+      "endReferencePrice": 1.087879168372721,
+      "marketProbability": 0.725,
+      "fairProbability": 0.900903611959683,
+      "probabilityEdge": 0.15710361195968306,
+      "trendLogReturn": 0.0007361398998178099,
+      "volatility24h": 0.005,
+      "signalStrength": 0.15710361195968306,
+      "polymarketEntryPrice": 0.73,
+      "polymarketFeePct": 0.018549416036902543,
+      "polymarketReturnPct": 0.34445285474396914,
+      "hyperliquidEntryPrice": 1.0874174399999998,
+      "hyperliquidExitPrice": 1.08798236,
+      "hyperliquidReturnPct": -0.0003834267792492711,
+      "equalWeightReturnPct": 0.17203471398235992,
+      "longEqualWeightReturnPct": 0.17203471398235992,
+      "shortEqualWeightReturnPct": -0.501201176899406
+    },
+    {
+      "variantId": "fair_value-30s",
+      "strategy": "fair_value",
+      "entryOffsetSeconds": 30,
+      "windowAt": "2026-07-18T11:15:00.000Z",
+      "marketId": "2958429",
+      "eventId": "713444",
+      "asset": "XRP",
+      "side": "LONG",
+      "officialResult": 1,
+      "correct": true,
+      "observedAt": "2026-07-18T11:15:30.000Z",
+      "entryAt": "2026-07-18T11:15:32.646Z",
+      "exitAt": "2026-07-18T11:30:02.763Z",
+      "entryDelayMs": 2646,
+      "exitDelayMs": 2763,
+      "startReferencePrice": 1.086221778005499,
+      "entryReferencePrice": 1.086492969007729,
+      "endReferencePrice": 1.087879168372721,
+      "marketProbability": 0.625,
+      "fairProbability": 0.6907755701416889,
+      "probabilityEdge": 0.04445557014168888,
+      "trendLogReturn": 0.00036813768765138846,
+      "volatility24h": 0.005,
+      "signalStrength": 0.04445557014168888,
+      "polymarketEntryPrice": 0.63,
+      "polymarketFeePct": 0.02524612535334828,
+      "polymarketReturnPct": 0.5472283724550026,
+      "hyperliquidEntryPrice": 1.08701736,
+      "hyperliquidExitPrice": 1.08798236,
+      "hyperliquidReturnPct": -0.000015660821923668783,
+      "equalWeightReturnPct": 0.2736063558165394,
+      "longEqualWeightReturnPct": 0.2736063558165394,
+      "shortEqualWeightReturnPct": -0.5013854238792104
+    },
+    {
+      "variantId": "fair_value-60s",
+      "strategy": "fair_value",
+      "entryOffsetSeconds": 60,
+      "windowAt": "2026-07-18T11:15:00.000Z",
+      "marketId": "2958429",
+      "eventId": "713444",
+      "asset": "XRP",
+      "side": "LONG",
+      "officialResult": 1,
+      "correct": true,
+      "observedAt": "2026-07-18T11:16:00.000Z",
+      "entryAt": "2026-07-18T11:16:02.652Z",
+      "exitAt": "2026-07-18T11:30:02.763Z",
+      "entryDelayMs": 2652,
+      "exitDelayMs": 2763,
+      "startReferencePrice": 1.086221778005499,
+      "entryReferencePrice": 1.08665980748583,
+      "endReferencePrice": 1.087879168372721,
+      "marketProbability": 0.655,
+      "fairProbability": 0.7935620593991677,
+      "probabilityEdge": 0.11785205939916765,
+      "trendLogReturn": 0.0005521557219380236,
+      "volatility24h": 0.005,
+      "signalStrength": 0.11785205939916765,
+      "polymarketEntryPrice": 0.66,
+      "polymarketFeePct": 0.02324672787653839,
+      "polymarketReturnPct": 0.479929200187063,
+      "hyperliquidEntryPrice": 1.0872174,
+      "hyperliquidExitPrice": 1.08798236,
+      "hyperliquidReturnPct": -0.00019962974405088535,
+      "equalWeightReturnPct": 0.23986478522150603,
+      "longEqualWeightReturnPct": 0.23986478522150603,
+      "shortEqualWeightReturnPct": -0.5012932573825284
+    },
+    {
+      "variantId": "market_direction-120s",
+      "strategy": "market_direction",
+      "entryOffsetSeconds": 120,
+      "windowAt": "2026-07-18T11:15:00.000Z",
+      "marketId": "2958429",
+      "eventId": "713444",
+      "asset": "XRP",
+      "side": "LONG",
+      "officialResult": 1,
+      "correct": true,
+      "observedAt": "2026-07-18T11:17:00.000Z",
+      "entryAt": "2026-07-18T11:17:02.657Z",
+      "exitAt": "2026-07-18T11:30:02.763Z",
+      "entryDelayMs": 2657,
+      "exitDelayMs": 2763,
+      "startReferencePrice": 1.086221778005499,
+      "entryReferencePrice": 1.086884961782285,
+      "endReferencePrice": 1.087879168372721,
+      "marketProbability": 0.725,
+      "fairProbability": 0.900903611959683,
+      "probabilityEdge": 0.15710361195968306,
+      "trendLogReturn": 0.0007361398998178099,
+      "volatility24h": 0.005,
+      "signalStrength": 0.22499999999999998,
+      "polymarketEntryPrice": 0.73,
+      "polymarketFeePct": 0.018549416036902543,
+      "polymarketReturnPct": 0.34445285474396914,
+      "hyperliquidEntryPrice": 1.0874174399999998,
+      "hyperliquidExitPrice": 1.08798236,
+      "hyperliquidReturnPct": -0.0003834267792492711,
+      "equalWeightReturnPct": 0.17203471398235992,
+      "longEqualWeightReturnPct": 0.17203471398235992,
+      "shortEqualWeightReturnPct": -0.501201176899406
+    },
+    {
+      "variantId": "market_direction-30s",
+      "strategy": "market_direction",
+      "entryOffsetSeconds": 30,
+      "windowAt": "2026-07-18T11:15:00.000Z",
+      "marketId": "2958429",
+      "eventId": "713444",
+      "asset": "XRP",
+      "side": "LONG",
+      "officialResult": 1,
+      "correct": true,
+      "observedAt": "2026-07-18T11:15:30.000Z",
+      "entryAt": "2026-07-18T11:15:32.646Z",
+      "exitAt": "2026-07-18T11:30:02.763Z",
+      "entryDelayMs": 2646,
+      "exitDelayMs": 2763,
+      "startReferencePrice": 1.086221778005499,
+      "entryReferencePrice": 1.086492969007729,
+      "endReferencePrice": 1.087879168372721,
+      "marketProbability": 0.625,
+      "fairProbability": 0.6907755701416889,
+      "probabilityEdge": 0.04445557014168888,
+      "trendLogReturn": 0.00036813768765138846,
+      "volatility24h": 0.005,
+      "signalStrength": 0.125,
+      "polymarketEntryPrice": 0.63,
+      "polymarketFeePct": 0.02524612535334828,
+      "polymarketReturnPct": 0.5472283724550026,
+      "hyperliquidEntryPrice": 1.08701736,
+      "hyperliquidExitPrice": 1.08798236,
+      "hyperliquidReturnPct": -0.000015660821923668783,
+      "equalWeightReturnPct": 0.2736063558165394,
+      "longEqualWeightReturnPct": 0.2736063558165394,
+      "shortEqualWeightReturnPct": -0.5013854238792104
+    },
+    {
+      "variantId": "market_direction-60s",
+      "strategy": "market_direction",
+      "entryOffsetSeconds": 60,
+      "windowAt": "2026-07-18T11:15:00.000Z",
+      "marketId": "2958429",
+      "eventId": "713444",
+      "asset": "XRP",
+      "side": "LONG",
+      "officialResult": 1,
+      "correct": true,
+      "observedAt": "2026-07-18T11:16:00.000Z",
+      "entryAt": "2026-07-18T11:16:02.652Z",
+      "exitAt": "2026-07-18T11:30:02.763Z",
+      "entryDelayMs": 2652,
+      "exitDelayMs": 2763,
+      "startReferencePrice": 1.086221778005499,
+      "entryReferencePrice": 1.08665980748583,
+      "endReferencePrice": 1.087879168372721,
+      "marketProbability": 0.655,
+      "fairProbability": 0.7935620593991677,
+      "probabilityEdge": 0.11785205939916765,
+      "trendLogReturn": 0.0005521557219380236,
+      "volatility24h": 0.005,
+      "signalStrength": 0.15500000000000003,
+      "polymarketEntryPrice": 0.66,
+      "polymarketFeePct": 0.02324672787653839,
+      "polymarketReturnPct": 0.479929200187063,
+      "hyperliquidEntryPrice": 1.0872174,
+      "hyperliquidExitPrice": 1.08798236,
+      "hyperliquidReturnPct": -0.00019962974405088535,
+      "equalWeightReturnPct": 0.23986478522150603,
+      "longEqualWeightReturnPct": 0.23986478522150603,
+      "shortEqualWeightReturnPct": -0.5012932573825284
+    },
+    {
+      "variantId": "trend_confirmed-120s",
+      "strategy": "trend_confirmed",
+      "entryOffsetSeconds": 120,
+      "windowAt": "2026-07-18T11:15:00.000Z",
+      "marketId": "2958429",
+      "eventId": "713444",
+      "asset": "XRP",
+      "side": "LONG",
+      "officialResult": 1,
+      "correct": true,
+      "observedAt": "2026-07-18T11:17:00.000Z",
+      "entryAt": "2026-07-18T11:17:02.657Z",
+      "exitAt": "2026-07-18T11:30:02.763Z",
+      "entryDelayMs": 2657,
+      "exitDelayMs": 2763,
+      "startReferencePrice": 1.086221778005499,
+      "entryReferencePrice": 1.086884961782285,
+      "endReferencePrice": 1.087879168372721,
+      "marketProbability": 0.725,
+      "fairProbability": 0.900903611959683,
+      "probabilityEdge": 0.15710361195968306,
+      "trendLogReturn": 0.0007361398998178099,
+      "volatility24h": 0.005,
+      "signalStrength": 0.22573613989981778,
+      "polymarketEntryPrice": 0.73,
+      "polymarketFeePct": 0.018549416036902543,
+      "polymarketReturnPct": 0.34445285474396914,
+      "hyperliquidEntryPrice": 1.0874174399999998,
+      "hyperliquidExitPrice": 1.08798236,
+      "hyperliquidReturnPct": -0.0003834267792492711,
+      "equalWeightReturnPct": 0.17203471398235992,
+      "longEqualWeightReturnPct": 0.17203471398235992,
+      "shortEqualWeightReturnPct": -0.501201176899406
+    },
+    {
+      "variantId": "trend_confirmed-30s",
+      "strategy": "trend_confirmed",
+      "entryOffsetSeconds": 30,
+      "windowAt": "2026-07-18T11:15:00.000Z",
+      "marketId": "2958429",
+      "eventId": "713444",
+      "asset": "XRP",
+      "side": "LONG",
+      "officialResult": 1,
+      "correct": true,
+      "observedAt": "2026-07-18T11:15:30.000Z",
+      "entryAt": "2026-07-18T11:15:32.646Z",
+      "exitAt": "2026-07-18T11:30:02.763Z",
+      "entryDelayMs": 2646,
+      "exitDelayMs": 2763,
+      "startReferencePrice": 1.086221778005499,
+      "entryReferencePrice": 1.086492969007729,
+      "endReferencePrice": 1.087879168372721,
+      "marketProbability": 0.625,
+      "fairProbability": 0.6907755701416889,
+      "probabilityEdge": 0.04445557014168888,
+      "trendLogReturn": 0.00036813768765138846,
+      "volatility24h": 0.005,
+      "signalStrength": 0.1253681376876514,
+      "polymarketEntryPrice": 0.63,
+      "polymarketFeePct": 0.02524612535334828,
+      "polymarketReturnPct": 0.5472283724550026,
+      "hyperliquidEntryPrice": 1.08701736,
+      "hyperliquidExitPrice": 1.08798236,
+      "hyperliquidReturnPct": -0.000015660821923668783,
+      "equalWeightReturnPct": 0.2736063558165394,
+      "longEqualWeightReturnPct": 0.2736063558165394,
+      "shortEqualWeightReturnPct": -0.5013854238792104
+    },
+    {
+      "variantId": "trend_confirmed-60s",
+      "strategy": "trend_confirmed",
+      "entryOffsetSeconds": 60,
+      "windowAt": "2026-07-18T11:15:00.000Z",
+      "marketId": "2958429",
+      "eventId": "713444",
+      "asset": "XRP",
+      "side": "LONG",
+      "officialResult": 1,
+      "correct": true,
+      "observedAt": "2026-07-18T11:16:00.000Z",
+      "entryAt": "2026-07-18T11:16:02.652Z",
+      "exitAt": "2026-07-18T11:30:02.763Z",
+      "entryDelayMs": 2652,
+      "exitDelayMs": 2763,
+      "startReferencePrice": 1.086221778005499,
+      "entryReferencePrice": 1.08665980748583,
+      "endReferencePrice": 1.087879168372721,
+      "marketProbability": 0.655,
+      "fairProbability": 0.7935620593991677,
+      "probabilityEdge": 0.11785205939916765,
+      "trendLogReturn": 0.0005521557219380236,
+      "volatility24h": 0.005,
+      "signalStrength": 0.15555215572193806,
+      "polymarketEntryPrice": 0.66,
+      "polymarketFeePct": 0.02324672787653839,
+      "polymarketReturnPct": 0.479929200187063,
+      "hyperliquidEntryPrice": 1.0872174,
+      "hyperliquidExitPrice": 1.08798236,
+      "hyperliquidReturnPct": -0.00019962974405088535,
+      "equalWeightReturnPct": 0.23986478522150603,
+      "longEqualWeightReturnPct": 0.23986478522150603,
+      "shortEqualWeightReturnPct": -0.5012932573825284
     }
   ]
 }
