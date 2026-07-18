@@ -1362,7 +1362,7 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
           <div className="grid grid-cols-3 divide-x border-t px-3 py-3 sm:px-4">
             <CompactMetric label="5秒板で再現" value={`${audit?.auditedPositions ?? 0}/${audit?.eligiblePositions ?? 0}件`} />
             <CompactMetric label="95%下限" value={(audit?.verifiedIndependentEvents ?? audit?.verifiedPositions ?? 0) > 0 ? formatSignedPct(audit?.excessConfidenceInterval95?.[0]) : "収集中"} />
-            <CompactMetric label="最大時刻ずれ" value={(audit?.auditedPositions ?? 0) > 0 ? formatMilliseconds(audit?.maximumTimingErrorMs) : "収集中"} />
+            <CompactMetric label="最大取得遅延" value={(audit?.auditedPositions ?? 0) > 0 ? formatMilliseconds(audit?.maximumTimingErrorMs) : "収集中"} />
           </div>
         </div>
       </div>
@@ -1408,7 +1408,7 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
         <span>{research
           ? `完全監査条件 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 9}・過去 ${formatCompact(research.completeMarkets)}市場・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用`
-          : "売買時刻に最も近い5秒板で約定を再現中"}</span>
+          : "発注後の最初の5秒板で約定を再現中"}</span>
         <span className="font-bold text-rose-700">実取引 OFF</span>
       </div>
     </section>
