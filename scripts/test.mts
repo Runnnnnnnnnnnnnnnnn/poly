@@ -51,6 +51,7 @@ import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
 import { dashboardStateFingerprint, shouldPublishDashboardSnapshot } from "./live-snapshot-policy.mjs";
 import { nextRealtimeReplayDelayMs } from "./realtime-short-term-schedule.mjs";
+import { buildLiveConnectionRegistry } from "./publish-live-connection.mjs";
 import { isProtectedRuntimeDatabasePath, runtimeDatabaseRsyncExcludes, untrackedRuntimeSourceRsyncExcludes } from "./runtime-deployment-policy.mjs";
 import { processSignalTarget, supervisorExitDelayMs, supervisorForceKillDelayMs } from "./process-supervisor-policy.mjs";
 import { calculateDirectionalBookReturn, deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
@@ -164,6 +165,15 @@ assert.equal(shouldPublishDashboardSnapshot({
 }), false);
 
 console.log("live snapshot publication policy tests passed");
+
+assert.deepEqual(buildLiveConnectionRegistry("https://example.com/", new Date("2026-01-01T00:00:00Z")), {
+  version: 2,
+  apiBase: "https://example.com",
+  publishedAt: "2026-01-01T00:00:00.000Z",
+  snapshot: "live-dashboard.json",
+});
+assert.throws(() => buildLiveConnectionRegistry("http://example.com"), /HTTPS/);
+console.log("live connection registry tests passed");
 
 const metrics = calculateBacktestMetrics(
   [

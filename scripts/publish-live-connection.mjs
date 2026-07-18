@@ -8,6 +8,16 @@ const git = process.env.GIT_BIN || "/usr/bin/git";
 const remote = process.env.POLYMARKET_GIT_REMOTE || "https://github.com/Runnnnnnnnnnnnnnnnn/poly.git";
 const branch = process.env.POLYMARKET_LIVE_BRANCH || "live";
 const mainBranch = process.env.POLYMARKET_MAIN_BRANCH || "main";
+export const liveDashboardPublicFile = "live-dashboard.json";
+
+export function buildLiveConnectionRegistry(apiBase, publishedAt = new Date()) {
+  return {
+    version: 2,
+    apiBase: normalizeApiBase(apiBase),
+    publishedAt: publishedAt.toISOString(),
+    snapshot: liveDashboardPublicFile,
+  };
+}
 
 export function publishLiveConnection(value, dashboardSnapshot) {
   if (!dashboardSnapshot) throw new Error("dashboard snapshot is required");
@@ -22,7 +32,7 @@ export function publishLiveConnection(value, dashboardSnapshot) {
     run(["-C", workspace, "config", "user.email", "actions@users.noreply.github.com"]);
     writeFileSync(
       join(workspace, "connection.json"),
-      `${JSON.stringify({ version: 2, apiBase, publishedAt: new Date().toISOString(), snapshot: "dashboard.json" }, null, 2)}\n`,
+      `${JSON.stringify(buildLiveConnectionRegistry(apiBase), null, 2)}\n`,
       "utf8",
     );
     if (dashboardSnapshot) {
