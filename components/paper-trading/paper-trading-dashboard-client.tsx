@@ -32,6 +32,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { discoverLiveApiBase, fetchLiveDashboardSnapshot, fetchLocalApi, getLocalApiToken, isSnapshotMode, localApiUrl } from "@/src/lib/localApiClient";
+import { deriveTestnetDisplayStatus } from "@/src/lib/monitoring/testnet-display";
 import type { ModelEvaluationSummary } from "@/src/lib/model-evaluation/types";
 
 type RunMetrics = {
@@ -1323,23 +1324,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
   const settlementReady = settlementResolution?.status === "healthy";
   const testnet = snapshot?.combinedShadow.testnet;
   const testnetReady = testnet?.verifiedReady === true;
-  const testnetTransportReady = testnet?.transport?.status === "healthy";
-  const testnetLabel = testnetReady
-    ? "検証済み"
-    : testnet?.verification?.status === "PARTIAL"
-      ? "一部検証"
-      : testnet?.accountConfigured && testnet.apiWalletConfigured
-        ? "実API検証待ち"
-        : testnetTransportReady && testnet?.apiWalletConfigured
-          ? "API接続済み"
-          : "未設定";
-  const testnetNote = testnetReady
-    ? "発注・取消・照合済み"
-    : testnet?.verification?.status === "PARTIAL"
-      ? "部分約定の実測待ち"
-      : testnet?.accountConfigured && testnet.apiWalletConfigured
-        ? "検証スイート未完了"
-        : testnet?.nextStep ?? "専用口座を設定してください";
+  const testnetDisplay = deriveTestnetDisplayStatus(testnet);
   const liveEnabled = snapshot?.tradeReadiness.realTradingEnabled === true;
   const promising = audit?.readinessStatus === "promising" && sampleReady && netPositive && edgePositive && drawdownReady;
   const accuracyAndReturnNote = audit?.predictionAccuracy !== null && audit?.predictionAccuracy !== undefined && auditedNetReturn !== null
@@ -1380,7 +1365,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
         <ExecutiveMetric icon={TrendingUp} label="実板純損益" value={verifiedTrades ? formatSignedPct(auditedNetReturn) : "未判定"} note="全コスト控除後" tone={pnlTone} />
         <ExecutiveMetric icon={BarChart3} label="最良比較との差" value={verifiedTrades ? formatSignedPct(auditedExcessReturn) : "未判定"} note={audit?.benchmarkLabel ?? "同期間の対照比"} tone={edgeTone} />
         <ExecutiveMetric icon={TrendingDown} label="最大下落" value={verifiedTrades ? formatPct(auditedDrawdown) : "未判定"} note="上限 5.00%" tone={drawdownTone} />
-        <ExecutiveMetric icon={LockKeyhole} label="運用可否" value={liveEnabled ? "運用中" : "不可"} note={testnetNote} tone={liveEnabled ? "good" : "bad"} />
+        <ExecutiveMetric icon={LockKeyhole} label="運用可否" value={liveEnabled ? "運用中" : "不可"} note={testnetDisplay.note} tone={liveEnabled ? "good" : "bad"} />
       </div>
 
       <div className="grid grid-cols-2 border-t sm:grid-cols-6">
@@ -1399,7 +1384,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
         <ExecutiveGate label="独立枠" value={sampleReady ? "合格" : `${verifiedTrades}/${minimumTrades}`} tone={sampleReady ? "good" : "watch"} />
         <ExecutiveGate label="純損益" value={netPositive ? "合格" : trades ? "未合格" : "未判定"} tone={netPositive ? "good" : trades ? "bad" : "neutral"} />
         <ExecutiveGate label="95%下限" value={edgePositive ? "合格" : auditedConfidenceLower === null ? "未判定" : sampleReady ? "未合格" : formatSignedPct(auditedConfidenceLower)} tone={edgePositive ? "good" : auditedConfidenceLower === null ? "neutral" : sampleReady ? "bad" : "watch"} />
-        <ExecutiveGate label="テストネット" value={testnetLabel} tone={testnetReady ? "good" : testnet?.verification ? "watch" : "neutral"} />
+        <ExecutiveGate label="テストネット" value={testnetDisplay.label} tone={testnetDisplay.tone} />
       </div>
 
       <div className="grid grid-cols-3 items-stretch border-t md:grid-cols-[minmax(0,1fr)_28px_minmax(0,1fr)_28px_minmax(0,1fr)]">

@@ -51,6 +51,7 @@ import { evaluateBackupStatus } from "../src/lib/monitoring/backup-status";
 import { isTransientHeartbeatWriteError } from "../src/lib/monitoring/heartbeat";
 import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts, evaluateSettlementResolutionAlerts, evaluateTestnetReconciliationAlerts } from "../src/lib/monitoring/operational-alerts";
 import { evaluateSynchronizedPriceQuality, synchronizedDataReadinessStatus } from "../src/lib/monitoring/synchronized-quality";
+import { deriveTestnetDisplayStatus } from "../src/lib/monitoring/testnet-display";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
 import { dashboardStateFingerprint, shouldPublishDashboardSnapshot } from "./live-snapshot-policy.mjs";
@@ -94,6 +95,56 @@ import {
   realtimeReferenceSubscriptions,
 } from "../src/lib/realtime-market-data/normalizers";
 import type { ActiveCryptoDirectionMarket } from "../src/lib/backtest/polymarket";
+
+assert.deepEqual(deriveTestnetDisplayStatus(), {
+  label: "確認中",
+  note: "テストネットの状態を確認しています",
+  tone: "neutral",
+});
+assert.equal(deriveTestnetDisplayStatus({
+  installed: true,
+  apiWalletConfigured: true,
+  accountConfigured: false,
+  enabled: false,
+  transport: { status: "healthy" },
+  nextStep: "マスター口座を登録",
+}).label, "口座未設定");
+assert.equal(deriveTestnetDisplayStatus({
+  installed: true,
+  apiWalletConfigured: true,
+  accountConfigured: true,
+  enabled: false,
+}).label, "発注無効");
+assert.deepEqual(deriveTestnetDisplayStatus({
+  installed: true,
+  apiWalletConfigured: true,
+  accountConfigured: true,
+  enabled: true,
+  verifiedReady: true,
+}), {
+  label: "検証済み",
+  note: "発注・取消・照合済み",
+  tone: "good",
+});
+assert.deepEqual(deriveTestnetDisplayStatus({
+  installed: true,
+  apiWalletConfigured: true,
+  accountConfigured: true,
+  enabled: true,
+  verification: { status: "FAILED", error: "注文照合に失敗" },
+}), {
+  label: "検証失敗",
+  note: "注文照合に失敗",
+  tone: "bad",
+});
+assert.equal(deriveTestnetDisplayStatus({
+  installed: true,
+  apiWalletConfigured: true,
+  accountConfigured: true,
+  enabled: true,
+  transport: { status: "healthy" },
+}).note, "公開API疎通済み・実注文検証待ち");
+console.log("testnet display status tests passed");
 
 const snapshotState = {
   monitoring: {
