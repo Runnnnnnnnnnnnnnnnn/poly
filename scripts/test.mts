@@ -13,6 +13,7 @@ import {
   normalizeHyperliquidFillAgainstRequestedQuantity,
   normalizeTestnetSmokeOrderSize,
   parseHyperliquidOrderEvidence,
+  performHyperliquidTestnetEmergencyCleanup,
 } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
 import { calculateShortTermImpliedSignal } from "../src/lib/combined-trading/short-term-implied-signal";
@@ -1177,8 +1178,23 @@ assert.deepEqual(evaluateTestnetAccountSafety({
 }), {
   healthy: true,
   accountLossPct: 2 / 102,
+  referenceAccountValue: 102,
   maximumAccountLossPct: 0.05,
   issues: [],
+});
+assert.deepEqual(evaluateTestnetAccountSafety({
+  accountValue: 92,
+  previousAccountValue: 96,
+  highWaterAccountValue: 100,
+  orderMismatchCount: 0,
+  positionMismatchCount: 0,
+  maximumAccountLossPct: 0.05,
+}), {
+  healthy: false,
+  accountLossPct: 0.08,
+  referenceAccountValue: 100,
+  maximumAccountLossPct: 0.05,
+  issues: ["account-loss-limit"],
 });
 assert.deepEqual(evaluateTestnetAccountSafety({
   accountValue: 90,
@@ -1197,6 +1213,54 @@ assert.equal(new HyperliquidDefinitiveOrderError("blocked").name, "HyperliquidDe
 assert.equal(normalizeTestnetSmokeOrderSize("BTC", 12, 64_000, 25), 0.00019);
 assert.equal(normalizeTestnetSmokeOrderSize("SOL", 12, 75, 25), 0.16);
 assert.throws(() => normalizeTestnetSmokeOrderSize("XRP", 12, 100, 9), /minimum notional/);
+
+const emergencySequence: string[] = [];
+const verifiedEmergencyCleanup = await performHyperliquidTestnetEmergencyCleanup({
+  cancelOutstanding: async () => {
+    emergencySequence.push("cancel");
+    return { verified: true, attempted: 1, cancelled: 1, failed: 0, remainingOpenOrders: [] };
+  },
+  flattenPositions: async () => {
+    emergencySequence.push("flatten");
+    return { verified: true, attempted: 1, flattened: 1, failed: 0, remainingPositions: [] };
+  },
+  reconcile: async () => {
+    emergencySequence.push("reconcile");
+    return { connected: true, openOrders: [], positions: [], orderMismatches: [], positionMismatches: [] };
+  },
+});
+assert.deepEqual(emergencySequence, ["cancel", "flatten", "reconcile"]);
+assert.equal(verifiedEmergencyCleanup.verified, true);
+assert.deepEqual(verifiedEmergencyCleanup.issues, []);
+
+const recoveredEmergencyCleanup = await performHyperliquidTestnetEmergencyCleanup({
+  cancelOutstanding: async () => { throw new Error("temporary cancellation failure"); },
+  flattenPositions: async () => ({ verified: true, attempted: 1, flattened: 1, failed: 0, remainingPositions: [] }),
+  reconcile: async () => ({ connected: true, openOrders: [], positions: [], orderMismatches: [], positionMismatches: [] }),
+});
+assert.equal(recoveredEmergencyCleanup.verified, true);
+assert.match(recoveredEmergencyCleanup.issues[0] ?? "", /^cancel-error:/);
+
+const unresolvedEmergencyCleanup = await performHyperliquidTestnetEmergencyCleanup({
+  cancelOutstanding: async () => ({ verified: false, attempted: 1, cancelled: 0, failed: 1, remainingOpenOrders: [{}] }),
+  flattenPositions: async () => ({ verified: false, attempted: 1, flattened: 0, failed: 1, remainingPositions: [{ coin: "BTC", size: 0.01 }] }),
+  reconcile: async () => ({
+    connected: true,
+    openOrders: [{}],
+    positions: [{ coin: "BTC", size: 0.01 }],
+    orderMismatches: [{}],
+    positionMismatches: [{}],
+  }),
+});
+assert.equal(unresolvedEmergencyCleanup.verified, false);
+assert.deepEqual(unresolvedEmergencyCleanup.final, {
+  connected: true,
+  openOrders: 1,
+  positions: 1,
+  orderMismatches: 1,
+  positionMismatches: 1,
+});
+assert.ok(unresolvedEmergencyCleanup.issues.includes("final-reconciliation-unverified"));
 
 console.log("testnet reconciliation status tests passed");
 

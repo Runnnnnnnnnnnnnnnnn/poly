@@ -1,5 +1,9 @@
 import { collectCryptoSnapshots, refreshPredictionMarketOutcomes } from "../src/lib/backtest/service";
-import { getHyperliquidExecutionReadiness, reconcileHyperliquidTestnetOrders } from "../src/lib/combined-trading/hyperliquid-execution";
+import {
+  getHyperliquidExecutionReadiness,
+  performHyperliquidTestnetEmergencyCleanup,
+  reconcileHyperliquidTestnetOrders,
+} from "../src/lib/combined-trading/hyperliquid-execution";
 import { runModelEvaluation } from "../src/lib/model-evaluation/service";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
 import { collectHyperliquidSnapshots, fetchHyperliquidMarketStates } from "../src/lib/monitoring/hyperliquid";
@@ -74,10 +78,12 @@ async function collectCycle() {
           `注文${reconciliation.checkedOrders}件 / 未約定${reconciliation.openOrders.length}件 / 保有${reconciliation.positions.length}件を照合`,
         );
       } catch (error) {
+        let pipelineError = error instanceof Error ? error : new Error("testnet reconciliation failed");
         if (execution.ready && execution.autoMirrorEnabled) {
-          await engageTestnetDeadman(error instanceof Error ? error.message : "testnet reconciliation failed");
+          const cleanup = await engageTestnetDeadman(pipelineError.message);
+          pipelineError = new Error(`${pipelineError.message} / 緊急解消${cleanup.verified ? "確認済み" : `未確認: ${cleanup.issues.join(", ")}`}`);
         }
-        await markPipelineError("testnet-reconcile", error);
+        await markPipelineError("testnet-reconcile", pipelineError);
       }
     }
   } finally {
@@ -90,7 +96,9 @@ async function engageTestnetDeadman(reason: string) {
     where: { status: "running" },
     data: { emergencyStopped: true, riskStatus: "EMERGENCY_STOP" },
   });
-  console.error(`testnet deadman engaged: ${reason}`);
+  const cleanup = await performHyperliquidTestnetEmergencyCleanup();
+  console.error(`testnet deadman engaged: ${reason} / exposure cleared=${cleanup.verified} / ${cleanup.issues.join(", ") || "no issues"}`);
+  return cleanup;
 }
 
 async function backtestCycle() {

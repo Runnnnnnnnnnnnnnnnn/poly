@@ -58,6 +58,30 @@ type ExecutorResponse = {
 
 export type TestnetAccountSafety = ReturnType<typeof evaluateTestnetAccountSafety>;
 
+type TestnetEmergencyCleanupDependencies = {
+  cancelOutstanding: () => Promise<{
+    verified: boolean;
+    attempted: number;
+    cancelled: number;
+    failed: number;
+    remainingOpenOrders: unknown[];
+  }>;
+  flattenPositions: () => Promise<{
+    verified: boolean;
+    attempted: number;
+    flattened: number;
+    failed: number;
+    remainingPositions: Array<{ coin?: string; size?: number }>;
+  }>;
+  reconcile: () => Promise<{
+    connected: boolean;
+    openOrders: unknown[];
+    positions: Array<{ coin?: string; size?: number }>;
+    orderMismatches: unknown[];
+    positionMismatches: unknown[];
+  }>;
+};
+
 export function getHyperliquidExecutionReadiness() {
   const python = executorPython();
   const installed = existsSync(python) && existsSync(executorScript());
@@ -220,6 +244,68 @@ export async function flattenHyperliquidTestnetPositions() {
   };
 }
 
+export async function performHyperliquidTestnetEmergencyCleanup(
+  dependencies: Partial<TestnetEmergencyCleanupDependencies> = {},
+) {
+  const cancelOutstanding = dependencies.cancelOutstanding ?? cancelOutstandingHyperliquidTestnetOrders;
+  const flattenPositions = dependencies.flattenPositions ?? flattenHyperliquidTestnetPositions;
+  const reconcile = dependencies.reconcile ?? reconcileHyperliquidTestnetOrders;
+  const issues: string[] = [];
+  let cancellation: Awaited<ReturnType<TestnetEmergencyCleanupDependencies["cancelOutstanding"]>> | null = null;
+  let flatten: Awaited<ReturnType<TestnetEmergencyCleanupDependencies["flattenPositions"]>> | null = null;
+
+  try {
+    cancellation = await cancelOutstanding();
+    if (!cancellation.verified || cancellation.failed > 0 || cancellation.remainingOpenOrders.length > 0) {
+      issues.push(`cancel-unverified:${cancellation.failed}:${cancellation.remainingOpenOrders.length}`);
+    }
+  } catch (error) {
+    issues.push(`cancel-error:${errorMessage(error)}`);
+  }
+
+  try {
+    flatten = await flattenPositions();
+    if (!flatten.verified || flatten.failed > 0 || flatten.remainingPositions.length > 0) {
+      issues.push(`flatten-unverified:${flatten.failed}:${flatten.remainingPositions.length}`);
+    }
+  } catch (error) {
+    issues.push(`flatten-error:${errorMessage(error)}`);
+  }
+
+  try {
+    const finalReconciliation = await reconcile();
+    const remainingPositions = finalReconciliation.positions.filter((position) => Math.abs(position.size ?? 0) > 1e-8);
+    const verified = finalReconciliation.connected
+      && finalReconciliation.openOrders.length === 0
+      && remainingPositions.length === 0
+      && finalReconciliation.orderMismatches.length === 0
+      && finalReconciliation.positionMismatches.length === 0;
+    if (!verified) issues.push("final-reconciliation-unverified");
+    return {
+      verified,
+      cancellation,
+      flatten,
+      final: {
+        connected: finalReconciliation.connected,
+        openOrders: finalReconciliation.openOrders.length,
+        positions: remainingPositions.length,
+        orderMismatches: finalReconciliation.orderMismatches.length,
+        positionMismatches: finalReconciliation.positionMismatches.length,
+      },
+      issues,
+    };
+  } catch (error) {
+    issues.push(`reconcile-error:${errorMessage(error)}`);
+    return {
+      verified: false,
+      cancellation,
+      flatten,
+      final: null,
+      issues,
+    };
+  }
+}
+
 export async function reconcileHyperliquidTestnetOrders() {
   const readiness = getHyperliquidExecutionReadiness();
   if (!readiness.installed || !readiness.accountConfigured) {
@@ -294,14 +380,22 @@ export async function reconcileHyperliquidTestnetOrders() {
     select: { asset: true, side: true, action: true, quantity: true, filledQuantity: true, status: true },
   });
   const positionMismatches = compareTestnetPositions(response.positions ?? [], filledOrders);
-  const previousAccount = await prisma.combinedExecutionAccountSnapshot.findFirst({
-    where: { environment: "TESTNET" },
-    orderBy: { capturedAt: "desc" },
-  });
+  const highWaterWindowStartedAt = new Date(Date.now() - 24 * 60 * 60 * 1_000);
+  const [previousAccount, recentHighWater] = await Promise.all([
+    prisma.combinedExecutionAccountSnapshot.findFirst({
+      where: { environment: "TESTNET" },
+      orderBy: { capturedAt: "desc" },
+    }),
+    prisma.combinedExecutionAccountSnapshot.aggregate({
+      where: { environment: "TESTNET", capturedAt: { gte: highWaterWindowStartedAt } },
+      _max: { accountValue: true },
+    }),
+  ]);
   const accountValue = response.accountValue ?? null;
   const safety = evaluateTestnetAccountSafety({
     accountValue,
     previousAccountValue: previousAccount?.accountValue ?? null,
+    highWaterAccountValue: recentHighWater._max.accountValue ?? null,
     orderMismatchCount: orderMismatches.length,
     positionMismatchCount: positionMismatches.length,
   });
@@ -411,8 +505,10 @@ export async function runHyperliquidTestnetSmokeTest(input: {
       reconciledAt: after.capturedAt,
     };
   } catch (error) {
-    await cancelOutstandingHyperliquidTestnetOrders().catch(() => null);
-    await flattenHyperliquidTestnetPositions().catch(() => null);
+    const cleanup = await performHyperliquidTestnetEmergencyCleanup();
+    if (!cleanup.verified) {
+      throw new Error(`testnet smoke test failed and exposure cleanup is unverified: ${cleanup.issues.join(", ")}`, { cause: error });
+    }
     throw error;
   }
 }
@@ -504,17 +600,20 @@ async function executeTrackedTestnetOrder(input: {
 export function evaluateTestnetAccountSafety(input: {
   accountValue: number | null;
   previousAccountValue: number | null;
+  highWaterAccountValue?: number | null;
   orderMismatchCount: number;
   positionMismatchCount: number;
   maximumAccountLossPct?: number;
 }) {
   const maximumAccountLossPct = input.maximumAccountLossPct ?? maximumTestnetAccountLossPct();
+  const referenceAccountValue = Math.max(
+    validPositiveNumber(input.previousAccountValue) ?? 0,
+    validPositiveNumber(input.highWaterAccountValue) ?? 0,
+  ) || null;
   const accountLossPct = typeof input.accountValue === "number"
     && Number.isFinite(input.accountValue)
-    && typeof input.previousAccountValue === "number"
-    && Number.isFinite(input.previousAccountValue)
-    && input.previousAccountValue > 0
-    ? Math.max(0, (input.previousAccountValue - input.accountValue) / input.previousAccountValue)
+    && referenceAccountValue !== null
+    ? Math.max(0, (referenceAccountValue - input.accountValue) / referenceAccountValue)
     : null;
   const issues: string[] = [];
   if (typeof input.accountValue !== "number" || !Number.isFinite(input.accountValue) || input.accountValue <= 0) {
@@ -526,6 +625,7 @@ export function evaluateTestnetAccountSafety(input: {
   return {
     healthy: issues.length === 0,
     accountLossPct,
+    referenceAccountValue,
     maximumAccountLossPct,
     issues,
   };
@@ -868,6 +968,14 @@ function stringIdentifier(value: unknown) {
 
 function normalizeStatusToken(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function validPositiveNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
