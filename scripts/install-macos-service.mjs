@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runtimeDatabaseRsyncExcludes } from "./runtime-deployment-policy.mjs";
+import { runtimeDatabaseRsyncExcludes, untrackedRuntimeSourceRsyncExcludes } from "./runtime-deployment-policy.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeLabel = "com.polymarket-watch.runtime";
@@ -38,14 +38,20 @@ const modelRevision = fileFingerprint([
   "src/lib/model-evaluation/synchronized-execution.ts",
   "src/lib/model-evaluation/realtime-short-term-replay.ts",
   "src/lib/model-evaluation/service.ts",
+  "src/lib/combined-trading/forward-evaluation.ts",
   "scripts/backtest-realtime-short-term.mts",
 ]);
 const runtimeDatabasePath = resolve(deployedRoot, "prisma/dev.db");
 const buildSnapshotDirectory = mkdtempSync(resolve(tmpdir(), "polymarket-watch-build-"));
 const buildDatabasePath = resolve(buildSnapshotDirectory, "dev.db");
+const buildSourceDirectory = mkdtempSync(resolve(tmpdir(), "polymarket-watch-source-"));
 try {
+  prepareBuildSource(buildSourceDirectory);
   prepareBuildDatabase(runtimeDatabasePath, buildDatabasePath);
-  buildRuntime(modelRevision, buildDatabasePath);
+  buildRuntime(modelRevision, buildDatabasePath, buildSourceDirectory);
+} catch (error) {
+  rmSync(buildSourceDirectory, { recursive: true, force: true });
+  throw error;
 } finally {
   rmSync(buildSnapshotDirectory, { recursive: true, force: true });
 }
@@ -60,7 +66,7 @@ const runtimeWasLoaded = agentIsLoaded(`${domain}/${runtimeLabel}`);
 try {
   stopAgent(runtimeLabel);
   waitForDatabaseRelease(runtimeDatabasePath);
-  stageRuntime();
+  stageRuntime(buildSourceDirectory);
   assertSqliteIntegrity(runtimeDatabasePath);
   execFileSync(runtimeNode, [resolve(deployedRoot, "node_modules/prisma/build/index.js"), "db", "push", "--schema", resolve(deployedRoot, "prisma/schema.prisma")], {
     cwd: deployedRoot,
@@ -73,6 +79,8 @@ try {
 } catch (error) {
   restartPreviousAgent(runtimeLabel, previousRuntimePlist, runtimeWasLoaded);
   throw error;
+} finally {
+  rmSync(buildSourceDirectory, { recursive: true, force: true });
 }
 
 const cloudflared = [
@@ -150,7 +158,31 @@ function agentIsLoaded(service) {
   }
 }
 
-function buildRuntime(revision, buildDatabasePath) {
+function prepareBuildSource(target) {
+  const untracked = execFileSync("/usr/bin/git", ["ls-files", "--others", "--exclude-standard", "-z"], {
+    cwd: root,
+    encoding: "utf8",
+  }).split("\0").filter(Boolean);
+  const untrackedExcludes = untrackedRuntimeSourceRsyncExcludes(untracked);
+  execFileSync("/usr/bin/rsync", [
+    "-a",
+    "--exclude=.git/",
+    "--exclude=.next/",
+    "--exclude=node_modules/",
+    "--exclude=out/",
+    "--exclude=.pages-build-disabled/",
+    "--exclude=.run-all.lock",
+    "--exclude=.paper-run-id",
+    ...runtimeDatabaseRsyncExcludes,
+    ...untrackedExcludes,
+    `${root}/`,
+    `${target}/`,
+  ], { stdio: "inherit" });
+  symlinkSync(resolve(root, "node_modules"), resolve(target, "node_modules"), "dir");
+  if (untracked.length) console.log(`excluded ${untracked.length} untracked source file(s) from runtime deployment`);
+}
+
+function buildRuntime(revision, buildDatabasePath, sourceRoot) {
   const buildEnv = {
     ...process.env,
     DATABASE_URL: `file:${buildDatabasePath}`,
@@ -161,18 +193,18 @@ function buildRuntime(revision, buildDatabasePath) {
   delete buildEnv.GITHUB_PAGES;
   delete buildEnv.GITHUB_PAGES_REPO;
   console.log("building the runtime app with API routes");
-  rmSync(resolve(root, ".next"), { recursive: true, force: true });
+  rmSync(resolve(sourceRoot, ".next"), { recursive: true, force: true });
   execFileSync(runtimeNode, [resolve(root, "node_modules/next/dist/bin/next"), "build"], {
-    cwd: root,
+    cwd: sourceRoot,
     env: buildEnv,
     stdio: "inherit",
   });
-  if (!existsSync(resolve(root, ".next/server/app/api/health/route.js"))) {
+  if (!existsSync(resolve(sourceRoot, ".next/server/app/api/health/route.js"))) {
     throw new Error("runtime build is missing API routes; deployment stopped");
   }
 }
 
-function stageRuntime() {
+function stageRuntime(sourceRoot) {
   mkdirSync(deployedRoot, { recursive: true });
   const dependencyMarker = resolve(deployedRoot, "node_modules/.polymarket-runtime-dependencies");
   const sourceDependencyFingerprint = dependencyFingerprint(root);
@@ -189,12 +221,12 @@ function stageRuntime() {
     "--exclude=.run-all.lock",
     "--exclude=.paper-run-id",
     ...runtimeDatabaseRsyncExcludes,
-    `${root}/`,
+    `${sourceRoot}/`,
     `${deployedRoot}/`,
   ], { stdio: "inherit" });
 
   for (const directory of ["node_modules", ".next"]) {
-    const source = resolve(root, directory);
+    const source = resolve(directory === "node_modules" ? root : sourceRoot, directory);
     const target = resolve(deployedRoot, directory);
     if (directory === "node_modules" && !dependenciesChanged && existsSync(resolve(target, "next/package.json"))) continue;
     rmSync(target, { recursive: true, force: true });

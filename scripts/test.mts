@@ -50,7 +50,7 @@ import { evaluateSynchronizedPriceQuality, synchronizedDataReadinessStatus } fro
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
 import { dashboardStateFingerprint, shouldPublishDashboardSnapshot } from "./live-snapshot-policy.mjs";
-import { isProtectedRuntimeDatabasePath, runtimeDatabaseRsyncExcludes } from "./runtime-deployment-policy.mjs";
+import { isProtectedRuntimeDatabasePath, runtimeDatabaseRsyncExcludes, untrackedRuntimeSourceRsyncExcludes } from "./runtime-deployment-policy.mjs";
 import { processSignalTarget, supervisorExitDelayMs, supervisorForceKillDelayMs } from "./process-supervisor-policy.mjs";
 import { calculateDirectionalBookReturn, deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
@@ -99,6 +99,11 @@ for (const path of ["prisma/dev.db", "prisma/dev.db-wal", "prisma/dev.db-shm", "
   assert.equal(isProtectedRuntimeDatabasePath(path), true);
 }
 assert.equal(isProtectedRuntimeDatabasePath("prisma/schema.prisma"), false);
+assert.deepEqual(
+  untrackedRuntimeSourceRsyncExcludes(["app/api/copy 2/route.ts", "notes?.txt"]),
+  ["--exclude=/app/api/copy 2/route.ts", "--exclude=/notes\\?.txt"],
+);
+assert.throws(() => untrackedRuntimeSourceRsyncExcludes(["../outside"]), /unsafe untracked runtime source path/);
 console.log("runtime database deployment protection tests passed");
 
 assert.equal(processSignalTarget(123, "darwin"), -123);
