@@ -2,6 +2,7 @@ import type { BacktestRun, HyperliquidSnapshot, PipelineHeartbeat } from "@prism
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { z } from "zod";
 
 import type { BacktestMetrics } from "@/src/lib/backtest/types";
 import {
@@ -25,11 +26,35 @@ import { evaluateExactExecutionAudit } from "@/src/lib/realtime-market-data/exec
 
 const monitoredAssets = ["BTC", "ETH", "SOL", "XRP", "HYPE"] as const;
 const freshnessMs = 12 * 60 * 1_000;
+const researchMetricSchema = z.object({
+  trades: z.number(),
+  netReturnPct: z.number(),
+  averageReturnPct: z.number().nullable(),
+  meanConfidenceInterval95: z.tuple([z.number(), z.number()]).nullable(),
+  excessReturnPct: z.number().nullable(),
+  maxDrawdownPct: z.number(),
+});
+const shortTermResearchSchema = z.object({
+  generatedAt: z.string(),
+  methodology: z.object({ marketDuration: z.string(), executionMode: z.string() }),
+  coverage: z.object({ completeMarkets: z.number() }),
+  holdout: z.object({
+    implied: researchMetricSchema,
+    leadLag: researchMetricSchema,
+    crossSectional: researchMetricSchema,
+  }),
+  screening: z.object({
+    implied: z.object({ status: z.enum(["insufficient", "promising", "rejected"]), passedGates: z.number(), totalGates: z.number() }),
+    leadLag: z.object({ status: z.enum(["insufficient", "promising", "rejected"]), passedGates: z.number(), totalGates: z.number() }),
+    crossSectional: z.object({ status: z.enum(["insufficient", "promising", "rejected"]), passedGates: z.number(), totalGates: z.number() }),
+  }),
+});
 
 export type MonitoringSnapshot = Awaited<ReturnType<typeof getMonitoringSnapshot>>;
 
 export async function getMonitoringSnapshot() {
   const now = new Date();
+  const shortTermResearch = loadShortTermResearchSummary();
   const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1_000);
   const [
     polymarketAggregate,
@@ -591,6 +616,7 @@ export async function getMonitoringSnapshot() {
         nextDecisionAt: shortTermDecision?.nextWindowAt?.toISOString() ?? null,
         observedAt: shortTermDecision?.observedAt.toISOString() ?? null,
         executionAudit: shortTermExecutionAudit,
+        research: shortTermResearch,
         realTradingEnabled: false,
       },
       settlementBasis: {
@@ -877,6 +903,43 @@ function parseBacktestMetrics(run: BacktestRun) {
 function parseJson<T>(value: string | null) {
   if (!value) return null;
   try { return JSON.parse(value) as T; } catch { return null; }
+}
+
+function loadShortTermResearchSummary() {
+  const root = process.env.POLYMARKET_PROJECT_ROOT ?? process.cwd();
+  const path = resolve(root, "public/short-term-research.json");
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = shortTermResearchSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+    const definitions = [
+      { id: "implied", label: "暗黙終値", metrics: parsed.holdout.implied, screening: parsed.screening.implied },
+      { id: "leadLag", label: "確率変化", metrics: parsed.holdout.leadLag, screening: parsed.screening.leadLag },
+      { id: "crossSectional", label: "資産間比較", metrics: parsed.holdout.crossSectional, screening: parsed.screening.crossSectional },
+    ];
+    return {
+      generatedAt: parsed.generatedAt,
+      marketDuration: parsed.methodology.marketDuration,
+      executionMode: parsed.methodology.executionMode,
+      completeMarkets: parsed.coverage.completeMarkets,
+      acceptedCandidates: definitions.filter((item) => item.screening.status === "promising").length,
+      totalCandidates: definitions.length,
+      candidates: definitions.map((item) => ({
+        id: item.id,
+        label: item.label,
+        status: item.screening.status,
+        trades: item.metrics.trades,
+        netReturnPct: item.metrics.netReturnPct,
+        averageReturnPct: item.metrics.averageReturnPct,
+        confidenceLowerPct: item.metrics.meanConfidenceInterval95?.[0] ?? null,
+        excessReturnPct: item.metrics.excessReturnPct,
+        maxDrawdownPct: item.metrics.maxDrawdownPct,
+        passedGates: item.screening.passedGates,
+        totalGates: item.screening.totalGates,
+      })),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function average(values: number[]) {

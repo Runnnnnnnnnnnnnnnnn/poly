@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { calculateShortTermImpliedSignal } from "../src/lib/combined-trading/short-term-implied-signal";
 import {
@@ -30,7 +32,7 @@ const impliedMinimumTrendZ = boundedNumber(process.env.SHORT_TERM_IMPLIED_MIN_TR
 const impliedRequireTrend = process.env.SHORT_TERM_IMPLIED_REQUIRE_TREND === "1";
 const leadLagMinimumProbabilityChange = boundedNumber(process.env.SHORT_TERM_LEAD_LAG_MIN_CHANGE, 0.1, 0.01, 0.5);
 const leadLagRequireTrend = process.env.SHORT_TERM_LEAD_LAG_REQUIRE_TREND === "1";
-const strategyTrials = Math.round(boundedNumber(process.env.SHORT_TERM_STRATEGY_TRIALS, 6, 1, 100));
+const strategyTrials = Math.round(boundedNumber(process.env.SHORT_TERM_STRATEGY_TRIALS, 8, 1, 100));
 
 const marketSchema = z.object({
   id: z.union([z.string(), z.number()]),
@@ -162,6 +164,13 @@ const observations = markets.flatMap((market) => {
     asset: market.asset,
     startAt: market.startAt.toISOString(),
     officialResult: market.officialResult,
+    crossSection: {
+      probability: representative.point.p,
+      expectedReturnPct: representative.implied.expectedReturnPct,
+      trendZ: representative.trendZ,
+      longReturnPct: calculateCandleReturn("LONG", representative.entryCandle, exitCandle, candles),
+      shortReturnPct: calculateCandleReturn("SHORT", representative.entryCandle, exitCandle, candles),
+    },
     baseline: {
       selected: Boolean(baseline),
       side: (baseline ?? representative).baselineSide,
@@ -190,12 +199,19 @@ const observations = markets.flatMap((market) => {
   }];
 }).sort((left, right) => left.startAt.localeCompare(right.startAt));
 
-const splitIndex = Math.floor(observations.length * calibrationFraction);
-const calibration = observations.slice(0, splitIndex);
-const holdout = observations.slice(splitIndex);
+const observationTimes = Array.from(new Set(observations.map((row) => row.startAt))).sort();
+const splitIndex = Math.floor(observationTimes.length * calibrationFraction);
+const calibrationTimes = new Set(observationTimes.slice(0, splitIndex));
+const calibration = observations.filter((row) => calibrationTimes.has(row.startAt));
+const holdout = observations.filter((row) => !calibrationTimes.has(row.startAt));
+const crossSections = buildCrossSectionalTrades(observations);
+const calibrationCrossSections = crossSections.filter((row) => calibrationTimes.has(row.startAt));
+const holdoutCrossSections = crossSections.filter((row) => !calibrationTimes.has(row.startAt));
 const calibrationSummary = summarizePeriod(calibration);
 const holdoutSummary = summarizePeriod(holdout);
-console.log(JSON.stringify({
+const calibrationCrossSectional = summarizeCrossSectional(calibrationCrossSections);
+const holdoutCrossSectional = summarizeCrossSectional(holdoutCrossSections);
+const report = {
   generatedAt: generatedAt.toISOString(),
   methodology: {
     status: "screening_only",
@@ -221,6 +237,11 @@ console.log(JSON.stringify({
       requireTrend: leadLagRequireTrend,
       strategyTrials,
     },
+    crossSectionalRule: {
+      construction: "50% long highest implied residual / 50% short lowest implied residual",
+      minimumExpectedPairReturnPct: roundTripCost,
+      strategyTrials,
+    },
   },
   coverage: {
     discoveredMarkets: markets.length,
@@ -233,14 +254,92 @@ console.log(JSON.stringify({
     absoluteSignalZ: distribution(impliedDiagnostics.map((row) => Math.abs(row.signalZ))),
     absoluteTrendZ: distribution(impliedDiagnostics.map((row) => Math.abs(row.trendZ))),
     absoluteOneMinuteProbabilityChange: distribution(impliedDiagnostics.map((row) => Math.abs(row.probabilityChange))),
+    crossSectionalExpectedPairReturnPct: distribution(crossSections.map((row) => row.expectedReturnPct)),
   },
-  calibration: calibrationSummary,
-  holdout: holdoutSummary,
+  calibration: { ...calibrationSummary, crossSectional: calibrationCrossSectional },
+  holdout: { ...holdoutSummary, crossSectional: holdoutCrossSectional },
   screening: {
     implied: screeningVerdict(holdoutSummary.implied),
     leadLag: screeningVerdict(holdoutSummary.leadLag),
+    crossSectional: screeningVerdict(holdoutCrossSectional),
   },
-}, null, 2));
+};
+const serializedReport = `${JSON.stringify(report, null, 2)}\n`;
+if (process.env.SHORT_TERM_HISTORY_OUTPUT) {
+  await writeFile(resolve(process.env.SHORT_TERM_HISTORY_OUTPUT), serializedReport, "utf8");
+}
+console.log(serializedReport.trimEnd());
+
+function buildCrossSectionalTrades(rows: typeof observations) {
+  const groups = new Map<string, typeof observations>();
+  for (const row of rows) groups.set(row.startAt, [...(groups.get(row.startAt) ?? []), row]);
+  return Array.from(groups, ([startAt, group]) => {
+    if (group.length < 3) return null;
+    const impliedRank = [...group].sort((left, right) => (
+      right.crossSection.expectedReturnPct - left.crossSection.expectedReturnPct
+    ));
+    const long = impliedRank[0];
+    const short = impliedRank.at(-1)!;
+    const expectedReturnPct = 0.5 * (
+      long.crossSection.expectedReturnPct - short.crossSection.expectedReturnPct
+    );
+    const modelReturn = pairReturn(long, short);
+    const probabilityRank = [...group].sort((left, right) => (
+      right.crossSection.probability - left.crossSection.probability
+    ));
+    const trendRank = [...group].sort((left, right) => (
+      right.crossSection.trendZ - left.crossSection.trendZ
+    ));
+    return {
+      startAt,
+      selected: expectedReturnPct >= roundTripCost && modelReturn !== null,
+      expectedReturnPct,
+      returnPct: modelReturn ?? 0,
+      longAsset: long.asset,
+      shortAsset: short.asset,
+      benchmarks: {
+        polymarketProbabilityRank: pairReturn(probabilityRank[0], probabilityRank.at(-1)!) ?? 0,
+        hyperliquidMomentumRank: pairReturn(trendRank[0], trendRank.at(-1)!) ?? 0,
+      },
+    };
+  }).filter((row): row is NonNullable<typeof row> => Boolean(row));
+}
+
+function pairReturn(long: (typeof observations)[number], short: (typeof observations)[number]) {
+  const longReturn = long.crossSection.longReturnPct;
+  const shortReturn = short.crossSection.shortReturnPct;
+  return longReturn !== null && shortReturn !== null ? 0.5 * (longReturn + shortReturn) : null;
+}
+
+function summarizeCrossSectional(rows: ReturnType<typeof buildCrossSectionalTrades>) {
+  const selected = rows.filter((row) => row.selected);
+  const returns = selected.map((row) => row.returnPct);
+  const benchmarkCandidates = [
+    { label: "Polymarket probability rank", key: "polymarketProbabilityRank" as const },
+    { label: "Hyperliquid momentum rank", key: "hyperliquidMomentumRank" as const },
+  ].map((candidate) => ({
+    ...candidate,
+    returnPct: sum(selected.map((row) => row.benchmarks[candidate.key])),
+  }));
+  const best = [...benchmarkCandidates].sort((left, right) => right.returnPct - left.returnPct)[0];
+  const excess = selected.map((row) => row.returnPct - row.benchmarks[best.key]);
+  return {
+    intervals: rows.length,
+    trades: selected.length,
+    profitableTrades: returns.filter((value) => value > 0).length,
+    afterCostWinRate: returns.length ? returns.filter((value) => value > 0).length / returns.length : null,
+    binaryOutcomeAccuracy: null,
+    netReturnPct: sum(returns),
+    averageReturnPct: average(returns),
+    meanConfidenceInterval95: blockBootstrapMeanConfidenceInterval(returns),
+    deflatedSharpeProbability: deflatedSharpeProbability(returns, strategyTrials),
+    maxDrawdownPct: maximumDrawdown(returns),
+    benchmarkLabel: best.label,
+    benchmarkReturnPct: best.returnPct,
+    excessReturnPct: sum(excess),
+    excessConfidenceInterval95: blockBootstrapMeanConfidenceInterval(excess),
+  };
+}
 
 function summarizePeriod(rows: typeof observations) {
   return {
@@ -276,7 +375,14 @@ function summarizeModel(rows: typeof observations, key: "baseline" | "implied" |
   };
 }
 
-function screeningVerdict(model: ReturnType<typeof summarizeModel>) {
+function screeningVerdict(model: {
+  trades: number;
+  netReturnPct: number;
+  meanConfidenceInterval95: [number, number] | null;
+  excessConfidenceInterval95: [number, number] | null;
+  deflatedSharpeProbability: number | null;
+  maxDrawdownPct: number;
+}) {
   const gates = [
     { id: "trades", label: "50 holdout trades", passed: model.trades >= 50 },
     { id: "net", label: "positive after costs", passed: model.netReturnPct > 0 },

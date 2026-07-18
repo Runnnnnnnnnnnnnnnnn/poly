@@ -1,0 +1,365 @@
+{
+  "generatedAt": "2026-07-18T00:43:38.874Z",
+  "methodology": {
+    "status": "screening_only",
+    "warning": "Aggregated price history has no executable order book and cannot authorize testnet or real trading.",
+    "period": {
+      "startAt": "2026-06-18T00:38:38.874Z",
+      "endAt": "2026-07-18T00:38:38.874Z",
+      "lookbackHours": 720
+    },
+    "split": "chronological 60% calibration / 40% holdout",
+    "marketDuration": "4h",
+    "hyperliquidCandleInterval": "15m",
+    "entry": "first actionable one-minute observation in [15m, 30m)",
+    "exit": "final 15m Hyperliquid candle close",
+    "executionMode": "taker",
+    "roundTripCost": 0.0013,
+    "fundingPer24h": 0.0003,
+    "impliedRule": {
+      "minimumSignalZ": 0,
+      "minimumExpectedReturnPct": 0.0013,
+      "minimumTrendZ": 0.15,
+      "requireTrend": false,
+      "strategyTrials": 8
+    },
+    "leadLagRule": {
+      "minimumOneMinuteProbabilityChange": 0.1,
+      "requireTrend": false,
+      "strategyTrials": 8
+    },
+    "crossSectionalRule": {
+      "construction": "50% long highest implied residual / 50% short lowest implied residual",
+      "minimumExpectedPairReturnPct": 0.0013,
+      "strategyTrials": 8
+    }
+  },
+  "coverage": {
+    "discoveredMarkets": 716,
+    "completeMarkets": 704,
+    "skipped": {
+      "decision-window sample missing": 12
+    }
+  },
+  "diagnostics": {
+    "samples": 10560,
+    "absoluteExpectedReturnPct": {
+      "median": 0.006165320320686507,
+      "p90": 0.01848678820254622,
+      "p95": 0.024869512389802853,
+      "p99": 0.04395319565130118,
+      "maximum": 0.06922397033892336
+    },
+    "absoluteSignalZ": {
+      "median": 0.16849136108042045,
+      "p90": 0.4255966607749622,
+      "p95": 0.5220856585509787,
+      "p99": 0.8365960931656174,
+      "maximum": 1.6050319076576325
+    },
+    "absoluteTrendZ": {
+      "median": 0.12004836913565484,
+      "p90": 0.37558793754676895,
+      "p95": 0.5618313073939686,
+      "p99": 1.0913586969175324,
+      "maximum": 1.8353090066163134
+    },
+    "absoluteOneMinuteProbabilityChange": {
+      "median": 0.014999999999999902,
+      "p90": 0.040000000000000036,
+      "p95": 0.050000000000000044,
+      "p99": 0.08000000000000002,
+      "maximum": 0.25499999999999995
+    },
+    "crossSectionalExpectedPairReturnPct": {
+      "median": 0.0034359457262660986,
+      "p90": 0.007423060346409022,
+      "p95": 0.009564859315757207,
+      "p99": 0.014604446245925301,
+      "maximum": 0.016329883591813088
+    }
+  },
+  "calibration": {
+    "markets": 420,
+    "baseline": {
+      "trades": 170,
+      "profitableTrades": 73,
+      "afterCostWinRate": 0.4294117647058823,
+      "binaryOutcomeAccuracy": 0.6882352941176471,
+      "netReturnPct": -0.03791471733633407,
+      "averageReturnPct": -0.00022302774903725924,
+      "meanConfidenceInterval95": [
+        -0.0022342059430617467,
+        0.0017161237260085815
+      ],
+      "deflatedSharpeProbability": 0.041355481470240096,
+      "maxDrawdownPct": 0.1824129127505775,
+      "benchmarkLabel": null,
+      "benchmarkReturnPct": null,
+      "excessReturnPct": null,
+      "excessConfidenceInterval95": null
+    },
+    "implied": {
+      "trades": 420,
+      "profitableTrades": 189,
+      "afterCostWinRate": 0.45,
+      "binaryOutcomeAccuracy": 0.6261904761904762,
+      "netReturnPct": -0.13205490673870024,
+      "averageReturnPct": -0.000314416444615953,
+      "meanConfidenceInterval95": [
+        -0.0019291817811118973,
+        0.0011857956075923503
+      ],
+      "deflatedSharpeProbability": 0.023114202288518237,
+      "maxDrawdownPct": 0.2701452951805914,
+      "benchmarkLabel": "Polymarket direction",
+      "benchmarkReturnPct": -0.13205490673870024,
+      "excessReturnPct": 0,
+      "excessConfidenceInterval95": [
+        0,
+        0
+      ]
+    },
+    "leadLag": {
+      "trades": 25,
+      "profitableTrades": 18,
+      "afterCostWinRate": 0.72,
+      "binaryOutcomeAccuracy": 0.8,
+      "netReturnPct": 0.08912871042236421,
+      "averageReturnPct": 0.0035651484168945685,
+      "meanConfidenceInterval95": [
+        0.0011166272543934722,
+        0.007243070520772959
+      ],
+      "deflatedSharpeProbability": 0.684002573066982,
+      "maxDrawdownPct": 0.013536887377367565,
+      "benchmarkLabel": "Polymarket direction",
+      "benchmarkReturnPct": 0.0215767750563031,
+      "excessReturnPct": 0.06755193536606113,
+      "excessConfidenceInterval95": [
+        0,
+        0.008106232243927336
+      ]
+    },
+    "crossSectional": {
+      "intervals": 105,
+      "trades": 98,
+      "profitableTrades": 35,
+      "afterCostWinRate": 0.35714285714285715,
+      "binaryOutcomeAccuracy": null,
+      "netReturnPct": -0.08874929300550893,
+      "averageReturnPct": -0.0009056050306684585,
+      "meanConfidenceInterval95": [
+        -0.0015438344967333218,
+        -0.00025392778393618624
+      ],
+      "deflatedSharpeProbability": 0.00020715628718909196,
+      "maxDrawdownPct": 0.09181951826760448,
+      "benchmarkLabel": "Hyperliquid momentum rank",
+      "benchmarkReturnPct": -0.08944431117973055,
+      "excessReturnPct": 0.0006950181742216093,
+      "excessConfidenceInterval95": [
+        -0.00048207137979304867,
+        0.00046413479232833326
+      ]
+    }
+  },
+  "holdout": {
+    "markets": 284,
+    "baseline": {
+      "trades": 110,
+      "profitableTrades": 42,
+      "afterCostWinRate": 0.38181818181818183,
+      "binaryOutcomeAccuracy": 0.7090909090909091,
+      "netReturnPct": -0.3390792152065474,
+      "averageReturnPct": -0.0030825383200595215,
+      "meanConfidenceInterval95": [
+        -0.0055187581703692945,
+        -0.000927938452651667
+      ],
+      "deflatedSharpeProbability": 3.2200297983564496e-11,
+      "maxDrawdownPct": 0.3131119646628271,
+      "benchmarkLabel": null,
+      "benchmarkReturnPct": null,
+      "excessReturnPct": null,
+      "excessConfidenceInterval95": null
+    },
+    "implied": {
+      "trades": 284,
+      "profitableTrades": 119,
+      "afterCostWinRate": 0.41901408450704225,
+      "binaryOutcomeAccuracy": 0.602112676056338,
+      "netReturnPct": -0.6884898629516012,
+      "averageReturnPct": -0.0024242600808154972,
+      "meanConfidenceInterval95": [
+        -0.0037875944942438633,
+        -0.0011751653458709598
+      ],
+      "deflatedSharpeProbability": 3.751665644813329e-12,
+      "maxDrawdownPct": 0.5432761546656926,
+      "benchmarkLabel": "Always short",
+      "benchmarkReturnPct": -0.3551740560155872,
+      "excessReturnPct": -0.33331580693601426,
+      "excessConfidenceInterval95": [
+        -0.003458425041353359,
+        0.001113943901110409
+      ]
+    },
+    "leadLag": {
+      "trades": 19,
+      "profitableTrades": 11,
+      "afterCostWinRate": 0.5789473684210527,
+      "binaryOutcomeAccuracy": 0.631578947368421,
+      "netReturnPct": -0.028514338485719985,
+      "averageReturnPct": -0.0015007546571431571,
+      "meanConfidenceInterval95": [
+        -0.009979308040633461,
+        0.004958356828159832
+      ],
+      "deflatedSharpeProbability": 0.020983309507958847,
+      "maxDrawdownPct": 0.08505784632653456,
+      "benchmarkLabel": "Always long",
+      "benchmarkReturnPct": 0.07572291582273302,
+      "excessReturnPct": -0.10423725430845299,
+      "excessConfidenceInterval95": [
+        -0.021174236794053378,
+        0.006242118448278034
+      ]
+    },
+    "crossSectional": {
+      "intervals": 71,
+      "trades": 64,
+      "profitableTrades": 22,
+      "afterCostWinRate": 0.34375,
+      "binaryOutcomeAccuracy": null,
+      "netReturnPct": -0.07686345410788531,
+      "averageReturnPct": -0.001200991470435708,
+      "meanConfidenceInterval95": [
+        -0.0018082485401629675,
+        -0.000603011654614854
+      ],
+      "deflatedSharpeProbability": 6.684838071979726e-9,
+      "maxDrawdownPct": 0.07479762765663844,
+      "benchmarkLabel": "Hyperliquid momentum rank",
+      "benchmarkReturnPct": -0.07668961155745103,
+      "excessReturnPct": -0.00017384255043430643,
+      "excessConfidenceInterval95": [
+        -0.0004302175109497935,
+        0.0004047837388884254
+      ]
+    }
+  },
+  "screening": {
+    "implied": {
+      "status": "rejected",
+      "passedGates": 1,
+      "totalGates": 6,
+      "gates": [
+        {
+          "id": "trades",
+          "label": "50 holdout trades",
+          "passed": true
+        },
+        {
+          "id": "net",
+          "label": "positive after costs",
+          "passed": false
+        },
+        {
+          "id": "confidence",
+          "label": "95% mean-return lower bound above zero",
+          "passed": false
+        },
+        {
+          "id": "benchmark",
+          "label": "95% benchmark-excess lower bound above zero",
+          "passed": false
+        },
+        {
+          "id": "selection",
+          "label": "deflated Sharpe probability at least 95%",
+          "passed": false
+        },
+        {
+          "id": "drawdown",
+          "label": "maximum drawdown at or below 5%",
+          "passed": false
+        }
+      ]
+    },
+    "leadLag": {
+      "status": "insufficient",
+      "passedGates": 0,
+      "totalGates": 6,
+      "gates": [
+        {
+          "id": "trades",
+          "label": "50 holdout trades",
+          "passed": false
+        },
+        {
+          "id": "net",
+          "label": "positive after costs",
+          "passed": false
+        },
+        {
+          "id": "confidence",
+          "label": "95% mean-return lower bound above zero",
+          "passed": false
+        },
+        {
+          "id": "benchmark",
+          "label": "95% benchmark-excess lower bound above zero",
+          "passed": false
+        },
+        {
+          "id": "selection",
+          "label": "deflated Sharpe probability at least 95%",
+          "passed": false
+        },
+        {
+          "id": "drawdown",
+          "label": "maximum drawdown at or below 5%",
+          "passed": false
+        }
+      ]
+    },
+    "crossSectional": {
+      "status": "rejected",
+      "passedGates": 1,
+      "totalGates": 6,
+      "gates": [
+        {
+          "id": "trades",
+          "label": "50 holdout trades",
+          "passed": true
+        },
+        {
+          "id": "net",
+          "label": "positive after costs",
+          "passed": false
+        },
+        {
+          "id": "confidence",
+          "label": "95% mean-return lower bound above zero",
+          "passed": false
+        },
+        {
+          "id": "benchmark",
+          "label": "95% benchmark-excess lower bound above zero",
+          "passed": false
+        },
+        {
+          "id": "selection",
+          "label": "deflated Sharpe probability at least 95%",
+          "passed": false
+        },
+        {
+          "id": "drawdown",
+          "label": "maximum drawdown at or below 5%",
+          "passed": false
+        }
+      ]
+    }
+  }
+}

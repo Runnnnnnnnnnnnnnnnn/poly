@@ -341,6 +341,27 @@ type MonitoringSnapshot = {
         missingExit: number;
         missingResolution: number;
       } | null;
+      research?: {
+        generatedAt: string;
+        marketDuration: string;
+        executionMode: string;
+        completeMarkets: number;
+        acceptedCandidates: number;
+        totalCandidates: number;
+        candidates: Array<{
+          id: string;
+          label: string;
+          status: "insufficient" | "promising" | "rejected";
+          trades: number;
+          netReturnPct: number;
+          averageReturnPct: number | null;
+          confidenceLowerPct: number | null;
+          excessReturnPct: number | null;
+          maxDrawdownPct: number;
+          passedGates: number;
+          totalGates: number;
+        }>;
+      } | null;
       realTradingEnabled: false;
     };
     settlementBasis: {
@@ -919,6 +940,7 @@ export function PaperTradingDashboardClient() {
 function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: MonitoringSnapshot | null; savedSnapshot: boolean }) {
   const model = snapshot?.combinedShadow.shortTermDirection;
   const audit = model?.executionAudit;
+  const research = model?.research;
   const trades = model?.trades ?? 0;
   const minimumTrades = audit?.minimumAuditedPositions ?? model?.minimumTrades ?? 50;
   const verifiedTrades = audit?.verifiedPositions ?? 0;
@@ -986,7 +1008,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${dataReady ? "text-emerald-600" : "text-amber-600"}`} />5秒板 {formatCompact(snapshot?.collection.realtimePrices?.records)}件・完全監査 {verifiedTrades}/{minimumTrades}件</span>
+        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${dataReady ? "text-emerald-600" : "text-amber-600"}`} />5秒板 {formatCompact(snapshot?.collection.realtimePrices?.records)}件・完全監査 {verifiedTrades}/{minimumTrades}件{research ? `・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用` : ""}</span>
         <span>{savedSnapshot ? "公開保存値" : "自動更新"}・{latestAt ? `${relativeTime(latestAt)}に更新` : "更新待ち"}</span>
       </div>
     </section>
@@ -1207,6 +1229,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
 function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
   const model = snapshot?.combinedShadow.shortTermDirection;
   const audit = model?.executionAudit;
+  const research = model?.research;
   const hasTrades = (model?.trades ?? 0) > 0;
   const requiredAudits = audit?.minimumAuditedPositions ?? 50;
   const verifiedTrades = audit?.verifiedPositions ?? 0;
@@ -1273,8 +1296,8 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
-        <span>{(audit?.resolvedPredictions ?? 0) > 0
-          ? `Polymarket方向一致 ${formatPct(audit?.predictionAccuracy)} / ${audit?.resolvedPredictions ?? 0}件判定`
+        <span>{research
+          ? `過去検証 ${formatCompact(research.completeMarkets)}市場・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用`
           : "売買時刻に最も近い5秒板で約定を再現中"}</span>
         <span className="font-bold text-rose-700">実取引 OFF</span>
       </div>
