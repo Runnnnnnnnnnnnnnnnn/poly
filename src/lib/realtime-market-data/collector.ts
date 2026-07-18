@@ -28,7 +28,7 @@ const maximumReferenceAgeMs = 15_000;
 const maximumContextAgeMs = 60_000;
 const connectionStaleMs = 30_000;
 
-export const realtimeSynchronizationVersion = "websocket-v3-self-healing";
+export const realtimeSynchronizationVersion = "websocket-v4-causal-exit";
 
 type ReferenceState = Record<"BINANCE" | "CHAINLINK", RealtimeReferenceUpdate | null>;
 
@@ -108,17 +108,7 @@ export class RealtimeMarketDataCollector {
 
   async refreshMarkets(now = new Date()) {
     const discovered = await discoverActiveCryptoDirectionMarkets(200);
-    const selected = discovered.filter((market) => {
-      const startAt = new Date(market.eventStartTime).getTime();
-      const endAt = market.endDate ? new Date(market.endDate).getTime() : Number.NaN;
-      return supportedAssets.has(market.asset)
-        && Boolean(market.noTokenId)
-        && Math.abs(market.durationMinutes - targetDurationMinutes) <= 0.5
-        && Number.isFinite(startAt)
-        && Number.isFinite(endAt)
-        && endAt >= now.getTime() - marketGraceMs
-        && startAt <= now.getTime() + marketLeadMs;
-    });
+    const selected = selectRealtimeMarketsForCollection(discovered, Array.from(this.markets.values()), now);
     this.markets = new Map(selected.map((market) => [market.id, market]));
     this.desiredTokens = new Set(selected.flatMap((market) => [market.tokenId, market.noTokenId as string]));
     const currentBooks = await fetchCurrentBooks(Array.from(this.desiredTokens)).catch(() => new Map());
@@ -297,6 +287,28 @@ export class RealtimeMarketDataCollector {
   private async reportError(error: unknown) {
     console.error(error instanceof Error ? error.message : error);
   }
+}
+
+export function selectRealtimeMarketsForCollection(
+  discovered: ActiveCryptoDirectionMarket[],
+  previous: ActiveCryptoDirectionMarket[],
+  now: Date,
+) {
+  const eligible = (market: ActiveCryptoDirectionMarket) => {
+    const startAt = new Date(market.eventStartTime).getTime();
+    const endAt = market.endDate ? new Date(market.endDate).getTime() : Number.NaN;
+    return supportedAssets.has(market.asset)
+      && Boolean(market.noTokenId)
+      && Math.abs(market.durationMinutes - targetDurationMinutes) <= 0.5
+      && Number.isFinite(startAt)
+      && Number.isFinite(endAt)
+      && endAt >= now.getTime() - marketGraceMs
+      && startAt <= now.getTime() + marketLeadMs;
+  };
+  const retained = previous.filter(eligible);
+  const selected = new Map(retained.map((market) => [market.id, market]));
+  for (const market of discovered.filter(eligible)) selected.set(market.id, market);
+  return Array.from(selected.values());
 }
 
 export function buildRealtimeMarketTick(input: {

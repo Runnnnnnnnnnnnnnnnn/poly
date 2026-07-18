@@ -55,8 +55,8 @@ import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/s
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 import { annualizeRealizedVolatility } from "../src/lib/model-evaluation/volatility";
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
-import { buildRealtimeMarketTick, isRealtimeCaptureWindow, shouldReconnectManagedSocket } from "../src/lib/realtime-market-data/collector";
-import { calculatePolymarketTakerFee, evaluateExactExecutionAudit } from "../src/lib/realtime-market-data/execution-audit";
+import { buildRealtimeMarketTick, isRealtimeCaptureWindow, selectRealtimeMarketsForCollection, shouldReconnectManagedSocket } from "../src/lib/realtime-market-data/collector";
+import { calculatePolymarketTakerFee, evaluateExactExecutionAudit, selectCausalExecutionTick } from "../src/lib/realtime-market-data/execution-audit";
 import {
   normalizeHyperliquidWebSocketMessage,
   normalizePolymarketWebSocketMessage,
@@ -282,7 +282,7 @@ assert.ok(Math.abs(realtimeTick.complementBidSum - 0.98) < 1e-12);
 assert.ok(Math.abs(realtimeTick.complementAskSum - 1.02) < 1e-12);
 assert.equal(realtimeTick.arbitrageViolation, false);
 assert.equal(realtimeTick.captureSkewMs, 2_000);
-assert.equal(realtimeTick.synchronizationVersion, "websocket-v3-self-healing");
+assert.equal(realtimeTick.synchronizationVersion, "websocket-v4-causal-exit");
 assert.ok(Math.abs(realtimeTick.priceBasisPct - (100.05 / 99 - 1)) < 1e-12);
 const unchangedPolymarketTick = buildRealtimeMarketTick({
   market: realtimeMarket,
@@ -312,6 +312,17 @@ assert.equal(buildRealtimeMarketTick({
   references: { BINANCE: { ...realtimeBinance!, updatedAt: new Date(realtimeNow.getTime() - 20_000) }, CHAINLINK: null },
   now: realtimeNow,
 }), null);
+const justClosedMarket = { ...realtimeMarket, id: "just-closed", endDate: "2026-01-01T00:04:30.000Z" };
+const expiredMarket = { ...realtimeMarket, id: "expired", endDate: "2026-01-01T00:03:59.999Z" };
+assert.deepEqual(
+  selectRealtimeMarketsForCollection([], [justClosedMarket, expiredMarket], realtimeNow).map((market) => market.id),
+  ["just-closed"],
+);
+const refreshedMarket = { ...justClosedMarket, title: "refreshed" };
+assert.equal(
+  selectRealtimeMarketsForCollection([refreshedMarket], [justClosedMarket], realtimeNow)[0]?.title,
+  "refreshed",
+);
 
 console.log("realtime market data tests passed");
 
@@ -380,6 +391,16 @@ const auditTicks = [
   auditTick("audit-short", "2026-01-01T00:02:04Z", "2026-01-01T00:02:03Z", 200.1, 199.8, 200.2, 0.57, 0.45),
   auditTick("audit-short", "2026-01-01T00:15:04Z", "2026-01-01T00:15:01Z", 201, 201, 201.2, 0.98, 0.03),
 ];
+const causalTick = selectCausalExecutionTick([
+  auditTick("audit-long", "2026-01-01T00:01:59Z", "2026-01-01T00:01:59Z", 100, 98, 99, 0.55, 0.47),
+  auditTick("audit-long", "2026-01-01T00:02:04Z", "2026-01-01T00:02:04Z", 100, 100, 101, 0.55, 0.47),
+  auditTick("audit-long", "2026-01-01T00:02:02Z", "2026-01-01T00:02:02Z", 100, 99, 100, 0.55, 0.47),
+], new Date("2026-01-01T00:02:00Z"), 15_000);
+assert.equal(causalTick?.tick.capturedAt.toISOString(), "2026-01-01T00:02:02.000Z");
+assert.equal(causalTick?.errorMs, 2_000);
+assert.equal(selectCausalExecutionTick([
+  auditTick("audit-long", "2026-01-01T00:01:59Z", "2026-01-01T00:01:59Z", 100, 98, 99, 0.55, 0.47),
+], new Date("2026-01-01T00:02:00Z"), 15_000), null);
 const auditConfig = {
   positions: auditPositions,
   controlPositions: auditPositions,
@@ -444,8 +465,8 @@ const filteredAudit = evaluateExactExecutionAudit({
 });
 assert.equal(filteredAudit.verifiedPositions, 1);
 assert.equal(filteredAudit.verifiedIndependentEvents, 1);
-assert.equal(filteredAudit.comparableEvents, 1);
-assert.equal(filteredAudit.controlComparablePositions, 1);
+assert.equal(filteredAudit.comparableEvents, 2);
+assert.equal(filteredAudit.controlComparablePositions, 2);
 assert.equal(filteredAudit.controlCoverage, 1);
 
 const profitableAuditPositions = Array.from({ length: 60 }, (_, index) => {

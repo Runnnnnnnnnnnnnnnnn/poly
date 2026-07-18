@@ -98,8 +98,8 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
 
   for (const position of eligiblePositions) {
     const ticks = ticksByMarket.get(position.marketId) ?? [];
-    const entry = nearestTick(ticks, position.openedAt, (tick) => tick.hyperliquidUpdatedAt, maximumTimingErrorMs);
-    const exit = nearestTick(ticks, position.exitAt, (tick) => tick.hyperliquidUpdatedAt, maximumTimingErrorMs);
+    const entry = selectCausalExecutionTick(ticks, position.openedAt, maximumTimingErrorMs);
+    const exit = selectCausalExecutionTick(ticks, position.exitAt, maximumTimingErrorMs);
     if (!entry) missingEntry += 1;
     if (!exit) missingExit += 1;
 
@@ -355,8 +355,8 @@ function exactExecutionResults(input: {
 }) {
   return input.positions.flatMap((position): ExactResult[] => {
     const ticks = input.ticksByMarket.get(position.marketId) ?? [];
-    const entry = nearestTick(ticks, position.openedAt, (tick) => tick.hyperliquidUpdatedAt, input.maximumTimingErrorMs);
-    const exit = nearestTick(ticks, position.exitAt, (tick) => tick.hyperliquidUpdatedAt, input.maximumTimingErrorMs);
+    const entry = selectCausalExecutionTick(ticks, position.openedAt, input.maximumTimingErrorMs);
+    const exit = selectCausalExecutionTick(ticks, position.exitAt, input.maximumTimingErrorMs);
     if (!entry || !exit) return [];
     const exact = calculateHyperliquidBookPnl({
       position,
@@ -391,18 +391,22 @@ function buildExactBenchmarks(input: {
   randomBenchmarkTrials: number;
   strategyTrials: number;
 }) {
+  const strategyByMarket = new Map(input.strategyResults.map((result) => [result.marketId, result]));
   const controlByMarket = new Map(input.controlResults.map((result) => [result.marketId, result]));
-  const comparableResults = input.strategyResults.map((strategy) => {
-    const marketId = strategy.marketId;
+  const comparableMarketIds = new Set([...strategyByMarket.keys(), ...controlByMarket.keys()]);
+  const comparableResults = Array.from(comparableMarketIds).flatMap((marketId) => {
+    const strategy = strategyByMarket.get(marketId);
     const control = controlByMarket.get(marketId);
+    const reference = strategy ?? control;
+    if (!reference) return [];
     return {
       marketId,
       strategy,
       control,
-      reference: strategy,
+      reference,
     };
   });
-  const strategyReturns = comparableResults.map(({ strategy }) => strategy.exactPnl / strategy.notional);
+  const strategyReturns = comparableResults.map(({ strategy }) => strategy ? strategy.exactPnl / strategy.notional : 0);
   const controlReturns = comparableResults.map(({ control }) => control ? control.exactPnl / control.notional : 0);
   const longReturns = comparableResults.map(({ reference }) => exactSideReturn(reference, "LONG", input));
   const shortReturns = comparableResults.map(({ reference }) => exactSideReturn(reference, "SHORT", input));
@@ -586,18 +590,18 @@ function groupTicksByMarket(ticks: ExactExecutionAuditTick[]) {
   return grouped;
 }
 
-function nearestTick(
+export function selectCausalExecutionTick(
   ticks: ExactExecutionAuditTick[],
   target: Date,
-  timestamp: (tick: ExactExecutionAuditTick) => Date,
-  maximumErrorMs: number,
+  maximumDelayMs: number,
 ) {
-  let nearest: { tick: ExactExecutionAuditTick; errorMs: number } | null = null;
+  let first: { tick: ExactExecutionAuditTick; errorMs: number } | null = null;
   for (const tick of ticks) {
-    const errorMs = Math.abs(timestamp(tick).getTime() - target.getTime());
-    if (errorMs <= maximumErrorMs && (!nearest || errorMs < nearest.errorMs)) nearest = { tick, errorMs };
+    const errorMs = tick.capturedAt.getTime() - target.getTime();
+    if (errorMs < 0 || errorMs > maximumDelayMs) continue;
+    if (!first || errorMs < first.errorMs) first = { tick, errorMs };
   }
-  return nearest;
+  return first;
 }
 
 function roundFee(value: number) {

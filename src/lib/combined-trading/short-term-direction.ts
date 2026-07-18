@@ -20,12 +20,12 @@ import { fetchHyperliquidMarketStates } from "@/src/lib/monitoring/hyperliquid";
 import { prisma } from "@/src/lib/server/prisma";
 
 export const shortTermDirectionHorizonKey = 0;
-export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v4-m15";
-export const shortTermDirectionControlKey = "poly-updown-forward-control-v4-m15";
+export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v5-m15";
+export const shortTermDirectionControlKey = "poly-updown-forward-control-v5-m15";
 
 export const shortTermDirectionSpecification = Object.freeze({
-  version: 4,
-  executionAuditVersion: 2,
+  version: 5,
+  executionAuditVersion: 3,
   independentSampleUnit: "15-minute-window",
   strategyTrials: 11,
   supportedAssets: ["BTC", "ETH", "SOL", "XRP"] as const,
