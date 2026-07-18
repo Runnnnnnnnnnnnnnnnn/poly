@@ -107,5 +107,16 @@ dashboard remains the executive status view. This matches MLflow's official
 [experiment tracking model](https://mlflow.org/docs/latest/ml/tracking/) of runs, parameters, metrics,
 code versions, and artifacts.
 
+On macOS, after installing the pinned dependency into the dedicated Python 3.10+ environment, the
+local-only tracking server can be kept running and refreshed every 30 minutes with:
+
+```sh
+npm run mlflow:service:install
+```
+
+The service binds only to `127.0.0.1:8080`, imports new immutable artifacts without duplicating prior
+runs, restarts through launchd, and writes health/import state to
+`~/.polymarket-watch/mlflow-status.json`. Remove it with `npm run mlflow:service:uninstall`.
+
 Use a protected remote MLflow Tracking Server instead of exposing this local port directly when the run
 comparison UI must be shared with a remote manager.

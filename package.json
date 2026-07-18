@@ -25,6 +25,9 @@
     "collect:crypto": "tsx scripts/collect-crypto-snapshots.mts",
     "collect:realtime": "tsx scripts/run-realtime-market-data.mts",
     "monitor": "tsx scripts/run-monitoring.mts",
+    "mlflow:import": "MLFLOW_TRACKING_URI=sqlite:///$HOME/.polymarket-watch/mlflow.db $HOME/.polymarket-watch/mlflow-venv/bin/python scripts/import-model-evaluations-mlflow.py",
+    "mlflow:service:install": "node scripts/install-mlflow-service.mjs",
+    "mlflow:service:uninstall": "node scripts/install-mlflow-service.mjs --uninstall",
     "service:install": "node scripts/install-macos-service.mjs",
     "service:uninstall": "node scripts/install-macos-service.mjs --uninstall",
     "paper:trade": "tsx scripts/run-paper-trading.mts"

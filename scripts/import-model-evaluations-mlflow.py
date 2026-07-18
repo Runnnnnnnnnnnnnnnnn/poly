@@ -21,6 +21,13 @@ def parse_args():
     )
     parser.add_argument("--short-term-experiment", default="polymarket-hyperliquid-15m-backtests")
     parser.add_argument("--tracking-uri", default=os.environ.get("MLFLOW_TRACKING_URI", ""))
+    parser.add_argument(
+        "--mlflow-artifact-root",
+        default=os.environ.get(
+            "MLFLOW_ARTIFACT_ROOT",
+            os.path.expanduser("~/.polymarket-watch/mlartifacts"),
+        ),
+    )
     return parser.parse_args()
 
 
@@ -53,10 +60,10 @@ def main():
     artifact_dir = Path(args.artifact_dir).expanduser().resolve()
     if args.tracking_uri:
         mlflow.set_tracking_uri(args.tracking_uri)
-    mlflow.set_experiment(args.experiment)
-    experiment = mlflow.get_experiment_by_name(args.experiment)
-    if experiment is None:
-        raise RuntimeError("MLflow experiment could not be created")
+    experiment = ensure_experiment(
+        args.experiment,
+        Path(args.mlflow_artifact_root).expanduser().resolve() / "canonical",
+    )
 
     client = MlflowClient()
     imported = 0
@@ -103,10 +110,10 @@ def main():
 
 def import_short_term_runs(args):
     artifact_dir = Path(args.short_term_artifact_dir).expanduser().resolve()
-    mlflow.set_experiment(args.short_term_experiment)
-    experiment = mlflow.get_experiment_by_name(args.short_term_experiment)
-    if experiment is None:
-        raise RuntimeError("Short-term MLflow experiment could not be created")
+    experiment = ensure_experiment(
+        args.short_term_experiment,
+        Path(args.mlflow_artifact_root).expanduser().resolve() / "short-term",
+    )
     client = MlflowClient()
     imported = 0
     skipped = 0
@@ -172,6 +179,23 @@ def import_short_term_runs(args):
             mlflow.log_artifacts(str(report_path.parent), artifact_path="short-term-backtest-report")
         imported += 1
     return {"imported": imported, "skipped": skipped, "artifactDir": str(artifact_dir)}
+
+
+def ensure_experiment(name, artifact_location):
+    artifact_location.mkdir(parents=True, exist_ok=True)
+    expected = artifact_location.as_uri().rstrip("/")
+    client = MlflowClient()
+    experiment = client.get_experiment_by_name(name)
+    if experiment is None:
+        experiment_id = client.create_experiment(name, artifact_location=expected)
+        experiment = client.get_experiment(experiment_id)
+    if experiment.artifact_location.rstrip("/") != expected:
+        raise RuntimeError(
+            f"MLflow experiment {name} uses unexpected artifact location: "
+            f"{experiment.artifact_location}; expected {expected}"
+        )
+    mlflow.set_experiment(experiment_id=experiment.experiment_id)
+    return experiment
 
 
 if __name__ == "__main__":
