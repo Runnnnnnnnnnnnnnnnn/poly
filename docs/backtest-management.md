@@ -97,7 +97,7 @@ GET /api/model-evaluations/<run-id>?format=csv
 
 Do not tune on the final test period. New parameters must be declared before the next forward window,
 selected only on development folds, and evaluated on a new untouched period. A positive dashboard tile
-is not evidence of an edge until the trade-count, benchmark, uncertainty, drawdown, and selection-bias
+is not evidence of an edge until the independent-event count, benchmark, uncertainty, drawdown, and selection-bias
 gates all pass.
 
 The 48-hour synchronized-data gate measures the uninterrupted streak after the most recent capture gap
@@ -160,3 +160,8 @@ baseline. Even then, it must start a new frozen forward cohort and cannot modify
 Each walk-forward fold expands the calibration window, reselects one of the nine fixed candidates using
 only earlier windows, and evaluates that selection on the next non-overlapping block. The earlier
 per-candidate four-block output remains a stability diagnostic and is not used for the promotion gate.
+
+The frozen 6/12/24/48-hour forward experiments also gate on 50 distinct event-and-horizon outcomes, not
+raw position count. Their best baseline is selected from Polymarket-only, always long, always short, and
+the median of 200 deterministic random-direction trials. Multiple assets recorded for one event contribute
+to that event's return together and cannot inflate the sample-progress counter.

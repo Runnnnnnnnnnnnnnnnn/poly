@@ -3,10 +3,11 @@ import {
   deflatedSharpeProbability,
 } from "@/src/lib/model-evaluation/combined-trading";
 
-const minimumTrades = 50;
+const minimumIndependentEvents = 50;
 const minimumComparableEvents = 50;
 const minimumDeflatedSharpeProbability = 0.95;
 const maximumDrawdownPct = 0.05;
+const defaultRandomBenchmarkTrials = 200;
 
 export const forwardObservationHorizons = [6, 12, 24, 48] as const;
 export type ForwardObservationHorizon = (typeof forwardObservationHorizons)[number];
@@ -57,9 +58,10 @@ export type ForwardEvaluationInput = {
   maxDrawdownPct: number;
   settlementBasisStatus: "collecting" | "healthy" | "attention";
   strategyTrials?: number;
+  randomBenchmarkTrials?: number;
 };
 
-type BenchmarkLabel = "Polymarket方向のみ" | "常時ロング" | "常時ショート";
+type BenchmarkLabel = "Polymarket方向のみ" | "常時ロング" | "常時ショート" | "ランダム中央値";
 
 type EventResult = {
   eventId: string;
@@ -94,25 +96,28 @@ export function evaluateForwardExperiment(input: ForwardEvaluationInput) {
   const controlClosed = allControlClosed.filter((position) => comparableEventIds.has(positionEventKey(position)));
   const wins = strategyClosed.filter((position) => position.realizedPnl > 0).length;
   const events = eventIds.map((eventId): EventResult => {
-    const strategyPosition = strategyByEvent.get(eventId);
-    const controlPosition = controlByEvent.get(eventId);
-    const referencePosition = controlPosition ?? strategyPosition;
+    const strategyEventPositions = strategyByEvent.get(eventId) ?? [];
+    const controlEventPositions = controlByEvent.get(eventId) ?? [];
+    const referencePositions = controlEventPositions.length ? controlEventPositions : strategyEventPositions;
     return {
       eventId,
-      strategyReturn: portfolioContribution(strategyPosition, input.initialEquity),
-      controlReturn: portfolioContribution(controlPosition, input.initialEquity),
-      alwaysLongReturn: referencePosition
-        ? benchmarkPnl(referencePosition, "LONG", input) / input.initialEquity
-        : 0,
-      alwaysShortReturn: referencePosition
-        ? benchmarkPnl(referencePosition, "SHORT", input) / input.initialEquity
-        : 0,
+      strategyReturn: portfolioContribution(strategyEventPositions, input.initialEquity),
+      controlReturn: portfolioContribution(controlEventPositions, input.initialEquity),
+      alwaysLongReturn: sum(referencePositions.map((position) => benchmarkPnl(position, "LONG", input))) / input.initialEquity,
+      alwaysShortReturn: sum(referencePositions.map((position) => benchmarkPnl(position, "SHORT", input))) / input.initialEquity,
     };
   });
+  const randomBenchmarkTrials = Math.max(1, Math.floor(input.randomBenchmarkTrials ?? defaultRandomBenchmarkTrials));
+  const randomTrials = Array.from({ length: randomBenchmarkTrials }, (_, trial) => {
+    const random = createSeededRandom(trial + 1);
+    return events.map((event) => random() < 0.5 ? event.alwaysLongReturn : event.alwaysShortReturn);
+  });
+  const randomMedianReturns = medianTrial(randomTrials);
   const benchmarkResults = [
     { label: "Polymarket方向のみ" as const, returnPct: sum(events.map((event) => event.controlReturn)), field: "controlReturn" as const },
     { label: "常時ロング" as const, returnPct: sum(events.map((event) => event.alwaysLongReturn)), field: "alwaysLongReturn" as const },
     { label: "常時ショート" as const, returnPct: sum(events.map((event) => event.alwaysShortReturn)), field: "alwaysShortReturn" as const },
+    { label: "ランダム中央値" as const, returnPct: sum(randomMedianReturns), field: "randomMedianReturn" as const },
   ];
   const bestBenchmark = [...benchmarkResults].sort((left, right) => right.returnPct - left.returnPct)[0];
   const netReturnPct = strategyClosed.length
@@ -122,17 +127,20 @@ export function evaluateForwardExperiment(input: ForwardEvaluationInput) {
   const excessReturnPct = netReturnPct !== null && benchmarkReturnPct !== null
     ? netReturnPct - benchmarkReturnPct
     : null;
-  const excessEventReturns = events.map((event) => event.strategyReturn - event[bestBenchmark.field]);
+  const excessEventReturns = events.map((event, index) => (
+    event.strategyReturn - (bestBenchmark.field === "randomMedianReturn" ? randomMedianReturns[index] : event[bestBenchmark.field])
+  ));
   const excessConfidenceInterval95 = blockBootstrapMeanConfidenceInterval(excessEventReturns);
   const deflatedSharpe = deflatedSharpeProbability(excessEventReturns, Math.max(1, input.strategyTrials ?? 1));
+  const independentEvents = new Set(strategyClosed.map(positionEventKey)).size;
   const gates = [
-    { id: "trades" as const, label: `${minimumTrades}取引以上`, passed: strategyClosed.length >= minimumTrades },
+    { id: "trades" as const, label: `${minimumIndependentEvents}独立イベント以上`, passed: independentEvents >= minimumIndependentEvents },
     { id: "control" as const, label: `同期間比較${minimumComparableEvents}件以上`, passed: events.length >= minimumComparableEvents },
     { id: "net-positive" as const, label: "コスト控除後プラス", passed: (netReturnPct ?? 0) > 0 },
     { id: "benchmark" as const, label: "最良の単純戦略を上回る", passed: (excessReturnPct ?? 0) > 0 },
     { id: "significance" as const, label: "平均との差の95%下限がプラス", passed: (excessConfidenceInterval95?.[0] ?? 0) > 0 },
     { id: "selection-bias" as const, label: "固定実験の確信度95%以上", passed: (deflatedSharpe ?? 0) >= minimumDeflatedSharpeProbability },
-    { id: "drawdown" as const, label: "最大下落5%以内", passed: strategyClosed.length >= minimumTrades && input.maxDrawdownPct <= maximumDrawdownPct },
+    { id: "drawdown" as const, label: "最大下落5%以内", passed: independentEvents >= minimumIndependentEvents && input.maxDrawdownPct <= maximumDrawdownPct },
     { id: "settlement" as const, label: "判定価格の整合性を確認", passed: input.settlementBasisStatus === "healthy" },
   ];
   const enoughData = gates[0].passed && gates[1].passed;
@@ -145,13 +153,15 @@ export function evaluateForwardExperiment(input: ForwardEvaluationInput) {
   return {
     status,
     trades: strategyClosed.length,
+    independentEvents,
     wins,
     winRate: strategyClosed.length ? wins / strategyClosed.length : null,
     controlTrades: controlClosed.length,
     comparableEvents: events.length,
-    minimumTrades,
+    minimumTrades: minimumIndependentEvents,
+    minimumIndependentEvents,
     minimumComparableEvents,
-    progressPct: Math.min(1, strategyClosed.length / minimumTrades),
+    progressPct: Math.min(1, independentEvents / minimumIndependentEvents),
     comparisonStartedAt: comparisonStartedAt?.toISOString() ?? null,
     netReturnPct,
     benchmarkReturnPct,
@@ -159,6 +169,7 @@ export function evaluateForwardExperiment(input: ForwardEvaluationInput) {
     excessReturnPct,
     excessConfidenceInterval95,
     deflatedSharpeProbability: deflatedSharpe,
+    randomBenchmarkTrials,
     maxDrawdownPct: input.maxDrawdownPct,
     passedGates: gates.filter((gate) => gate.passed).length,
     totalGates: gates.length,
@@ -167,6 +178,7 @@ export function evaluateForwardExperiment(input: ForwardEvaluationInput) {
       polymarketOnlyReturnPct: events.length ? benchmarkResults[0].returnPct : null,
       alwaysLongReturnPct: events.length ? benchmarkResults[1].returnPct : null,
       alwaysShortReturnPct: events.length ? benchmarkResults[2].returnPct : null,
+      randomMedianReturnPct: events.length ? benchmarkResults[3].returnPct : null,
     },
     attribution: {
       byAsset: summarizeByAsset(strategyClosed, input.initialEquity),
@@ -182,15 +194,20 @@ function isClosedPosition(position: ForwardEvaluationPosition): position is Forw
 }
 
 function positionsByEvent(positions: ForwardEvaluationPosition[]) {
-  return new Map(positions.map((position) => [positionEventKey(position), position]));
+  const grouped = new Map<string, ForwardEvaluationPosition[]>();
+  for (const position of positions) {
+    const key = positionEventKey(position);
+    grouped.set(key, [...(grouped.get(key) ?? []), position]);
+  }
+  return grouped;
 }
 
 function positionEventKey(position: ForwardEvaluationPosition) {
   return `${position.eventId}:${position.horizonHours ?? "legacy"}`;
 }
 
-function portfolioContribution(position: ForwardEvaluationPosition | undefined, initialEquity: number) {
-  return position && typeof position.realizedPnl === "number" ? position.realizedPnl / initialEquity : 0;
+function portfolioContribution(positions: ForwardEvaluationPosition[], initialEquity: number) {
+  return sum(positions.map((position) => position.realizedPnl ?? 0)) / initialEquity;
 }
 
 function benchmarkPnl(
@@ -244,4 +261,17 @@ function positiveNumber(value: number | null) {
 
 function sum(values: number[]) {
   return values.reduce((total, value) => total + value, 0);
+}
+
+function medianTrial(trials: number[][]) {
+  if (!trials.length) return [];
+  return [...trials].sort((left, right) => sum(left) - sum(right))[Math.floor(trials.length / 2)];
+}
+
+function createSeededRandom(initialSeed: number) {
+  let seed = Math.imul(initialSeed, 0x9e3779b9) >>> 0;
+  return () => {
+    seed = (1664525 * seed + 1013904223) >>> 0;
+    return seed / 0x1_0000_0000;
+  };
 }

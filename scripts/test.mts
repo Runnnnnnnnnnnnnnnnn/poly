@@ -1026,13 +1026,17 @@ const forwardEvaluationInput = {
 const forwardEvaluation = evaluateForwardExperiment(forwardEvaluationInput);
 assert.equal(forwardEvaluation.status, "promising");
 assert.equal(forwardEvaluation.trades, 60);
+assert.equal(forwardEvaluation.independentEvents, 60);
+assert.equal(forwardEvaluation.minimumIndependentEvents, 50);
 assert.equal(forwardEvaluation.comparableEvents, 120);
+assert.equal(forwardEvaluation.randomBenchmarkTrials, 200);
 assert.ok((forwardEvaluation.netReturnPct ?? 0) > 0);
 assert.ok((forwardEvaluation.excessReturnPct ?? 0) > 0);
 assert.ok((forwardEvaluation.excessConfidenceInterval95?.[0] ?? 0) > 0);
 assert.ok((forwardEvaluation.deflatedSharpeProbability ?? 0) >= 0.95);
 assert.equal(forwardEvaluation.gates.every((gate) => gate.passed), true);
 assert.equal(forwardEvaluation.attribution.byAsset.reduce((total, group) => total + group.trades, 0), 60);
+assert.equal(typeof forwardEvaluation.benchmarks.randomMedianReturnPct, "number");
 
 const collectingForwardEvaluation = evaluateForwardExperiment({
   ...forwardEvaluationInput,
@@ -1041,6 +1045,7 @@ const collectingForwardEvaluation = evaluateForwardExperiment({
 });
 assert.equal(collectingForwardEvaluation.status, "collecting");
 assert.equal(collectingForwardEvaluation.trades, 10);
+assert.equal(collectingForwardEvaluation.independentEvents, 10);
 
 const unprovenForwardEvaluation = evaluateForwardExperiment({
   ...forwardEvaluationInput,
@@ -1061,7 +1066,26 @@ const separateHorizonEvaluation = evaluateForwardExperiment({
   controlPositions: sameEventControl,
 });
 assert.equal(separateHorizonEvaluation.trades, 2);
+assert.equal(separateHorizonEvaluation.independentEvents, 2);
 assert.equal(separateHorizonEvaluation.comparableEvents, 2);
+
+const sameEventSameHorizon = [
+  { ...syntheticForwardPosition(0, true), eventId: "multi-asset-event", asset: "BTC", horizonHours: 24 },
+  { ...syntheticForwardPosition(1, true), eventId: "multi-asset-event", asset: "ETH", horizonHours: 24 },
+];
+const groupedEventEvaluation = evaluateForwardExperiment({
+  ...forwardEvaluationInput,
+  strategyPositions: sameEventSameHorizon,
+  controlPositions: sameEventSameHorizon.map((position) => ({ ...position })),
+});
+assert.equal(groupedEventEvaluation.trades, 2);
+assert.equal(groupedEventEvaluation.independentEvents, 1);
+assert.equal(groupedEventEvaluation.comparableEvents, 1);
+assert.equal(groupedEventEvaluation.progressPct, 1 / 50);
+assert.ok(Math.abs(
+  (groupedEventEvaluation.netReturnPct ?? 0)
+    - sameEventSameHorizon.reduce((total, position) => total + (position.realizedPnl ?? 0), 0) / forwardEvaluationInput.initialEquity,
+) < 1e-12);
 
 assert.deepEqual(forwardObservationHorizons, [6, 12, 24, 48]);
 for (const horizonHours of forwardObservationHorizons) {

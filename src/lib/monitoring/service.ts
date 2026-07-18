@@ -596,7 +596,7 @@ export async function getMonitoringSnapshot() {
   });
   const leadingHorizon = [...horizonEvaluations].sort((left, right) => (
     Number(right.evaluation.status === "promising") - Number(left.evaluation.status === "promising")
-    || right.evaluation.trades - left.evaluation.trades
+    || right.evaluation.independentEvents - left.evaluation.independentEvents
     || (left.latestDecision?.nextWindowAt?.getTime() ?? Number.POSITIVE_INFINITY)
       - (right.latestDecision?.nextWindowAt?.getTime() ?? Number.POSITIVE_INFINITY)
     || left.horizonHours - right.horizonHours
@@ -622,12 +622,16 @@ export async function getMonitoringSnapshot() {
     ...leadingHorizon.evaluation,
     activeHorizonHours: leadingHorizon.horizonHours,
     totalTrades: horizonEvaluations.reduce((total, item) => total + item.evaluation.trades, 0),
+    totalIndependentEvents: horizonEvaluations.reduce((total, item) => total + item.evaluation.independentEvents, 0),
     totalMinimumTrades: horizonEvaluations.length * leadingHorizon.evaluation.minimumTrades,
+    totalMinimumIndependentEvents: horizonEvaluations.length * leadingHorizon.evaluation.minimumIndependentEvents,
     horizons: horizonEvaluations.map(({ horizonHours, evaluation: item, latestDecision }) => ({
       horizonHours,
       status: item.status,
       trades: item.trades,
+      independentEvents: item.independentEvents,
       minimumTrades: item.minimumTrades,
+      minimumIndependentEvents: item.minimumIndependentEvents,
       progressPct: item.progressPct,
       netReturnPct: item.netReturnPct,
       excessReturnPct: item.excessReturnPct,

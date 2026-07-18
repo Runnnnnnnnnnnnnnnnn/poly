@@ -281,23 +281,28 @@ type MonitoringSnapshot = {
     forwardEvaluation: {
       status: "collecting" | "promising" | "underperforming";
       trades: number;
+      independentEvents?: number;
       wins: number;
       winRate: number | null;
       controlTrades: number;
       comparableEvents: number;
       minimumTrades: number;
+      minimumIndependentEvents?: number;
       minimumComparableEvents: number;
       progressPct: number;
       activeHorizonHours?: number;
       totalTrades?: number;
       totalMinimumTrades?: number;
+      totalIndependentEvents?: number;
+      totalMinimumIndependentEvents?: number;
       comparisonStartedAt: string | null;
       netReturnPct: number | null;
       benchmarkReturnPct: number | null;
-      benchmarkLabel: "Polymarket方向のみ" | "常時ロング" | "常時ショート" | null;
+      benchmarkLabel: "Polymarket方向のみ" | "常時ロング" | "常時ショート" | "ランダム中央値" | null;
       excessReturnPct: number | null;
       excessConfidenceInterval95: [number, number] | null;
       deflatedSharpeProbability: number | null;
+      randomBenchmarkTrials?: number;
       maxDrawdownPct: number;
       passedGates: number;
       totalGates: number;
@@ -310,6 +315,7 @@ type MonitoringSnapshot = {
         polymarketOnlyReturnPct: number | null;
         alwaysLongReturnPct: number | null;
         alwaysShortReturnPct: number | null;
+        randomMedianReturnPct?: number | null;
       };
       attribution: {
         byAsset: Array<{
@@ -324,7 +330,9 @@ type MonitoringSnapshot = {
         horizonHours: number;
         status: "collecting" | "promising" | "underperforming";
         trades: number;
+        independentEvents?: number;
         minimumTrades: number;
+        minimumIndependentEvents?: number;
         progressPct: number;
         netReturnPct: number | null;
         excessReturnPct: number | null;
@@ -1438,11 +1446,11 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
   const decisionLabel = formatShadowAction(latest?.action);
   const hasClosedTrades = (forward?.trades ?? shadow?.trades ?? 0) > 0;
   const forwardOnly = shadow?.forwardOnly === true;
-  const progressTrades = forward?.trades ?? shadow?.trades ?? 0;
-  const requiredTrades = forward?.minimumTrades ?? 50;
-  const allHorizonTrades = forward?.totalTrades ?? progressTrades;
-  const remainingTrades = Math.max(0, requiredTrades - progressTrades);
-  const totalProgress = requiredTrades > 0 ? progressTrades / requiredTrades : 0;
+  const progressEvents = forward?.independentEvents ?? forward?.trades ?? shadow?.trades ?? 0;
+  const requiredEvents = forward?.minimumIndependentEvents ?? forward?.minimumTrades ?? 50;
+  const allHorizonEvents = forward?.totalIndependentEvents ?? forward?.totalTrades ?? progressEvents;
+  const remainingEvents = Math.max(0, requiredEvents - progressEvents);
+  const totalProgress = requiredEvents > 0 ? progressEvents / requiredEvents : 0;
   const evaluationMeta = forward?.status === "promising"
     ? { label: "基準達成", tone: "good" as const }
     : forward?.status === "underperforming"
@@ -1464,15 +1472,15 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
           <p className="text-xs font-bold text-muted-foreground">{forward?.activeHorizonHours ? `先行中の${forward.activeHorizonHours}時間モデル` : "コスト控除後の累計損益"}</p>
           <p className={`mt-3 text-4xl font-bold leading-none sm:text-5xl ${pnlSignal.tone === "good" ? "text-emerald-700" : pnlSignal.tone === "bad" ? "text-rose-700" : "text-slate-950"}`}>{hasClosedTrades ? formatSignedPct(displayedReturn) : "未判定"}</p>
           <div className="mt-5 flex items-center justify-between gap-3 text-xs font-bold text-slate-700">
-            <span>{progressTrades} / {requiredTrades}取引</span>
-            <span>{forward?.status === "collecting" || !forward ? `あと${remainingTrades}件` : `${forward.passedGates} / ${forward.totalGates}条件`}</span>
+            <span>{progressEvents} / {requiredEvents}独立イベント</span>
+            <span>{forward?.status === "collecting" || !forward ? `あと${remainingEvents}件` : `${forward.passedGates} / ${forward.totalGates}条件`}</span>
           </div>
           <VisualMeter tone={evaluationMeta.tone} value={Math.min(100, totalProgress * 100)} className="mt-2" />
           <p className="mt-3 text-xs font-semibold leading-5 text-slate-600">{forward?.status === "promising" ? "優位性の基準をすべて満たしました。次はテストネット検証です。" : forward?.status === "underperforming" ? "十分な件数で基準を満たさず、実取引には進みません。" : forward?.horizons?.length ? "4つを混ぜず、各時間軸50件まで固定条件で収集します。" : "50件までは結果を確定せず、固定条件のまま収集します。"}</p>
         </div>
         <div className="grid min-w-0">
           <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
-            <CompactMetric label="全時間軸の決済" value={`${allHorizonTrades}件`} />
+            <CompactMetric label="全時間軸の独立イベント" value={`${allHorizonEvents}件`} />
             <CompactMetric label="単純戦略との差" value={hasClosedTrades ? formatSignedPct(forward?.excessReturnPct) : "未判定"} />
             <CompactMetric label="95%下限" value={forward?.status !== "collecting" ? formatSignedPct(forward?.excessConfidenceInterval95?.[0]) : "50件後"} />
             <CompactMetric label="最大下落" value={hasClosedTrades ? formatPct(forward?.maxDrawdownPct ?? shadow?.maxDrawdownPct) : "未判定"} />
@@ -1497,7 +1505,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
       {forward?.horizons?.length ? <ForwardHorizonProgress horizons={forward.horizons} /> : null}
       <ScanFunnel funnel={shadow?.funnel} />
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-[11px] font-bold text-slate-600 sm:px-5">
-        <span>比較対象: {forward?.benchmarkLabel ?? "Polymarket方向のみを同時収集中"}</span>
+        <span>比較対象: {forward?.benchmarkLabel ?? "Polymarket・固定方向・ランダムを同時収集中"}</span>
         <span className="text-rose-700">実取引 OFF</span>
       </div>
       <details className="group border-t">
@@ -1506,7 +1514,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
           <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
         </summary>
         <div className="border-t bg-slate-50 px-4 py-4 sm:px-5">
-          <p className="text-xs leading-5 text-slate-600">開始後のデータだけを使い、同時稼働するPolymarket単体戦略と同期間で比較します。</p>
+          <p className="text-xs leading-5 text-slate-600">開始後のデータだけを使い、Polymarket単体・常時ロング・常時ショート・ランダム200試行の中央値と同期間で比較します。</p>
           <div className="mt-4 grid gap-x-6 sm:grid-cols-2">
             {(forward?.gates ?? []).map((gate) => (
               <div key={gate.id} className="flex items-center gap-2 border-b py-2.5 text-xs font-semibold text-slate-700">
@@ -1670,7 +1678,7 @@ function ForwardHorizonProgress({ horizons }: {
     <div className="border-t bg-slate-50" aria-label="時間軸別のフォワード検証進捗">
       <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
         <p className="text-xs font-bold text-slate-800">時間軸別</p>
-        <p className="text-[10px] font-semibold text-muted-foreground">各50取引を独立評価</p>
+        <p className="text-[10px] font-semibold text-muted-foreground">各50独立イベントを評価</p>
       </div>
       <div className="grid grid-cols-2 border-t sm:grid-cols-4">
         {horizons.map((horizon, index) => {
@@ -1681,7 +1689,7 @@ function ForwardHorizonProgress({ horizons }: {
                 <p className="text-base font-bold tabular-nums text-slate-950">{horizon.horizonHours}時間</p>
                 <span className={`rounded-sm px-1.5 py-0.5 text-[9px] font-bold ${tonePillClass(tone)}`}>{horizon.status === "promising" ? "合格" : horizon.status === "underperforming" ? "不合格" : "収集中"}</span>
               </div>
-              <p className="mt-2 text-xl font-bold tabular-nums text-slate-950">{horizon.trades}<span className="ml-1 text-xs font-semibold text-slate-500">/ {horizon.minimumTrades}</span></p>
+              <p className="mt-2 text-xl font-bold tabular-nums text-slate-950">{horizon.independentEvents ?? horizon.trades}<span className="ml-1 text-xs font-semibold text-slate-500">/ {horizon.minimumIndependentEvents ?? horizon.minimumTrades}</span></p>
               <VisualMeter tone={tone} value={horizon.progressPct * 100} className="mt-2" />
               <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500">対象 {horizon.horizonEligibleMarkets}件 / 計算可能 {horizon.priceReadyEvents}件</p>
               <p className="mt-1 line-clamp-2 min-h-8 text-[10px] font-semibold leading-4 text-slate-600">{horizon.latestReason}</p>
