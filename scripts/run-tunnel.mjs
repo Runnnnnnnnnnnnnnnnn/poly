@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 
 import { publishLiveConnection } from "./publish-live-connection.mjs";
 import { checkPublicHealth } from "./public-health.mjs";
+import { dashboardStateFingerprint, shouldPublishDashboardSnapshot } from "./live-snapshot-policy.mjs";
 import { quickTunnelConfig, resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
 
@@ -22,6 +23,7 @@ const statusFile = resolve(stateDir, "tunnel-status.json");
 const preferredConfig = resolveTunnelConfig(process.env, port);
 const healthIntervalMs = numericSetting(process.env.TUNNEL_HEALTH_INTERVAL_MS, 60_000, 30_000);
 const healthFailureThreshold = Math.floor(numericSetting(process.env.TUNNEL_HEALTH_FAILURE_THRESHOLD, 3, 2));
+const snapshotPublishIntervalMs = numericSetting(process.env.LIVE_SNAPSHOT_MIN_INTERVAL_MS, 5 * 60_000, 60_000);
 let activeConfig = preferredConfig;
 let child;
 let buffer = "";
@@ -35,6 +37,8 @@ let healthFailures = 0;
 let requestedConfig = null;
 let publishedAt = null;
 let lastCheckedAt = null;
+let lastSnapshotPublishedAtMs = null;
+let publishedStateFingerprint = null;
 
 if (!binary) {
   console.error("cloudflared is not installed");
@@ -99,6 +103,8 @@ async function publishWhenReady() {
     writeFileSync(stateFile, `${latestUrl}\n`, "utf8");
     const dashboardSnapshot = await fetchLocalDashboardSnapshot();
     publishLiveConnection(latestUrl, dashboardSnapshot);
+    publishedStateFingerprint = dashboardStateFingerprint(dashboardSnapshot);
+    lastSnapshotPublishedAtMs = Date.now();
     healthFailures = 0;
     publishedAt = new Date().toISOString();
     lastCheckedAt = publishedAt;
@@ -127,6 +133,7 @@ async function monitorPublishedHealth() {
     healthFailures = 0;
     lastCheckedAt = new Date().toISOString();
     writeStatus("healthy");
+    await publishChangedDashboardSnapshot();
     if (recovered) console.log("live backend connection recovered");
     scheduleHealthCheck();
   } catch (error) {
@@ -153,6 +160,29 @@ async function fetchLocalDashboardSnapshot() {
   });
   if (!response.ok) throw new Error(`local dashboard snapshot returned ${response.status}`);
   return response.json();
+}
+
+async function publishChangedDashboardSnapshot() {
+  try {
+    const dashboardSnapshot = await fetchLocalDashboardSnapshot();
+    const currentFingerprint = dashboardStateFingerprint(dashboardSnapshot);
+    if (!shouldPublishDashboardSnapshot({
+      currentFingerprint,
+      publishedFingerprint: publishedStateFingerprint,
+      lastPublishedAtMs: lastSnapshotPublishedAtMs,
+      nowMs: Date.now(),
+      minimumIntervalMs: snapshotPublishIntervalMs,
+    })) return;
+
+    publishLiveConnection(latestUrl, dashboardSnapshot);
+    publishedStateFingerprint = currentFingerprint;
+    lastSnapshotPublishedAtMs = Date.now();
+    publishedAt = new Date(lastSnapshotPublishedAtMs).toISOString();
+    writeStatus("healthy");
+    console.log("changed dashboard snapshot published");
+  } catch (error) {
+    console.error(`dashboard snapshot publish failed: ${error instanceof Error ? error.message : error}`);
+  }
 }
 
 function handleHealthFailure(error, source) {

@@ -47,6 +47,7 @@ import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts, evaluateTestnetR
 import { evaluateSynchronizedPriceQuality } from "../src/lib/monitoring/synchronized-quality";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
+import { dashboardStateFingerprint, shouldPublishDashboardSnapshot } from "./live-snapshot-policy.mjs";
 import { calculateDirectionalBookReturn, deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { toHorizonStudy } from "../src/lib/model-evaluation/service";
@@ -66,6 +67,60 @@ import {
   realtimeReferenceSubscriptions,
 } from "../src/lib/realtime-market-data/normalizers";
 import type { ActiveCryptoDirectionMarket } from "../src/lib/backtest/polymarket";
+
+const snapshotState = {
+  monitoring: {
+    status: "live",
+    combinedShadow: {
+      shortTermDirection: {
+        trades: 1,
+        openPositions: 0,
+        executionAudit: { verifiedIndependentEvents: 1, missingResolution: 0 },
+      },
+    },
+  },
+};
+assert.equal(
+  dashboardStateFingerprint({ ...snapshotState, generatedAt: "2026-01-01T00:01:00Z" }),
+  dashboardStateFingerprint({ ...snapshotState, generatedAt: "2026-01-01T00:02:00Z" }),
+);
+assert.notEqual(
+  dashboardStateFingerprint(snapshotState),
+  dashboardStateFingerprint({
+    monitoring: {
+      ...snapshotState.monitoring,
+      combinedShadow: {
+        shortTermDirection: {
+          ...snapshotState.monitoring.combinedShadow.shortTermDirection,
+          trades: 2,
+        },
+      },
+    },
+  }),
+);
+assert.equal(shouldPublishDashboardSnapshot({
+  currentFingerprint: "new",
+  publishedFingerprint: "old",
+  lastPublishedAtMs: 1_000,
+  nowMs: 301_000,
+  minimumIntervalMs: 300_000,
+}), true);
+assert.equal(shouldPublishDashboardSnapshot({
+  currentFingerprint: "new",
+  publishedFingerprint: "old",
+  lastPublishedAtMs: 1_000,
+  nowMs: 300_999,
+  minimumIntervalMs: 300_000,
+}), false);
+assert.equal(shouldPublishDashboardSnapshot({
+  currentFingerprint: "same",
+  publishedFingerprint: "same",
+  lastPublishedAtMs: null,
+  nowMs: 1_000,
+  minimumIntervalMs: 300_000,
+}), false);
+
+console.log("live snapshot publication policy tests passed");
 
 const metrics = calculateBacktestMetrics(
   [
