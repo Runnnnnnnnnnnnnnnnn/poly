@@ -160,6 +160,15 @@ type RealtimeReplayMetric = {
   };
 };
 
+type RealtimeReplayInputSource = {
+  archiveRows: number;
+  sqliteRows: number;
+  mergedRows: number;
+  duplicatesRemoved: number;
+  firstCapturedAt: string | null;
+  latestCapturedAt: string | null;
+};
+
 type MonitoringSnapshot = {
   status: "live" | "delayed" | "offline";
   generatedAt: string;
@@ -608,6 +617,15 @@ type MonitoringSnapshot = {
           benchmarkBeatingFolds: number;
           totalFolds: number;
         } | null;
+        inputProvenance: {
+          mode: "sqlite" | "parquet" | "hybrid";
+          archivePartitions: number;
+          lookbackDays: number;
+          sinceAt: string | null;
+          beforeAt: string;
+          marketTicks: RealtimeReplayInputSource;
+          assetTicks: RealtimeReplayInputSource;
+        } | null;
         reproducibility: {
           runId: string;
           codeRevision: string | null;
@@ -645,6 +663,10 @@ type MonitoringSnapshot = {
           profitableFolds: number;
           benchmarkBeatingFolds?: number;
           totalFolds: number;
+          inputMode?: "sqlite" | "parquet" | "hybrid";
+          archivePartitions?: number;
+          archiveRows?: number;
+          sqliteRows?: number;
         }>;
       } | null;
       realTradingEnabled: false;
@@ -2346,6 +2368,10 @@ function RealtimeShortTermBacktest({
   const directionReady = research.holdoutCoverage.long.passed && research.holdoutCoverage.short.passed;
   const promising = research.status === "promising" && sampleReady;
   const probabilityEdgePassed = holdout?.probabilityEdgePassed ?? false;
+  const input = research.inputProvenance;
+  const archivedInputRows = (input?.marketTicks.archiveRows ?? 0) + (input?.assetTicks.archiveRows ?? 0);
+  const sqliteInputRows = (input?.marketTicks.sqliteRows ?? 0) + (input?.assetTicks.sqliteRows ?? 0);
+  const mergedInputRows = (input?.marketTicks.mergedRows ?? 0) + (input?.assetTicks.mergedRows ?? 0);
   const tone: Tone = research.status === "rejected" ? "bad" : "watch";
   const Icon = research.status === "rejected" ? TrendingDown : Clock3;
   const statusLabel = promising ? "次期検証候補" : research.status === "insufficient" ? "検証中" : "採用不可";
@@ -2397,6 +2423,7 @@ function RealtimeShortTermBacktest({
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
         <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {input ? <span className="inline-flex items-center gap-1.5"><Database className="h-3.5 w-3.5" />入力 {formatCompact(mergedInputRows)}件・Parquet {formatCompact(archivedInputRows)} / SQLite {formatCompact(sqliteInputRows)}・{input.archivePartitions}区画確認</span> : null}
           <span>Brier誤差 モデル {formatScore(holdout?.modelBrierScore)} / 市場 {formatScore(holdout?.marketBrierScore)}</span>
           <span>改善幅の95%下限 {formatSignedScore(holdout?.brierImprovementConfidenceInterval95?.[0])}</span>
           <span>損益差の95%下限 {holdout?.excessConfidenceInterval95 ? formatSignedPct(holdout.excessConfidenceInterval95[0]) : "-"}</span>

@@ -237,6 +237,9 @@ def import_realtime_short_term_runs(args):
             continue
         selected_id = report["selection"].get("selectedExploratoryCandidateId")
         selected = next((item for item in report["variants"] if item["id"] == selected_id), None)
+        input_provenance = report.get("inputProvenance") or {}
+        market_input = input_provenance.get("marketTicks") or {}
+        asset_input = input_provenance.get("assetTicks") or {}
         params = {
             "purpose": report["methodology"]["status"],
             "specification_version": report["specification"]["version"],
@@ -250,6 +253,11 @@ def import_realtime_short_term_runs(args):
             "specification_sha256": reproducibility["specificationSha256"],
             "trades_csv_sha256": reproducibility.get("tradesCsvSha256") or "unavailable",
             "opportunities_csv_sha256": reproducibility.get("opportunitiesCsvSha256") or "unavailable",
+            "input_mode": input_provenance.get("mode") or reproducibility.get("inputMode") or "unknown",
+            "input_lookback_days": input_provenance.get("lookbackDays", 0),
+            "input_archive_partitions": input_provenance.get(
+                "archivePartitions", reproducibility.get("archivePartitions", 0)
+            ),
         }
         coverage = report["coverage"]
         metrics = {
@@ -258,6 +266,11 @@ def import_realtime_short_term_runs(args):
             "independent_windows": coverage["independentWindows"],
             "selected_trades": coverage["selectedTrades"],
             "common_opportunities": coverage.get("opportunities", 0),
+            "input_archive_rows": market_input.get("archiveRows", 0) + asset_input.get("archiveRows", 0),
+            "input_sqlite_rows": market_input.get("sqliteRows", 0) + asset_input.get("sqliteRows", 0),
+            "input_merged_rows": market_input.get("mergedRows", 0) + asset_input.get("mergedRows", 0),
+            "input_duplicates_removed": market_input.get("duplicatesRemoved", 0)
+            + asset_input.get("duplicatesRemoved", 0),
         }
         if selected:
             for split in ("calibration", "holdout"):
@@ -321,6 +334,7 @@ def import_realtime_short_term_runs(args):
                 "polymarket.dataset_sha256": reproducibility["datasetSha256"],
                 "quality_status": report["selection"]["status"],
                 "promotion_allowed": "false",
+                "input_mode": params["input_mode"],
                 "source": "polymarket-watch-5s-replay",
             },
         ):

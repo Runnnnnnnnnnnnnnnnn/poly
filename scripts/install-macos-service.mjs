@@ -50,6 +50,7 @@ const modelRevision = fileFingerprint([
   "src/lib/realtime-market-data/execution-audit.ts",
   "src/lib/realtime-market-data/settlement-audit.ts",
   "scripts/archive-realtime-data.py",
+  "scripts/export-realtime-replay-input.py",
   "requirements-analytics.txt",
   "scripts/run-short-term-direction.mts",
   "scripts/backtest-realtime-short-term.mts",

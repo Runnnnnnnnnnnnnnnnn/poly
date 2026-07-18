@@ -184,6 +184,23 @@ const realtimeReplayMetricSchema = z.object({
     randomMedianNetReturnPct: z.number(),
   }),
 });
+const realtimeReplayInputSourceSchema = z.object({
+  archiveRows: z.number(),
+  sqliteRows: z.number(),
+  mergedRows: z.number(),
+  duplicatesRemoved: z.number(),
+  firstCapturedAt: z.string().nullable(),
+  latestCapturedAt: z.string().nullable(),
+});
+const realtimeReplayInputProvenanceSchema = z.object({
+  mode: z.enum(["sqlite", "parquet", "hybrid"]),
+  archivePartitions: z.number(),
+  lookbackDays: z.number(),
+  sinceAt: z.string().nullable(),
+  beforeAt: z.string(),
+  marketTicks: realtimeReplayInputSourceSchema,
+  assetTicks: realtimeReplayInputSourceSchema,
+});
 const realtimeReplaySchema = z.object({
   generatedAt: z.string(),
   specification: z.object({
@@ -242,6 +259,7 @@ const realtimeReplaySchema = z.object({
     specificationSha256: z.string(),
     datasetSha256: z.string(),
   }).passthrough(),
+  inputProvenance: realtimeReplayInputProvenanceSchema.optional(),
 });
 const realtimeReplayHistoryItemSchema = z.object({
   runId: z.string(),
@@ -274,6 +292,10 @@ const realtimeReplayHistoryItemSchema = z.object({
   profitableFolds: z.number(),
   benchmarkBeatingFolds: z.number().optional(),
   totalFolds: z.number(),
+  inputMode: z.enum(["sqlite", "parquet", "hybrid"]).optional(),
+  archivePartitions: z.number().optional(),
+  archiveRows: z.number().optional(),
+  sqliteRows: z.number().optional(),
 }).passthrough();
 
 export type MonitoringSnapshot = Awaited<ReturnType<typeof getMonitoringSnapshot>>;
@@ -1342,6 +1364,7 @@ function loadRealtimeShortTermResearchSummary() {
         benchmarkBeatingFolds: walkForward?.benchmarkBeatingFolds ?? 0,
         totalFolds: walkForward?.totalFolds ?? 0,
       } : null,
+      inputProvenance: parsed.inputProvenance ?? null,
       reproducibility: parsed.reproducibility,
       history: loadRealtimeShortTermResearchHistory(root),
     };

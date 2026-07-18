@@ -21,17 +21,62 @@ def main():
         database = state / "fixture.db"
         archive = state / "parquet"
         status = state / "status.json"
+        replay_input = state / "replay-input.json"
         with sqlite3.connect(database) as connection:
-            connection.execute('CREATE TABLE "RealtimeMarketTick" ("id" TEXT PRIMARY KEY, "marketId" TEXT, "asset" TEXT, "capturedAt" DATETIME, "arbitrageViolation" BOOLEAN)')
-            connection.execute('CREATE TABLE "RealtimeAssetTick" ("id" TEXT PRIMARY KEY, "asset" TEXT, "capturedAt" DATETIME)')
+            connection.execute('''CREATE TABLE "RealtimeMarketTick" (
+                "id" TEXT PRIMARY KEY,
+                "eventId" TEXT,
+                "marketId" TEXT,
+                "asset" TEXT,
+                "marketStartAt" DATETIME,
+                "marketEndAt" DATETIME,
+                "polymarketBestBid" REAL,
+                "polymarketBestAsk" REAL,
+                "polymarketUpdatedAt" DATETIME,
+                "negativeBestBid" REAL,
+                "negativeBestAsk" REAL,
+                "negativeUpdatedAt" DATETIME,
+                "hyperliquidBestBid" REAL,
+                "hyperliquidBestAsk" REAL,
+                "hyperliquidMidPrice" REAL,
+                "hyperliquidFundingRate" REAL,
+                "hyperliquidUpdatedAt" DATETIME,
+                "chainlinkPrice" REAL,
+                "chainlinkUpdatedAt" DATETIME,
+                "referencePrice" REAL,
+                "referenceUpdatedAt" DATETIME,
+                "captureSkewMs" INTEGER,
+                "synchronizationVersion" TEXT,
+                "capturedAt" DATETIME,
+                "arbitrageViolation" BOOLEAN
+            )''')
+            connection.execute('''CREATE TABLE "RealtimeAssetTick" (
+                "id" TEXT PRIMARY KEY,
+                "asset" TEXT,
+                "hyperliquidBestBid" REAL,
+                "hyperliquidBestAsk" REAL,
+                "hyperliquidMidPrice" REAL,
+                "hyperliquidUpdatedAt" DATETIME,
+                "chainlinkPrice" REAL,
+                "chainlinkUpdatedAt" DATETIME,
+                "captureSkewMs" INTEGER,
+                "synchronizationVersion" TEXT,
+                "capturedAt" DATETIME
+            )''')
             connection.executemany(
-                'INSERT INTO "RealtimeMarketTick" VALUES (?, ?, ?, ?, ?)',
+                'INSERT INTO "RealtimeMarketTick" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [
-                    ("market-1", "m1", "BTC", 1782864001000, 0),
-                    ("market-current", "m2", "ETH", 1782950401000, 1),
+                    market_row("market-1", "m1", "BTC", 1782864001000, 0),
+                    market_row("market-current", "m2", "ETH", 1782950401000, 1),
                 ],
             )
-            connection.execute('INSERT INTO "RealtimeAssetTick" VALUES (?, ?, ?)', ("asset-1", "BTC", 1782864002000))
+            connection.executemany(
+                'INSERT INTO "RealtimeAssetTick" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                    asset_row("asset-1", "BTC", 1782864002000),
+                    asset_row("asset-current", "ETH", 1782950402000),
+                ],
+            )
         command = [
             sys.executable,
             str(root / "scripts/archive-realtime-data.py"),
@@ -73,7 +118,85 @@ def main():
             "latest_at": "2026-07-01 00:00:01+00:00",
         }]
         assert queried == expected_query, queried
+        export_command = [
+            sys.executable,
+            str(root / "scripts/export-realtime-replay-input.py"),
+            "--database", str(database),
+            "--archive", str(archive),
+            "--output", str(replay_input),
+            "--market-sync", "websocket-v6-near-term-discovery",
+            "--asset-sync", "websocket-asset-v1",
+            "--lookback-days", "30",
+            "--now", "2026-07-02T12:00:00Z",
+        ]
+        overlap = json.loads(subprocess.check_output(export_command, text=True))
+        assert overlap["mode"] == "sqlite"
+        assert overlap["archivePartitions"] == 2
+        assert overlap["marketTicks"]["mergedRows"] == 2
+        assert overlap["assetTicks"]["mergedRows"] == 2
+
+        with sqlite3.connect(database) as connection:
+            connection.execute('DELETE FROM "RealtimeMarketTick" WHERE "id" = ?', ("market-1",))
+            connection.execute('DELETE FROM "RealtimeAssetTick" WHERE "id" = ?', ("asset-1",))
+        retained = json.loads(subprocess.check_output(export_command, text=True))
+        assert retained["mode"] == "hybrid"
+        assert retained["marketTicks"]["archiveRows"] == 1
+        assert retained["marketTicks"]["sqliteRows"] == 1
+        assert retained["marketTicks"]["mergedRows"] == 2
+        assert retained["assetTicks"]["archiveRows"] == 1
+        assert retained["assetTicks"]["sqliteRows"] == 1
+        assert retained["assetTicks"]["mergedRows"] == 2
+        payload = json.loads(replay_input.read_text())
+        assert [row["id"] for row in payload["marketTicks"]] == ["market-1", "market-current"]
+        assert [row["id"] for row in payload["assetTicks"]] == ["asset-1", "asset-current"]
+        assert payload["marketTicks"][0]["capturedAt"] == "2026-07-01T00:00:01Z"
     print("columnar archive tests passed")
+
+
+def market_row(identifier, market_id, asset, captured_at, arbitrage_violation):
+    return (
+        identifier,
+        f"event-{market_id}",
+        market_id,
+        asset,
+        captured_at - 60_000,
+        captured_at + 840_000,
+        0.49,
+        0.51,
+        captured_at,
+        0.49,
+        0.51,
+        captured_at,
+        100.0,
+        100.1,
+        100.05,
+        0.00001,
+        captured_at,
+        100.0,
+        captured_at,
+        100.0,
+        captured_at,
+        10,
+        "websocket-v6-near-term-discovery",
+        captured_at,
+        arbitrage_violation,
+    )
+
+
+def asset_row(identifier, asset, captured_at):
+    return (
+        identifier,
+        asset,
+        100.0,
+        100.1,
+        100.05,
+        captured_at,
+        100.0,
+        captured_at,
+        10,
+        "websocket-asset-v1",
+        captured_at,
+    )
 
 
 if __name__ == "__main__":

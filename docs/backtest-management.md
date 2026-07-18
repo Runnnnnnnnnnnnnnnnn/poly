@@ -182,6 +182,14 @@ atomically with Zstandard compression, then re-opened and checked against its so
 records the time range, SHA-256 digest, columns, and byte size. The dashboard remains on compact JSON and
 recent SQLite state, while the research history survives SQLite retention pruning.
 
+The regular five-second replay reads a rolling 30-day union of this Parquet history and the current SQLite
+window. Archived rows older than the first retained SQLite tick are loaded first, current rows are then
+merged by immutable tick ID, and the result is sorted by capture time. Every report records the input mode,
+partition count, Parquet/SQLite row counts, merged time range, and final dataset SHA-256. If Parquet exists
+but its pinned Python reader is unavailable or the archive cannot be decoded, the replay fails instead of
+silently producing a shorter backtest. Set `REALTIME_REPLAY_LOOKBACK_DAYS=0` for a manual all-history replay,
+or another whole-day value for a fixed research window.
+
 Install the pinned analytics runtime with `npm run analytics:install`. Run an immediate verified archive with
 `npm run archive:realtime`, and inspect daily asset coverage with `npm run archive:query`. For targeted
 research, pass a DuckDB query directly:
