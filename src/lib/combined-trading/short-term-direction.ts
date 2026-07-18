@@ -2,30 +2,24 @@ import { createHash } from "node:crypto";
 
 import {
   discoverActiveCryptoDirectionMarkets,
-  fetchCurrentBooks,
   type ActiveCryptoDirectionMarket,
 } from "@/src/lib/backtest/polymarket";
-import {
-  calculatePriceBasisPct,
-  fetchPolymarketReferencePrices,
-  selectReferencePrice,
-  type SupportedReferenceAsset,
-} from "@/src/lib/combined-trading/polymarket-reference";
 import type {
   CombinedHorizonSignalScan,
   CombinedLiveSignal,
   CombinedSignalScan,
 } from "@/src/lib/combined-trading/live-signal";
-import { fetchHyperliquidMarketStates } from "@/src/lib/monitoring/hyperliquid";
+import { realtimeSynchronizationVersion } from "@/src/lib/realtime-market-data/collector";
 import { prisma } from "@/src/lib/server/prisma";
 
 export const shortTermDirectionHorizonKey = 0;
-export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v5-m15";
-export const shortTermDirectionControlKey = "poly-updown-forward-control-v5-m15";
+export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v6-m15";
+export const shortTermDirectionControlKey = "poly-updown-forward-control-v6-m15";
 
 export const shortTermDirectionSpecification = Object.freeze({
-  version: 5,
+  version: 6,
   executionAuditVersion: 3,
+  decisionDataSource: "persisted-synchronized-5s-orderbook",
   independentSampleUnit: "15-minute-window",
   strategyTrials: 11,
   supportedAssets: ["BTC", "ETH", "SOL", "XRP"] as const,
@@ -35,6 +29,7 @@ export const shortTermDirectionSpecification = Object.freeze({
   decisionWindowMinutes: 2,
   maximumSpread: 0.08,
   historyLookbackMinutes: 30,
+  maximumDecisionTickAgeMs: 15_000,
   startPriceToleranceMs: 90_000,
   marketProbabilityMinimum: 0.01,
   marketProbabilityMaximum: 0.99,
@@ -116,16 +111,19 @@ export async function scanShortTermDirectionSignal(now = new Date()): Promise<Co
     };
   }
 
-  const tokenIds = inWindow.map((market) => market.tokenId);
-  const assets = Array.from(new Set(inWindow.map((market) => market.asset))) as SupportedReferenceAsset[];
   const historyStart = new Date(Math.min(
     now.getTime() - shortTermDirectionSpecification.historyLookbackMinutes * 60_000,
     ...inWindow.map((market) => new Date(market.eventStartTime).getTime() - shortTermDirectionSpecification.startPriceToleranceMs),
   ));
-  const [books, liveStates, referencePrices, history] = await Promise.all([
-    fetchCurrentBooks(tokenIds).catch(() => new Map()),
-    fetchHyperliquidMarketStates().catch(() => []),
-    fetchPolymarketReferencePrices(assets).catch(() => []),
+  const [synchronizedTicks, history] = await Promise.all([
+    prisma.realtimeMarketTick.findMany({
+      where: {
+        marketId: { in: inWindow.map((market) => market.id) },
+        synchronizationVersion: realtimeSynchronizationVersion,
+        capturedAt: { gte: historyStart, lte: now },
+      },
+      orderBy: { capturedAt: "asc" },
+    }),
     prisma.hyperliquidSnapshot.findMany({
       where: {
         asset: { in: [...supportedAssets] },
@@ -134,30 +132,35 @@ export async function scanShortTermDirectionSignal(now = new Date()): Promise<Co
       orderBy: { capturedAt: "asc" },
     }),
   ]);
-  const liveByAsset = new Map(liveStates.map((state) => [state.asset, state]));
+  const ticksByMarket = new Map<string, typeof synchronizedTicks>();
+  for (const tick of synchronizedTicks) ticksByMarket.set(tick.marketId, [...(ticksByMarket.get(tick.marketId) ?? []), tick]);
   const historyByAsset = new Map<string, typeof history>();
   for (const row of history) historyByAsset.set(row.asset, [...(historyByAsset.get(row.asset) ?? []), row]);
 
   const signals = inWindow.flatMap((market): CombinedLiveSignal[] => {
-    const book = books.get(market.tokenId);
-    const bestBid = book?.bids[0]?.price ?? null;
-    const bestAsk = book?.asks[0]?.price ?? null;
+    const ticks = ticksByMarket.get(market.id) ?? [];
+    const decisionTick = selectLatestSynchronizedDecisionTick(
+      ticks,
+      now,
+      shortTermDirectionSpecification.maximumDecisionTickAgeMs,
+    );
+    const bestBid = decisionTick?.polymarketBestBid ?? null;
+    const bestAsk = decisionTick?.polymarketBestAsk ?? null;
     if (bestBid === null || bestAsk === null || bestAsk < bestBid || bestAsk - bestBid > maximumSpread) return [];
     const marketProbability = clamp(
       (bestBid + bestAsk) / 2,
       shortTermDirectionSpecification.marketProbabilityMinimum,
       shortTermDirectionSpecification.marketProbabilityMaximum,
     );
-    const state = liveByAsset.get(market.asset);
-    if (!state || state.midPrice <= 0) return [];
+    if (!decisionTick || decisionTick.hyperliquidMidPrice <= 0) return [];
     const startAt = new Date(market.eventStartTime);
     const endAt = new Date(market.endDate as string);
     const rows = historyByAsset.get(market.asset) ?? [];
-    const startPrice = nearestPrice(rows, startAt, shortTermDirectionSpecification.startPriceToleranceMs);
+    const startPrice = selectCausalStartPrice(ticks, startAt, shortTermDirectionSpecification.startPriceToleranceMs);
     if (startPrice === null) return [];
     const elapsedHours = Math.max((now.getTime() - startAt.getTime()) / 3_600_000, 1 / 60);
     const remainingHours = Math.max((endAt.getTime() - now.getTime()) / 3_600_000, 0);
-    const momentum = Math.log(state.midPrice / startPrice);
+    const momentum = Math.log(decisionTick.hyperliquidMidPrice / startPrice);
     const volatility24h = estimateVolatility24h(rows.map((row) => row.midPrice));
     const horizonVolatility = Math.max(
       volatility24h * Math.sqrt(elapsedHours / 24),
@@ -170,7 +173,6 @@ export async function scanShortTermDirectionSignal(now = new Date()): Promise<Co
       shortTermDirectionSpecification.projectedMoveLimit,
     );
     const asset = market.asset as CombinedLiveSignal["asset"];
-    const reference = selectReferencePrice(referencePrices, asset, market.referenceSource);
     const signalZ = (
       marketProbability - shortTermDirectionSpecification.probabilityCenter
     ) / shortTermDirectionSpecification.probabilityScale;
@@ -187,16 +189,20 @@ export async function scanShortTermDirectionSignal(now = new Date()): Promise<Co
       marketBestBid: bestBid,
       marketBestAsk: bestAsk,
       marketSpread: bestAsk - bestBid,
-      polymarketReferencePrice: reference?.price ?? null,
-      referenceSource: reference?.source ?? null,
-      referenceCapturedAt: reference?.capturedAt ?? null,
-      spotPrice: state.midPrice,
-      priceBasisPct: reference ? calculatePriceBasisPct(state.midPrice, reference.price) : null,
-      impliedTarget: state.midPrice * Math.exp(projectedMove),
+      polymarketReferencePrice: decisionTick.referencePrice,
+      referenceSource: decisionTick.referenceSource === "BINANCE" || decisionTick.referenceSource === "CHAINLINK"
+        ? decisionTick.referenceSource
+        : null,
+      referenceCapturedAt: decisionTick.referenceUpdatedAt.toISOString(),
+      spotPrice: decisionTick.hyperliquidMidPrice,
+      priceBasisPct: decisionTick.priceBasisPct,
+      impliedTarget: decisionTick.hyperliquidMidPrice * Math.exp(projectedMove),
       realizedVolatility24h: volatility24h,
       hyperliquidMomentum6h: momentum,
       trendZ6h: trendZ,
-      hyperliquidFunding24h: Number.isFinite(state.fundingRate) ? state.fundingRate * 24 : null,
+      hyperliquidFunding24h: typeof decisionTick.hyperliquidFundingRate === "number" && Number.isFinite(decisionTick.hyperliquidFundingRate)
+        ? decisionTick.hyperliquidFundingRate * 24
+        : null,
       signalZ,
       side: signalZ >= 0 ? "LONG" : "SHORT",
       sourceMarkets: 1,
@@ -206,8 +212,8 @@ export async function scanShortTermDirectionSignal(now = new Date()): Promise<Co
   }).sort((left, right) => Math.abs(right.signalZ) - Math.abs(left.signalZ));
   const signal = signals[0] ?? null;
   const reason = signal
-    ? `${signals.length}件の15分Up/Down市場を開始2分後の板で判定`
-    : "板の厚さ、スプレッド、または開始時のHyperliquid価格が不足しています";
+    ? `${signals.length}件の15分Up/Down市場を同期5秒板で判定`
+    : "同期5秒板、スプレッド、または開始時価格が不足しています";
   const horizon: CombinedHorizonSignalScan = {
     horizonHours: shortTermDirectionHorizonKey,
     signal,
@@ -249,11 +255,31 @@ function emptyHorizonScan(input: { nextWindowAt: string | null; closestHoursToEn
   };
 }
 
-function nearestPrice(rows: Array<{ capturedAt: Date; midPrice: number }>, at: Date, toleranceMs: number) {
-  const candidate = [...rows]
-    .filter((row) => Math.abs(row.capturedAt.getTime() - at.getTime()) <= toleranceMs)
-    .sort((left, right) => Math.abs(left.capturedAt.getTime() - at.getTime()) - Math.abs(right.capturedAt.getTime() - at.getTime()))[0];
-  return candidate?.midPrice && candidate.midPrice > 0 ? candidate.midPrice : null;
+export function selectLatestSynchronizedDecisionTick<T extends { capturedAt: Date }>(
+  ticks: T[],
+  now: Date,
+  maximumAgeMs: number,
+) {
+  return [...ticks]
+    .filter((tick) => {
+      const ageMs = now.getTime() - tick.capturedAt.getTime();
+      return ageMs >= 0 && ageMs <= maximumAgeMs;
+    })
+    .sort((left, right) => right.capturedAt.getTime() - left.capturedAt.getTime())[0] ?? null;
+}
+
+export function selectCausalStartPrice(
+  ticks: Array<{ capturedAt: Date; hyperliquidMidPrice: number }>,
+  startAt: Date,
+  maximumDelayMs: number,
+) {
+  const candidate = [...ticks]
+    .filter((tick) => {
+      const delayMs = tick.capturedAt.getTime() - startAt.getTime();
+      return delayMs >= 0 && delayMs <= maximumDelayMs && tick.hyperliquidMidPrice > 0;
+    })
+    .sort((left, right) => left.capturedAt.getTime() - right.capturedAt.getTime())[0];
+  return candidate?.hyperliquidMidPrice ?? null;
 }
 
 function estimateVolatility24h(prices: number[]) {

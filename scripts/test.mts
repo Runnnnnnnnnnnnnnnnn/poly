@@ -26,6 +26,8 @@ import {
   isShortTermDirectionControlKey,
   isShortTermDirectionFamilyKey,
   isShortTermDirectionStrategyKey,
+  selectCausalStartPrice,
+  selectLatestSynchronizedDecisionTick,
   shortTermDirectionControlKey,
   shortTermDirectionSpecificationHash,
   shortTermDirectionStrategyKey,
@@ -906,6 +908,18 @@ assert.equal(isShortTermDecisionWindow(shortMarketWindow, new Date("2026-01-01T0
 assert.equal(isShortTermDecisionWindow(shortMarketWindow, new Date("2026-01-01T00:02:00Z")), true);
 assert.equal(isShortTermDecisionWindow(shortMarketWindow, new Date("2026-01-01T00:03:59Z")), true);
 assert.equal(isShortTermDecisionWindow(shortMarketWindow, new Date("2026-01-01T00:04:00Z")), false);
+const synchronizedDecisionTicks = [
+  { capturedAt: new Date("2026-01-01T00:01:59Z"), hyperliquidMidPrice: 99 },
+  { capturedAt: new Date("2026-01-01T00:02:01Z"), hyperliquidMidPrice: 100 },
+  { capturedAt: new Date("2026-01-01T00:02:04Z"), hyperliquidMidPrice: 101 },
+];
+assert.equal(
+  selectLatestSynchronizedDecisionTick(synchronizedDecisionTicks, new Date("2026-01-01T00:02:05Z"), 15_000)?.hyperliquidMidPrice,
+  101,
+);
+assert.equal(selectLatestSynchronizedDecisionTick(synchronizedDecisionTicks, new Date("2026-01-01T00:02:30Z"), 15_000), null);
+assert.equal(selectCausalStartPrice(synchronizedDecisionTicks, new Date("2026-01-01T00:02:00Z"), 90_000), 100);
+assert.equal(selectCausalStartPrice(synchronizedDecisionTicks, new Date("2026-01-01T00:02:05Z"), 90_000), null);
 assert.equal(isShortTermDirectionStrategyKey(shortTermDirectionStrategyKey), true);
 assert.equal(isShortTermDirectionControlKey(shortTermDirectionControlKey), true);
 assert.equal(isShortTermDirectionFamilyKey("poly-updown-hl-trend-forward-v2-m15"), true);
