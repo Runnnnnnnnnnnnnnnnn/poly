@@ -1,6 +1,31 @@
 {
   "items": [
     {
+      "runId": "2026-07-18T08-03-35.386Z",
+      "generatedAt": "2026-07-18T08:03:35.386Z",
+      "codeRevision": "d70bdbf6ee049a7f208c994978031df4335abc18",
+      "scriptSha256": "0a0dac05d213c90d78aeacb96f1c9fde2d89e646862e7c46c6c85bba608cf926",
+      "specificationSha256": "9fa008d77412f53b74d69296d5c46d6c3f8a1e34cb354e2b3936825b0e80bef6",
+      "datasetSha256": "8a322686b26394caf914afabe599f18d611d5e707b0aa2fe182c3d7f728f02ee",
+      "decisionSha256": "0a101e0a86e3907c39016c705b80c29911b93f48d2d2fd9a48d7206b36732fc8",
+      "observationsCsvSha256": "bf6832bffaabbd8050f98c6cb62e6a849edc7bfee7d19bd82a8a6edce5f72c04",
+      "marketDuration": "15m",
+      "lookbackHours": 72,
+      "executionMode": "taker",
+      "completeMarkets": 1147,
+      "status": "rejected",
+      "trades": 310,
+      "netReturnPct": -0.020507726353351033,
+      "averageReturnPct": -0.0013230791195710343,
+      "confidenceLowerPct": -0.00021472952063767906,
+      "excessReturnPct": -0.0011569502760936559,
+      "maxDrawdownPct": 0.020459380263532025,
+      "profitableFolds": 0,
+      "totalFolds": 4,
+      "passedGates": 2,
+      "totalGates": 7
+    },
+    {
       "runId": "2026-07-18T07-53-59.464Z",
       "generatedAt": "2026-07-18T07:53:59.464Z",
       "codeRevision": "08ebfe29333ec751de4f5add9b3119c10a727dcf",
