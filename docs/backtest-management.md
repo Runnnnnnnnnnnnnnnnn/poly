@@ -90,9 +90,10 @@ GET /api/model-evaluations/<run-id>?format=csv
 - Polymarket Watch: executive status, latest result, forward collection, and operational health.
 - MLflow: experiment search, parameter/metric comparison, run artifacts, and model research history.
   Keep this as the researcher workspace; the executive dashboard should not expose its complexity.
-- SQLite now; PostgreSQL later: operational state and normalized execution records.
-- CSV artifacts now; Parquet plus DuckDB when the five-second dataset becomes large enough that SQLite
-  extracts are slow. DuckDB can query partitioned Parquet directly without loading it into the app DB.
+- SQLite now; PostgreSQL later: operational state and the recent synchronized execution window.
+- Partitioned Parquet: permanent research history for completed UTC days of five-second market and execution books.
+- DuckDB: local ad-hoc analysis over Parquet without loading the tick history into the dashboard or SQLite.
+- CSV artifacts: compact, portable evidence for each immutable model run.
 - [DVC](https://dvc.org/doc) only when dataset snapshots become too large or numerous for the current hash
   plus artifact model.
 - [W&B](https://docs.wandb.ai/models/track) is a reasonable hosted alternative when remote researchers need a shared experiment UI, but it is
@@ -175,12 +176,24 @@ runs, restarts through launchd, and writes health/import state to
 Use a protected remote MLflow Tracking Server instead of exposing this local port directly when the run
 comparison UI must be shared with a remote manager.
 
-For larger tick datasets, keep the dashboard on compact JSON summaries and write raw immutable ticks
-to date/asset-partitioned Parquet. Query those files with DuckDB for research, and register only hashes,
-parameters, metrics, and artifact paths in MLflow. This keeps the executive screen fast while preserving
-reproducible row-level analysis. The 5-second replay already writes immutable JSON, candidate-trade CSV,
-and complete-opportunity CSV artifacts;
-Parquet becomes worthwhile when repeated CSV scans or the SQLite runtime database become the bottleneck.
+Completed UTC days are archived every six hours to
+`~/.polymarket-watch/parquet/table=<dataset>/date=YYYY-MM-DD/data.parquet`. Each partition is written
+atomically with Zstandard compression, then re-opened and checked against its source row count. A manifest
+records the time range, SHA-256 digest, columns, and byte size. The dashboard remains on compact JSON and
+recent SQLite state, while the research history survives SQLite retention pruning.
+
+Install the pinned analytics runtime with `npm run analytics:install`. Run an immediate verified archive with
+`npm run archive:realtime`, and inspect daily asset coverage with `npm run archive:query`. For targeted
+research, pass a DuckDB query directly:
+
+```sh
+npm run archive:query -- --sql "select asset, count(*) from market_ticks where date >= '2026-07-01' group by asset"
+```
+
+DuckDB applies filter and projection pushdown directly to Parquet. Register only hashes, parameters,
+metrics, and artifact paths in MLflow; do not move the dashboard request path onto the analytical store.
+The five-second replay continues to write immutable JSON, candidate-trade CSV, and complete-opportunity CSV
+artifacts for individual model runs.
 
 The synchronized 5-second replay compares every candidate with the same execution timestamps and the
 same 5% capital budget against six fixed baselines: Polymarket-only, Hyperliquid-only, always long,

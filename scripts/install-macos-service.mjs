@@ -31,6 +31,12 @@ if (process.argv.includes("--uninstall")) {
   process.exit(0);
 }
 
+execFileSync(runtimeNode, [resolve(root, "scripts/install-analytics-runtime.mjs")], {
+  cwd: root,
+  env: process.env,
+  stdio: "inherit",
+});
+
 const modelRevision = fileFingerprint([
   "src/lib/model-evaluation/engine.ts",
   "src/lib/model-evaluation/combined-trading.ts",
@@ -43,6 +49,8 @@ const modelRevision = fileFingerprint([
   "src/lib/combined-trading/short-term-direction.ts",
   "src/lib/realtime-market-data/execution-audit.ts",
   "src/lib/realtime-market-data/settlement-audit.ts",
+  "scripts/archive-realtime-data.py",
+  "requirements-analytics.txt",
   "scripts/run-short-term-direction.mts",
   "scripts/backtest-realtime-short-term.mts",
   "scripts/realtime-short-term-schedule.mjs",

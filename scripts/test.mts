@@ -55,6 +55,7 @@ import {
 } from "../src/lib/combined-trading/forward-evaluation";
 import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
 import { evaluateBackupStatus } from "../src/lib/monitoring/backup-status";
+import { evaluateColumnarArchiveStatus, type ColumnarArchiveRecord } from "../src/lib/monitoring/columnar-archive-status";
 import { isTransientHeartbeatWriteError } from "../src/lib/monitoring/heartbeat";
 import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts, evaluateSettlementResolutionAlerts, evaluateTestnetReconciliationAlerts } from "../src/lib/monitoring/operational-alerts";
 import { evaluateSynchronizedPriceQuality, synchronizedDataReadinessStatus } from "../src/lib/monitoring/synchronized-quality";
@@ -2312,7 +2313,7 @@ assert.equal(authorizeApiRequest({
 console.log("API access-scope tests passed");
 
 const alertNow = new Date("2026-01-01T01:00:00Z");
-const healthyHeartbeats = ["polymarket", "hyperliquid", "realtime-market-data", "forward-experiment", "short-term-direction", "forward-execution-audit-report", "realtime-short-term-backtest", "backtest"].map((id) => ({
+const healthyHeartbeats = ["polymarket", "hyperliquid", "realtime-market-data", "forward-experiment", "short-term-direction", "forward-execution-audit-report", "realtime-short-term-backtest", "columnar-archive", "backtest"].map((id) => ({
   id,
   status: "healthy",
   message: null,
@@ -2356,6 +2357,21 @@ assert.equal(evaluateBackupStatus({ files: backupFiles, record: { ...verifiedBac
 assert.equal(evaluateBackupStatus({ files: backupFiles, record: verifiedBackupRecord, now: new Date("2026-01-01T04:00:00Z"), maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "error");
 assert.equal(evaluateBackupStatus({ files: backupFiles, record: null, now: alertNow, maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "waiting");
 assert.equal(evaluateBackupStatus({ files: [], record: null, now: alertNow, maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "waiting");
+const verifiedArchiveRecord: ColumnarArchiveRecord = {
+  status: "healthy",
+  schemaVersion: 1,
+  generatedAt: "2026-01-01T01:00:00Z",
+  verifiedAt: "2026-01-01T01:00:00Z",
+  archivedThrough: "2025-12-31",
+  partitions: 2,
+  rows: 1_000,
+  sizeBytes: 50_000,
+  message: "verified",
+};
+assert.equal(evaluateColumnarArchiveStatus(verifiedArchiveRecord, alertNow, 12 * 60 * 60_000).status, "healthy");
+assert.equal(evaluateColumnarArchiveStatus({ ...verifiedArchiveRecord, archivedThrough: "2025-12-30" }, alertNow, 12 * 60 * 60_000).status, "waiting");
+assert.equal(evaluateColumnarArchiveStatus({ ...verifiedArchiveRecord, verifiedAt: null }, alertNow, 12 * 60 * 60_000).status, "error");
+assert.equal(evaluateColumnarArchiveStatus(verifiedArchiveRecord, new Date("2026-01-02T01:01:00Z"), 12 * 60 * 60_000).status, "error");
 assert.equal(nextBackupDelayMs({
   record: verifiedBackupRecord,
   latestFile: { name: "polymarket-2026.db.enc", sizeBytes: 1_024 },

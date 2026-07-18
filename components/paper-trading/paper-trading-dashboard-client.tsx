@@ -917,6 +917,7 @@ type MonitoringSnapshot = {
     alerts: { status: "healthy" | "waiting" | "error"; message: string; lastSuccessAt: string | null; webhookConfigured: boolean };
     tunnel: { mode: string; status: "healthy" | "waiting" | "starting"; publicUrl: string | null; fixedUrl: boolean; fallback: boolean; publishedAt: string | null; updatedAt: string | null };
     backup: { status: "healthy" | "waiting" | "error"; encrypted: boolean; copies: number; latestAt: string | null; verifiedAt: string | null; message: string };
+    columnarArchive: { status: "healthy" | "waiting" | "error"; archivedThrough: string | null; partitions: number; rows: number; sizeBytes: number; verifiedAt: string | null; message: string };
   };
   pipelines: Array<{ id: string; label: string; cadence: string; status: "healthy" | "waiting" | "error"; lastSuccessAt: string | null; records: number }>;
 };
@@ -1883,6 +1884,13 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
       value: snapshot?.operations?.backup.status === "healthy" ? `復元確認 ${snapshot.operations.backup.copies}世代` : snapshot?.operations?.backup.status === "error" ? "要確認" : "確認中",
       status: snapshot?.operations?.backup.status ?? "waiting",
     },
+    {
+      label: "検証データ保管",
+      value: snapshot?.operations?.columnarArchive?.status === "healthy"
+        ? `${snapshot.operations.columnarArchive.archivedThrough}まで`
+        : snapshot?.operations?.columnarArchive?.status === "error" ? "要確認" : "保存中",
+      status: snapshot?.operations?.columnarArchive?.status ?? "waiting",
+    },
   ] as const;
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="開発稼働状況">
@@ -1930,7 +1938,7 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-3 divide-x divide-border border-t bg-slate-50/70">
+      <div className="grid grid-cols-2 divide-x divide-y divide-border border-t bg-slate-50/70 sm:grid-cols-4 sm:divide-y-0">
         {operationRows.map((row) => (
           <div key={row.label} className="flex min-w-0 items-start justify-center gap-2 px-2 py-2.5 sm:items-center sm:px-4">
             <span className={`h-2 w-2 shrink-0 rounded-full ${row.status === "healthy" ? "bg-emerald-500" : row.status === "error" ? "bg-rose-500" : "bg-amber-400"}`} />
@@ -2087,6 +2095,7 @@ const fallbackPipelines = [
   { id: "backtest", label: "モデル再検証", cadence: "6時間ごと", status: "waiting" as const },
   { id: "short-term-backtest", label: "15分モデル過去検証", cadence: "6時間ごと", status: "waiting" as const },
   { id: "realtime-short-term-backtest", label: "5秒板リプレイ", cadence: "30分ごと", status: "waiting" as const },
+  { id: "columnar-archive", label: "検証データ保存", cadence: "6時間ごと", status: "waiting" as const },
   { id: "forward-experiment", label: "固定フォワード検証", cadence: "5分ごと", status: "waiting" as const },
   { id: "short-term-direction", label: "15分モデル検証", cadence: "1分ごと", status: "waiting" as const },
 ];

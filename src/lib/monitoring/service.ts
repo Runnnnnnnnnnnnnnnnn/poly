@@ -25,6 +25,7 @@ import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { loadProspectiveSynchronizedData } from "@/src/lib/model-evaluation/prospective-synchronized";
 import { prisma } from "@/src/lib/server/prisma";
 import { readBackupStatus } from "@/src/lib/monitoring/backup-status";
+import { readColumnarArchiveStatus } from "@/src/lib/monitoring/columnar-archive-status";
 import {
   evaluateSynchronizedPriceQuality,
   synchronizedDataReadinessStatus,
@@ -778,6 +779,7 @@ export async function getMonitoringSnapshot() {
   const realtimeAssets = Array.from(new Set(realtimeRecent.map((row) => row.asset))).sort();
   const tunnelStatus = readTunnelStatus();
   const backupStatus = readBackupStatus();
+  const columnarArchiveStatus = readColumnarArchiveStatus(now);
   const combinedShadowRunning = activeCombinedRuns.some((run) => run.status === "running") || shortTermStrategyRun?.status === "running";
   const aggregateInitialEquity = sum(activeCombinedRuns.map((run) => run.initialEquity));
   const aggregateEquity = sum(activeCombinedRuns.map((run) => run.equity));
@@ -1146,6 +1148,7 @@ export async function getMonitoringSnapshot() {
       },
       tunnel: tunnelStatus,
       backup: backupStatus,
+      columnarArchive: columnarArchiveStatus,
     },
     pipelines: inferredPipelines,
   };
@@ -1216,6 +1219,7 @@ function pipelineStatuses(input: {
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("short-term-backtest", "15分モデル過去検証", "6時間ごと", null, heartbeatMap.get("short-term-backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("realtime-short-term-backtest", "5秒板リプレイ", "30分ごと", null, heartbeatMap.get("realtime-short-term-backtest"), input.now, 2 * 60 * 60 * 1_000),
+    pipeline("columnar-archive", "検証データ保存", "6時間ごと", null, heartbeatMap.get("columnar-archive"), input.now, 18 * 60 * 60 * 1_000),
     pipeline("testnet-transport", "testnet API疎通", "10分ごと", null, heartbeatMap.get("testnet-transport"), input.now, 30 * 60 * 1_000),
     pipeline("forward-experiment", "固定フォワード検証", "5分ごと", input.combinedAt, heartbeatMap.get("forward-experiment"), input.now),
     pipeline("short-term-direction", "15分モデル検証", "1分ごと", null, heartbeatMap.get("short-term-direction"), input.now, 5 * 60 * 1_000),

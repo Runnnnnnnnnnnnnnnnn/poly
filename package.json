@@ -29,6 +29,9 @@
     "mlflow:import": "MLFLOW_TRACKING_URI=sqlite:///$HOME/.polymarket-watch/mlflow.db $HOME/.polymarket-watch/mlflow-venv/bin/python scripts/import-model-evaluations-mlflow.py",
     "mlflow:service:install": "node scripts/install-mlflow-service.mjs",
     "mlflow:service:uninstall": "node scripts/install-mlflow-service.mjs --uninstall",
+    "analytics:install": "node scripts/install-analytics-runtime.mjs",
+    "archive:realtime": "ONCE=1 tsx scripts/run-columnar-archive.mts",
+    "archive:query": "$HOME/.polymarket-watch/analytics-venv/bin/python scripts/query-realtime-archive.py",
     "service:install": "node scripts/install-macos-service.mjs",
     "service:uninstall": "node scripts/install-macos-service.mjs --uninstall",
     "paper:trade": "tsx scripts/run-paper-trading.mts"

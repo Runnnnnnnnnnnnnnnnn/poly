@@ -80,6 +80,11 @@ const processes = [
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-realtime-market-data.mts")],
   },
   {
+    name: "columnar-archive",
+    command: process.execPath,
+    args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-columnar-archive.mts")],
+  },
+  {
     name: "monitor",
     command: process.execPath,
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-monitoring.mts")],

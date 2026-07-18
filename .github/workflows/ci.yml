@@ -25,6 +25,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup Python analytics runtime
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install analytics dependencies
+        run: python -m pip install -r requirements-analytics.txt
+
       - name: Lint
         run: npm run lint
 
@@ -33,6 +41,9 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Test verified Parquet archive
+        run: python scripts/test_columnar_archive.py
 
       - name: Build
         run: npm run build

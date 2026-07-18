@@ -56,6 +56,8 @@ fair_probability - effective_buy_price - fee_per_share > entry_edge
 - `PaperPosition`: YES / NO ポジションと決済損益
 - `PaperEquitySnapshot`: キャッシュ、ポジション評価額、資産曲線
 - `RealtimeMarketTick`: Up/Down両板、Hyperliquid板、Chainlink・Binance参照価格を5秒単位で同期した前向きデータ
+- `RealtimeAssetTick`: 市場から独立したHyperliquid板とChainlink・Binance参照価格
+- 完了したUTC日の5秒データは、件数・SHA-256・再読込を確認して日付別Parquetへ永続保存する
 
 本番では履歴データの取得時刻・API応答・データ品質も別途保存することを推奨する。現在の実装は正規化済みの市場、価格、約定を保存する。
 
