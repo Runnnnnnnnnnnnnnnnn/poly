@@ -1,5 +1,6 @@
 import { collectCryptoSnapshots, refreshPredictionMarketOutcomes } from "../src/lib/backtest/service";
 import {
+  checkHyperliquidTestnetTransport,
   getHyperliquidExecutionReadiness,
   performHyperliquidTestnetEmergencyCleanup,
   reconcileHyperliquidTestnetOrders,
@@ -12,9 +13,11 @@ import { prisma } from "../src/lib/server/prisma";
 const collectIntervalMs = Math.max(60_000, Number(process.env.COLLECT_INTERVAL_MS ?? 60_000));
 const outcomeRefreshIntervalMs = Math.max(60_000, Number(process.env.OUTCOME_REFRESH_INTERVAL_MS ?? 60_000));
 const backtestIntervalMs = Math.max(60 * 60 * 1_000, Number(process.env.BACKTEST_INTERVAL_MS ?? 6 * 60 * 60 * 1_000));
+const testnetTransportIntervalMs = Math.max(5 * 60_000, Number(process.env.TESTNET_TRANSPORT_INTERVAL_MS ?? 10 * 60_000));
 let collecting = false;
 let backtesting = false;
 let lastOutcomeRefreshAt = 0;
+let lastTestnetTransportCheckAt = 0;
 
 async function collectCycle() {
   if (collecting) return;
@@ -59,6 +62,23 @@ async function collectCycle() {
       }
     }
     const execution = getHyperliquidExecutionReadiness();
+    if (Date.now() - lastTestnetTransportCheckAt >= testnetTransportIntervalMs) {
+      lastTestnetTransportCheckAt = Date.now();
+      await markPipelineAttempt("testnet-transport", "Hyperliquid testnet APIへ接続確認中");
+      try {
+        const transport = await checkHyperliquidTestnetTransport();
+        if (!transport.transportConnected) throw new Error("testnet APIへ接続できません");
+        const missingAssets = execution.supportedAssets.filter((asset) => !transport.availableAssets.includes(asset));
+        if (missingAssets.length) throw new Error(`testnet対象銘柄がありません: ${missingAssets.join(", ")}`);
+        await markPipelineSuccess(
+          "testnet-transport",
+          transport.availableAssets.length,
+          `SDK ${transport.sdkVersion ?? "不明"} / ${execution.supportedAssets.join("・")}を確認`,
+        );
+      } catch (error) {
+        await markPipelineError("testnet-transport", error);
+      }
+    }
     if (execution.accountConfigured && execution.installed) {
       await markPipelineAttempt("testnet-reconcile", "テストネット口座を照合中");
       try {

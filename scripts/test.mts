@@ -566,6 +566,12 @@ assert.equal(exactAudit.comparableEvents, 2);
 assert.equal(exactAudit.comparableIndependentEvents, 1);
 assert.equal(exactAudit.controlCoverage, 1);
 assert.equal(exactAudit.totalReadinessGates, 9);
+assert.equal(exactAudit.passedReadinessGates, 0);
+assert.equal(exactAudit.readinessGates.find((gate) => gate.id === "trades")?.state, "pending");
+assert.equal(exactAudit.readinessGates.find((gate) => gate.id === "drawdown")?.state, "passing");
+assert.equal(exactAudit.readinessGates.find((gate) => gate.id === "drawdown")?.passed, false);
+assert.ok(exactAudit.currentlyPassingReadinessGates > 0);
+assert.ok(exactAudit.evaluatedReadinessGates < exactAudit.totalReadinessGates);
 assert.equal(exactAudit.settlementResolutionStatus, "healthy");
 assert.deepEqual(exactAudit.attribution.byAsset.map((item) => ({ asset: item.asset, trades: item.trades })), [
   { asset: "BTC", trades: 1 },
@@ -802,6 +808,8 @@ assert.equal(profitableAudit.verifiedPositions, 60);
 assert.equal(profitableAudit.verifiedIndependentEvents, 60);
 assert.equal(profitableAudit.strategyTrials, 11);
 assert.equal(profitableAudit.passedReadinessGates, profitableAudit.totalReadinessGates);
+assert.equal(profitableAudit.currentlyPassingReadinessGates, profitableAudit.totalReadinessGates);
+assert.equal(profitableAudit.evaluatedReadinessGates, profitableAudit.totalReadinessGates);
 assert.ok((profitableAudit.portfolioNetReturnPct ?? 0) > 0);
 assert.ok((profitableAudit.excessReturnPct ?? 0) > 0);
 assert.ok((profitableAudit.excessConfidenceInterval95?.[0] ?? 0) > 0);

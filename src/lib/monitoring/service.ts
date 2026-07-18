@@ -769,6 +769,7 @@ export async function getMonitoringSnapshot() {
     evaluationAt: latestEvaluation?.completedAt ?? null,
     combinedAt: combinedSnapshotAggregate._max.capturedAt,
   });
+  const testnetTransportPipeline = inferredPipelines.find((pipeline) => pipeline.id === "testnet-transport") ?? null;
 
   return {
     status,
@@ -958,6 +959,7 @@ export async function getMonitoringSnapshot() {
       } : null,
       testnet: {
         ...executionReadiness,
+        transport: testnetTransportPipeline,
         verifiedReady: testnetVerifiedReady,
         verification: latestTestnetVerification ? {
           id: latestTestnetVerification.id,
@@ -1180,6 +1182,7 @@ function pipelineStatuses(input: {
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("short-term-backtest", "15分モデル過去検証", "6時間ごと", null, heartbeatMap.get("short-term-backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("realtime-short-term-backtest", "5秒板リプレイ", "30分ごと", null, heartbeatMap.get("realtime-short-term-backtest"), input.now, 2 * 60 * 60 * 1_000),
+    pipeline("testnet-transport", "testnet API疎通", "10分ごと", null, heartbeatMap.get("testnet-transport"), input.now, 30 * 60 * 1_000),
     pipeline("forward-experiment", "固定フォワード検証", "5分ごと", input.combinedAt, heartbeatMap.get("forward-experiment"), input.now),
     pipeline("short-term-direction", "15分モデル検証", "1分ごと", null, heartbeatMap.get("short-term-direction"), input.now, 5 * 60 * 1_000),
   ];

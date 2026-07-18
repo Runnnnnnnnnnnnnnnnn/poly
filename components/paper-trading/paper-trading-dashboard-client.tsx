@@ -437,12 +437,15 @@ type MonitoringSnapshot = {
           randomMedianReturnPct: number;
         };
         passedReadinessGates: number;
+        currentlyPassingReadinessGates?: number;
+        evaluatedReadinessGates?: number;
         totalReadinessGates: number;
         settlementResolutionStatus: "collecting" | "healthy" | "attention";
         readinessGates: Array<{
           id: "trades" | "execution" | "control" | "net-positive" | "benchmark" | "significance" | "selection-bias" | "drawdown" | "settlement";
           label: string;
           passed: boolean;
+          state?: "passing" | "failing" | "pending";
         }>;
         returnDifferencePct: number | null;
         medianTimingErrorMs: number | null;
@@ -669,6 +672,16 @@ type MonitoringSnapshot = {
       verifiedReady: boolean;
       maximumNotionalUsd: number;
       mainnetSupported: false;
+      setupBlockers?: Array<"connector_not_installed" | "api_wallet_not_configured" | "master_account_not_configured" | "execution_not_enabled">;
+      nextStep?: string;
+      transport?: {
+        id: string;
+        label: string;
+        cadence: string;
+        status: "healthy" | "waiting" | "error";
+        lastSuccessAt: string | null;
+        records: number;
+      } | null;
       verification: {
         id: string;
         status: string;
@@ -1262,20 +1275,23 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
   const settlementReady = settlementResolution?.status === "healthy";
   const testnet = snapshot?.combinedShadow.testnet;
   const testnetReady = testnet?.verifiedReady === true;
+  const testnetTransportReady = testnet?.transport?.status === "healthy";
   const testnetLabel = testnetReady
     ? "検証済み"
     : testnet?.verification?.status === "PARTIAL"
       ? "一部検証"
       : testnet?.accountConfigured && testnet.apiWalletConfigured
         ? "実API検証待ち"
-        : "未設定";
+        : testnetTransportReady && testnet?.apiWalletConfigured
+          ? "API接続済み"
+          : "未設定";
   const testnetNote = testnetReady
     ? "発注・取消・照合済み"
     : testnet?.verification?.status === "PARTIAL"
       ? "部分約定の実測待ち"
       : testnet?.accountConfigured && testnet.apiWalletConfigured
         ? "検証スイート未完了"
-        : "専用口座を設定してください";
+        : testnet?.nextStep ?? "専用口座を設定してください";
   const liveEnabled = snapshot?.tradeReadiness.realTradingEnabled === true;
   const promising = audit?.readinessStatus === "promising" && sampleReady && netPositive && edgePositive && drawdownReady;
   const verdict = liveEnabled
@@ -1573,6 +1589,8 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
   const auditReady = audit?.status === "healthy" && verifiedTrades >= requiredAudits;
   const tone: Tone = auditReady && audit?.readinessStatus === "promising" ? "good" : auditReady && audit?.readinessStatus === "underperforming" ? "bad" : "neutral";
   const remaining = Math.max(0, requiredAudits - verifiedTrades);
+  const provisionalPassingGates = audit?.currentlyPassingReadinessGates ?? 0;
+  const evaluatedGates = audit?.evaluatedReadinessGates ?? 0;
   const steps = [
     { label: "15分市場", value: model?.fifteenMinuteMarkets ?? 0, note: "対象" },
     { label: "開始2分後", value: model?.decisionWindowMarkets ?? 0, note: "直近" },
@@ -1676,7 +1694,7 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
         <span>{research
-          ? `完全監査条件 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 9}・公式決着 ${settlementResolution?.completeMarkets ?? 0}/${settlementResolution?.targetMarkets ?? 50}・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用`
+          ? `暫定合格 ${provisionalPassingGates}/${evaluatedGates || audit?.totalReadinessGates || 9}・最終合格 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 9}・公式決着 ${settlementResolution?.completeMarkets ?? 0}/${settlementResolution?.targetMarkets ?? 50}`
           : "発注後の最初の5秒板で約定を再現中"}</span>
         <span className="font-bold text-rose-700">実取引 OFF</span>
       </div>

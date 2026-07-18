@@ -98,6 +98,21 @@ export function getHyperliquidExecutionReadiness() {
   const enabled = process.env.HYPERLIQUID_TESTNET_ENABLED === "1";
   const autoMirrorEnabled = process.env.HYPERLIQUID_TESTNET_AUTO_MIRROR === "1";
   const supportedAssets = supportedTestnetAssets();
+  const setupBlockers = [
+    ...(!installed ? ["connector_not_installed" as const] : []),
+    ...(!apiWalletConfigured ? ["api_wallet_not_configured" as const] : []),
+    ...(!accountConfigured ? ["master_account_not_configured" as const] : []),
+    ...(!enabled ? ["execution_not_enabled" as const] : []),
+  ];
+  const nextStep = !installed
+    ? "testnetコネクターをインストール"
+    : !apiWalletConfigured
+      ? "専用API Walletを作成"
+      : !accountConfigured
+        ? "マスター口座でAPI Walletを承認し、口座アドレスを登録"
+        : !enabled
+          ? "testnet残高とAPI Wallet承認を確認して検証を有効化"
+          : "発注・取消・照合の検証スイートを実行";
   return {
     environment: "testnet" as const,
     installed,
@@ -107,6 +122,8 @@ export function getHyperliquidExecutionReadiness() {
     enabled,
     autoMirrorEnabled,
     supportedAssets,
+    setupBlockers,
+    nextStep,
     ready: installed && accountConfigured && apiWalletConfigured && enabled,
     maximumNotionalUsd: maximumTestnetNotional(),
     mainnetSupported: false,

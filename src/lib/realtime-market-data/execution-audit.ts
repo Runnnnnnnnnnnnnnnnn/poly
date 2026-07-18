@@ -242,20 +242,28 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
   const controlCoverage = benchmark.comparableEvents
     ? benchmark.controlComparablePositions / benchmark.comparableEvents
     : 0;
+  const gate = <Id extends string>(
+    id: Id,
+    label: string,
+    evaluated: boolean,
+    currentlyPassing: boolean,
+  ) => ({
+    id,
+    label,
+    state: !evaluated ? "pending" as const : currentlyPassing ? "passing" as const : "failing" as const,
+    passed: enoughData && evaluated && currentlyPassing,
+  });
+  const settlementStatus = input.settlementResolutionStatus ?? input.settlementBasisStatus;
   const readinessGates = [
-    { id: "trades" as const, label: `${minimumAuditedPositions}件の独立時間枠を完全監査`, passed: enoughData },
-    { id: "execution" as const, label: "実板・時刻・決着の監査率95%以上", passed: enoughData && qualityPassed },
-    { id: "control" as const, label: "同時対照の再現率95%以上", passed: enoughData && controlCoverage >= 0.95 },
-    { id: "net-positive" as const, label: "全コスト控除後プラス", passed: enoughData && (portfolioNetReturnPct ?? 0) > 0 },
-    { id: "benchmark" as const, label: "最良の単純戦略を上回る", passed: enoughData && (benchmark.excessReturnPct ?? 0) > 0 },
-    { id: "significance" as const, label: "対照との差の95%下限がプラス", passed: enoughData && (benchmark.excessConfidenceInterval95?.[0] ?? 0) > 0 },
-    { id: "selection-bias" as const, label: "試行補正後の確信度95%以上", passed: enoughData && (benchmark.deflatedSharpeProbability ?? 0) >= minimumDeflatedSharpeProbability },
-    { id: "drawdown" as const, label: "最大下落5%以内", passed: enoughData && maxDrawdown <= maximumDrawdownPct },
-    {
-      id: "settlement" as const,
-      label: "Chainlink方向とPolymarket正式決着が一致",
-      passed: enoughData && (input.settlementResolutionStatus ?? input.settlementBasisStatus) === "healthy",
-    },
+    gate("trades" as const, `${minimumAuditedPositions}件の独立時間枠を完全監査`, enoughData, true),
+    gate("execution" as const, "実板・時刻・決着の監査率95%以上", eligiblePositions.length > 0, qualityPassed),
+    gate("control" as const, "同時対照の再現率95%以上", benchmark.comparableEvents > 0, controlCoverage >= 0.95),
+    gate("net-positive" as const, "全コスト控除後プラス", portfolioNetReturnPct !== null, (portfolioNetReturnPct ?? 0) > 0),
+    gate("benchmark" as const, "最良の単純戦略を上回る", benchmark.excessReturnPct !== null, (benchmark.excessReturnPct ?? 0) > 0),
+    gate("significance" as const, "対照との差の95%下限がプラス", benchmark.excessConfidenceInterval95 !== null, (benchmark.excessConfidenceInterval95?.[0] ?? 0) > 0),
+    gate("selection-bias" as const, "試行補正後の確信度95%以上", benchmark.deflatedSharpeProbability !== null, (benchmark.deflatedSharpeProbability ?? 0) >= minimumDeflatedSharpeProbability),
+    gate("drawdown" as const, "最大下落5%以内", verifiedIndependentEvents > 0, maxDrawdown <= maximumDrawdownPct),
+    gate("settlement" as const, "Chainlink方向とPolymarket正式決着が一致", settlementStatus !== undefined && settlementStatus !== "collecting", settlementStatus === "healthy"),
   ];
   const readinessStatus = !enoughData
     ? "collecting" as const
@@ -306,6 +314,8 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     controlCoverage,
     benchmarks: benchmark.returns,
     passedReadinessGates: readinessGates.filter((gate) => gate.passed).length,
+    currentlyPassingReadinessGates: readinessGates.filter((gate) => gate.state === "passing").length,
+    evaluatedReadinessGates: readinessGates.filter((gate) => gate.state !== "pending").length,
     totalReadinessGates: readinessGates.length,
     readinessGates,
     settlementResolutionStatus: input.settlementResolutionStatus ?? input.settlementBasisStatus ?? "collecting",
