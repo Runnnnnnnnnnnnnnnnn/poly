@@ -169,6 +169,7 @@ function prepareBuildSource(target) {
   const untrackedExcludes = untrackedRuntimeSourceRsyncExcludes(untracked);
   execFileSync("/usr/bin/rsync", [
     "-a",
+    "--prune-empty-dirs",
     "--exclude=.git/",
     "--exclude=.next/",
     "--exclude=node_modules",
@@ -216,6 +217,7 @@ function stageRuntime(sourceRoot) {
   execFileSync("/usr/bin/rsync", [
     "-a",
     "--delete",
+    "--prune-empty-dirs",
     "--exclude=.git/",
     "--exclude=.next/",
     "--exclude=node_modules",
