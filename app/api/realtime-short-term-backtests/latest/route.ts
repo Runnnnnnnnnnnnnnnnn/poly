@@ -25,6 +25,11 @@ export async function GET(request: NextRequest) {
         headers: downloadHeaders(`realtime-short-term-trades-${safeFileName(report.generatedAt)}.csv`, "text/csv; charset=utf-8"),
       });
     }
+    if (format === "opportunities") {
+      return new NextResponse(await readFile(resolve(artifactRoot, report.reproducibility.runId, "opportunities.csv"), "utf8"), {
+        headers: downloadHeaders(`realtime-short-term-opportunities-${safeFileName(report.generatedAt)}.csv`, "text/csv; charset=utf-8"),
+      });
+    }
     if (format !== "json") return NextResponse.json({ error: "unsupported format" }, { status: 400 });
     return new NextResponse(reportText, {
       headers: downloadHeaders(`realtime-short-term-backtest-${safeFileName(report.generatedAt)}.json`, "application/json; charset=utf-8"),

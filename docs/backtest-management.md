@@ -171,14 +171,21 @@ comparison UI must be shared with a remote manager.
 For larger tick datasets, keep the dashboard on compact JSON summaries and write raw immutable ticks
 to date/asset-partitioned Parquet. Query those files with DuckDB for research, and register only hashes,
 parameters, metrics, and artifact paths in MLflow. This keeps the executive screen fast while preserving
-reproducible row-level analysis. The 5-second replay already writes immutable JSON and trade CSV artifacts;
+reproducible row-level analysis. The 5-second replay already writes immutable JSON, candidate-trade CSV,
+and complete-opportunity CSV artifacts;
 Parquet becomes worthwhile when repeated CSV scans or the SQLite runtime database become the bottleneck.
 
 The synchronized 5-second replay compares every candidate with the same execution timestamps and the
-same 5% capital budget against five fixed baselines: Polymarket-only, Hyperliquid-only, always long,
-always short, and the median of 200 seeded-random direction trials. Candidate selection uses calibration
+same 5% capital budget against six fixed baselines: Polymarket-only, Hyperliquid-only, always long,
+always short, the median of 200 seeded-random direction trials, and a zero-return cash baseline. Candidate selection uses calibration
 excess return rather than raw profit. On those same official outcomes and selected trades, it also scores
 the candidate probability and the contemporaneous Polymarket probability with Brier score and log loss.
+
+The prospective exact-execution audit also includes cash as a zero-return baseline. Its benchmark
+universe is the union of frozen-model and control opportunities: a skipped model opportunity contributes
+zero model return, while control, fixed-direction, and random baselines continue to trade. Strategy sample
+progress still counts only independently settled model positions, so an inactive model cannot satisfy the
+50-window promotion gate.
 The dashboard reports Brier skill as `(market error - model error) / market error`; positive is better.
 Its 95% interval is calculated from per-window averages so simultaneous assets cannot inflate confidence.
 A market-direction candidate correctly reports zero probability improvement because it copies the market
@@ -187,7 +194,7 @@ exploratory-promising when its Brier-improvement 95% lower bound is above zero a
 return and excess return are positive, the 95% lower bound of excess return is positive, the deflated
 Sharpe probability is at least 95%, and at least three of four walk-forward folds beat the best simple
 baseline. Even then, it must start a new frozen forward cohort and cannot modify the active 50-window run.
-Each walk-forward fold expands the calibration window, reselects one of the nine fixed candidates using
+Each walk-forward fold expands the calibration window, reselects one of the twelve fixed candidates using
 only earlier windows, and evaluates that selection on the next non-overlapping block. The earlier
 per-candidate four-block output remains a stability diagnostic and is not used for the promotion gate.
 The rolling chronological 40% diagnostic must also contain at least five independent long windows and
@@ -198,11 +205,19 @@ still requires a new frozen 50-window forward cohort before promotion.
 
 Each entry offset has its own complete set of replayable 15-minute windows. A candidate that emits no
 signal in one of those windows receives a zero return for that window; the window does not disappear from
-the confidence interval or walk-forward denominator. The Polymarket-only baseline independently follows
+the confidence interval or walk-forward denominator. All fixed baselines continue trading on the complete
+opportunity set for that entry offset, so a no-trade candidate cannot obtain a zero-return benchmark. The Polymarket-only baseline independently follows
 the contemporaneous Polymarket probability direction, while the Hyperliquid-only baseline independently
 follows the pre-entry Hyperliquid trend. Neither baseline reuses the candidate model's chosen direction.
 This prevents sparse candidates or a mislabeled same-direction control from making calibration excess
 return look better than it is.
+
+The exploratory candidate set also contains a fixed logarithmic probability pool. It combines the
+contemporaneous Polymarket probability and the executable-time digital fair probability at a predeclared
+50:50 log-odds weight, then trades only when the pooled probability exceeds the executable CLOB ask plus
+the taker fee by at least three percentage points. The weight and edge threshold are not fitted on the
+diagnostic holdout. Adding the three entry offsets increases the declared selection-bias trial count from
+nine to twelve. This candidate remains diagnostic and cannot modify the active frozen forward cohort.
 
 The production five-second execution audit applies the same directional minimum to the frozen forward
 cohort: at least five independent long windows and five independent short windows are required in addition

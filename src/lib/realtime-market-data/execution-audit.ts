@@ -471,6 +471,7 @@ function buildExactBenchmarks(input: {
   });
   const randomMedian = medianTrial(randomTrials);
   const candidates = [
+    { label: "現金待機" as const, returns: comparableResults.map(() => 0) },
     { label: "Polymarket方向のみ" as const, returns: controlReturns },
     { label: "常時ロング" as const, returns: longReturns },
     { label: "常時ショート" as const, returns: shortReturns },
@@ -514,10 +515,11 @@ function buildExactBenchmarks(input: {
     comparableEvents: comparableResults.length,
     comparableIndependentEvents: independentAuditWindows(comparableResults.map(({ reference }) => reference)).length,
     returns: {
-      polymarketOnlyReturnPct: candidates[0].returnPct,
-      alwaysLongReturnPct: candidates[1].returnPct,
-      alwaysShortReturnPct: candidates[2].returnPct,
-      randomMedianReturnPct: candidates[3].returnPct,
+      cashReturnPct: candidates[0].returnPct,
+      polymarketOnlyReturnPct: candidates[1].returnPct,
+      alwaysLongReturnPct: candidates[2].returnPct,
+      alwaysShortReturnPct: candidates[3].returnPct,
+      randomMedianReturnPct: candidates[4].returnPct,
     },
   };
 }

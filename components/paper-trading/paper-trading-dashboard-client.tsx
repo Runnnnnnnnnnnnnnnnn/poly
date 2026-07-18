@@ -144,13 +144,14 @@ type RealtimeReplayMetric = {
   logLossImprovement: number | null;
   logLossImprovementConfidenceInterval95: [number, number] | null;
   probabilityEdgePassed: boolean;
-  bestBenchmarkId: "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median" | null;
+  bestBenchmarkId: "cash" | "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median" | null;
   bestBenchmarkNetReturnPct: number | null;
   excessReturnPct: number | null;
   excessAverageReturnPct: number | null;
   excessConfidenceInterval95: [number, number] | null;
   excessDeflatedSharpeProbability: number | null;
   benchmarks: {
+    cashNetReturnPct: number;
     polymarketOnlyNetReturnPct: number;
     hyperliquidOnlyNetReturnPct: number;
     alwaysLongNetReturnPct: number;
@@ -420,7 +421,7 @@ type MonitoringSnapshot = {
         storedPortfolioReturnPct: number | null;
         meanTradeReturnConfidenceInterval95: [number, number] | null;
         benchmarkReturnPct: number | null;
-        benchmarkLabel: "Polymarket方向のみ" | "常時ロング" | "常時ショート" | "ランダム中央値" | null;
+        benchmarkLabel: "現金待機" | "Polymarket方向のみ" | "常時ロング" | "常時ショート" | "ランダム中央値" | null;
         excessReturnPct: number | null;
         excessConfidenceInterval95: [number, number] | null;
         deflatedSharpeProbability: number | null;
@@ -448,6 +449,7 @@ type MonitoringSnapshot = {
         comparableIndependentEvents: number;
         controlCoverage: number;
         benchmarks: {
+          cashReturnPct: number;
           polymarketOnlyReturnPct: number;
           alwaysLongReturnPct: number;
           alwaysShortReturnPct: number;
@@ -598,7 +600,7 @@ type MonitoringSnapshot = {
         holdoutBenchmarkBeatingVariants: number;
         selectedCandidate: {
           id: string;
-          strategy: "market_direction" | "trend_confirmed" | "fair_value";
+          strategy: "market_direction" | "trend_confirmed" | "fair_value" | "logit_pool";
           entryOffsetSeconds: number;
           calibration: RealtimeReplayMetric;
           holdout: RealtimeReplayMetric;
@@ -627,7 +629,7 @@ type MonitoringSnapshot = {
           holdoutEqualWeightNetReturnPct: number;
           holdoutHyperliquidNetReturnPct: number;
           holdoutPolymarketNetReturnPct: number;
-          holdoutBestBenchmarkId?: "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median" | null;
+          holdoutBestBenchmarkId?: "cash" | "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median" | null;
           holdoutBestBenchmarkNetReturnPct?: number | null;
           holdoutExcessReturnPct?: number | null;
           holdoutExcessConfidenceLowerPct?: number | null;
@@ -2371,7 +2373,7 @@ function RealtimeShortTermBacktest({
         <BacktestMetric label="直近40%診断" value={`${holdout?.independentWindows ?? 0} / ${research.minimumHoldoutWindows}`} tone={sampleReady ? "good" : "bad"} />
         <BacktestMetric label="上昇・下落の検証" value={`上 ${holdout?.longIndependentWindows ?? 0} / 下 ${holdout?.shortIndependentWindows ?? 0}`} tone={directionReady ? "good" : "bad"} />
         <BacktestMetric label="市場確率より改善" value={formatProbabilitySkill(holdout?.brierSkillScore)} tone={sampleReady ? probabilityEdgePassed ? "good" : "bad" : "watch"} />
-        <BacktestMetric label="複合モデル損益" value={holdout?.trades ? formatSignedPct(holdout.equalWeightNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.equalWeightNetReturnPct, true) : "watch"} />
+        <BacktestMetric label="候補モデル損益" value={holdout?.trades ? formatSignedPct(holdout.equalWeightNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.equalWeightNetReturnPct, true) : "watch"} />
         <BacktestMetric label="最良単純との差" value={holdout?.excessReturnPct === null || holdout?.excessReturnPct === undefined ? "未判定" : formatSignedPct(holdout.excessReturnPct)} tone={signedMetricTone(holdout?.excessReturnPct, Boolean(holdout))} />
       </div>
 
@@ -2415,13 +2417,15 @@ function RealtimeShortTermBacktest({
   );
 }
 
-function realtimeStrategyLabel(strategy: "market_direction" | "trend_confirmed" | "fair_value") {
+function realtimeStrategyLabel(strategy: "market_direction" | "trend_confirmed" | "fair_value" | "logit_pool") {
   if (strategy === "trend_confirmed") return "市場方向 + 値動き一致";
   if (strategy === "fair_value") return "理論確率との差";
+  if (strategy === "logit_pool") return "市場確率 + 実価格確率";
   return "Polymarketの市場方向";
 }
 
-function realtimeBenchmarkLabel(benchmark: "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median") {
+function realtimeBenchmarkLabel(benchmark: "cash" | "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median") {
+  if (benchmark === "cash") return "現金待機";
   if (benchmark === "polymarket_only") return "Polymarket";
   if (benchmark === "hyperliquid_only") return "Hyperliquid";
   if (benchmark === "always_long") return "常時ロング";

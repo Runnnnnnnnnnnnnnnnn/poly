@@ -73,8 +73,10 @@ import {
   binaryBrierScore,
   binaryLogLoss,
   calculateDigitalFairProbability,
+  calculateLogitPooledProbability,
   calculateHyperliquidReplayReturn,
   calculatePolymarketReplayReturn,
+  realtimeShortTermReplaySpecification,
   selectCausalReferenceBoundary,
   summarizeReplayDirectionCoverage,
   summarizeRealtimeProbabilityScores,
@@ -844,6 +846,13 @@ const atTheMoneyFairProbability = calculateDigitalFairProbability({
   remainingHours: 0.2,
 });
 assert.equal(atTheMoneyFairProbability < 0.5 && atTheMoneyFairProbability > 0.49, true);
+assert.ok(Math.abs(calculateLogitPooledProbability(0.8, 0.2) - 0.5) < 1e-12);
+assert.ok(Math.abs(calculateLogitPooledProbability(0.8, 0.2, 1) - 0.8) < 1e-12);
+assert.ok(Math.abs(calculateLogitPooledProbability(0.8, 0.2, 0) - 0.2) < 1e-12);
+assert.equal(
+  realtimeShortTermReplaySpecification.strategyTrials,
+  realtimeShortTermReplaySpecification.strategies.length * realtimeShortTermReplaySpecification.entryOffsetsSeconds.length,
+);
 const winningTokenReplay = calculatePolymarketReplayReturn({ price: 0.5, correct: true });
 const losingTokenReplay = calculatePolymarketReplayReturn({ price: 0.5, correct: false });
 assert.equal((winningTokenReplay?.returnPct ?? 0) > 0, true);
@@ -975,15 +984,49 @@ const independentReplayBenchmark = buildRealtimeReplayBenchmarkSummary([
   {
     windowAt: "2026-01-02T00:00:00Z",
     polymarketBaselineReturnPct: -0.2,
-    hyperliquidBaselineReturnPct: -0.1,
+    hyperliquidBaselineReturnPct: 0.1,
     equalWeightReturnPct: 0.5,
     longEqualWeightReturnPct: -0.1,
     shortEqualWeightReturnPct: -0.1,
   },
 ], ["2026-01-02T00:00:00Z", "2026-01-02T00:15:00Z"]);
 assert.equal(independentReplayBenchmark.bestBenchmarkId, "hyperliquid_only");
-assert.ok(Math.abs((independentReplayBenchmark.excessReturnPct ?? 0) - 0.03) < 1e-12);
-assert.ok(Math.abs((independentReplayBenchmark.excessAverageReturnPct ?? 0) - 0.015) < 1e-12);
+assert.ok(Math.abs((independentReplayBenchmark.excessReturnPct ?? 0) - 0.02) < 1e-12);
+assert.ok(Math.abs((independentReplayBenchmark.excessAverageReturnPct ?? 0) - 0.01) < 1e-12);
+const noTradeReplayBenchmark = buildRealtimeReplayBenchmarkSummary([], ["2026-01-03T00:00:00Z"], [{
+  entryOffsetSeconds: 60,
+  windowAt: "2026-01-03T00:00:00Z",
+  marketId: "common-opportunity",
+  asset: "BTC",
+  marketProbability: 0.8,
+  trendLogReturn: 0.01,
+  longPolymarketReturnPct: 0.2,
+  shortPolymarketReturnPct: -1,
+  longHyperliquidReturnPct: 0.01,
+  shortHyperliquidReturnPct: -0.02,
+  longEqualWeightReturnPct: 0.105,
+  shortEqualWeightReturnPct: -0.51,
+}]);
+assert.equal(noTradeReplayBenchmark.bestBenchmarkId, "polymarket_only");
+assert.ok(Math.abs((noTradeReplayBenchmark.bestBenchmarkNetReturnPct ?? 0) - 0.01) < 1e-12);
+assert.ok(Math.abs((noTradeReplayBenchmark.excessReturnPct ?? 0) + 0.01) < 1e-12);
+const losingOpportunityBenchmark = buildRealtimeReplayBenchmarkSummary([], ["2026-01-04T00:00:00Z"], [{
+  entryOffsetSeconds: 60,
+  windowAt: "2026-01-04T00:00:00Z",
+  marketId: "losing-opportunity",
+  asset: "BTC",
+  marketProbability: 0.8,
+  trendLogReturn: 0.01,
+  longPolymarketReturnPct: -0.2,
+  shortPolymarketReturnPct: -0.3,
+  longHyperliquidReturnPct: -0.01,
+  shortHyperliquidReturnPct: -0.02,
+  longEqualWeightReturnPct: -0.105,
+  shortEqualWeightReturnPct: -0.16,
+}]);
+assert.equal(losingOpportunityBenchmark.bestBenchmarkId, "cash");
+assert.equal(losingOpportunityBenchmark.bestBenchmarkNetReturnPct, 0);
+assert.equal(losingOpportunityBenchmark.excessReturnPct, 0);
 const replayWindows = Array.from({ length: 15 }, (_, index) => `2026-01-01T${String(Math.floor(index / 4)).padStart(2, "0")}:${String((index % 4) * 15).padStart(2, "0")}:00Z`);
 const expandingReplayFolds = buildExpandingReplayFolds(replayWindows, 4, 0.2);
 assert.deepEqual(expandingReplayFolds.map((fold) => [fold.calibration.length, fold.validation.length]), [
@@ -1075,6 +1118,21 @@ assert.equal(filteredAudit.verifiedIndependentEvents, 1);
 assert.equal(filteredAudit.comparableEvents, 2);
 assert.equal(filteredAudit.controlComparablePositions, 2);
 assert.equal(filteredAudit.controlCoverage, 1);
+
+const cashBenchmarkAudit = evaluateExactExecutionAudit({
+  ...auditConfig,
+  positions: [auditPositions[0]],
+  controlPositions: [auditPositions[0]],
+  ticks: [
+    auditTick("audit-long", "2026-01-01T00:02:01Z", "2026-01-01T00:02:01Z", 100, 99.9, 100.1, 0.6, 0.42),
+    auditTick("audit-long", "2026-01-01T00:15:01Z", "2026-01-01T00:15:01Z", 100, 99.9, 100.1, 0.98, 0.03),
+  ],
+  resolutions: [{ marketId: "audit-long", resolved: true, result: 1 }],
+});
+assert.equal(cashBenchmarkAudit.benchmarkLabel, "現金待機");
+assert.equal(cashBenchmarkAudit.benchmarkReturnPct, 0);
+assert.equal(cashBenchmarkAudit.benchmarks.cashReturnPct, 0);
+assert.ok((cashBenchmarkAudit.excessReturnPct ?? 0) < 0);
 
 const profitableAuditPositions = Array.from({ length: 60 }, (_, index) => {
   const long = index % 2 === 0;

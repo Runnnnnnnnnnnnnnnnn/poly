@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 
 import {
   buildRealtimeShortTermReplay,
+  type RealtimeReplayOpportunity,
   type RealtimeReplayTrade,
 } from "../src/lib/model-evaluation/realtime-short-term-replay";
 import {
@@ -73,14 +75,16 @@ const baseReport = buildRealtimeShortTermReplay({
   resolutions: resolutions.flatMap((market) => market.result === 0 || market.result === 1
     ? [{ marketId: market.id, result: market.result }]
     : []),
-  codeRevision: process.env.POLYMARKET_MODEL_REVISION,
+  codeRevision: process.env.POLYMARKET_MODEL_REVISION ?? localCodeRevision(root),
 });
 const tradesCsv = serializeTrades(baseReport.trades);
+const opportunitiesCsv = serializeOpportunities(baseReport.opportunities);
 const report = {
   ...baseReport,
   reproducibility: {
     ...baseReport.reproducibility,
     tradesCsvSha256: sha256(tradesCsv),
+    opportunitiesCsvSha256: sha256(opportunitiesCsv),
   },
 };
 const serializedReport = `${JSON.stringify(report, null, 2)}\n`;
@@ -98,8 +102,10 @@ const runDirectory = resolve(artifactRoot, report.reproducibility.runId);
 await mkdir(runDirectory, { recursive: true });
 await writeAtomic(resolve(runDirectory, "report.json"), serializedReport);
 await writeAtomic(resolve(runDirectory, "trades.csv"), tradesCsv);
+await writeAtomic(resolve(runDirectory, "opportunities.csv"), opportunitiesCsv);
 await writeAtomic(resolve(artifactRoot, "latest.json"), serializedReport);
 await writeAtomic(resolve(artifactRoot, "latest-trades.csv"), tradesCsv);
+await writeAtomic(resolve(artifactRoot, "latest-opportunities.csv"), opportunitiesCsv);
 await writeAtomic(outputPath, serializedReport);
 await updateHistory(historyPath, report);
 await prisma.$disconnect();
@@ -226,6 +232,26 @@ function serializeTrades(trades: RealtimeReplayTrade[]) {
   return `${header}\n${rows.join("\n")}\n`;
 }
 
+function serializeOpportunities(opportunities: RealtimeReplayOpportunity[]) {
+  const keys = [
+    "entryOffsetSeconds",
+    "windowAt",
+    "marketId",
+    "asset",
+    "marketProbability",
+    "trendLogReturn",
+    "longPolymarketReturnPct",
+    "shortPolymarketReturnPct",
+    "longHyperliquidReturnPct",
+    "shortHyperliquidReturnPct",
+    "longEqualWeightReturnPct",
+    "shortEqualWeightReturnPct",
+  ] as const;
+  const header = keys.map(toSnakeCase).join(",");
+  const rows = opportunities.map((opportunity) => keys.map((key) => csvCell(opportunity[key])).join(","));
+  return `${header}\n${rows.join("\n")}\n`;
+}
+
 async function writeAtomic(path: string, value: string) {
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
@@ -239,6 +265,16 @@ async function readJson<T>(path: string) {
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function localCodeRevision(cwd: string) {
+  try {
+    const revision = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
+    const dirty = execFileSync("/usr/bin/git", ["status", "--porcelain", "--untracked-files=no"], { cwd, encoding: "utf8" }).trim();
+    return dirty ? `${revision}-dirty` : revision;
+  } catch {
+    return null;
+  }
 }
 
 function toSnakeCase(value: string) {

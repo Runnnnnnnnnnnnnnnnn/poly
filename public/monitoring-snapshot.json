@@ -1,16 +1,16 @@
 {
   "status": "live",
-  "generatedAt": "2026-07-18T16:53:14.813Z",
+  "generatedAt": "2026-07-18T17:11:28.341Z",
   "collection": {
     "startedAt": "2026-07-13T02:42:17.427Z",
-    "latestAt": "2026-07-18T16:53:13.262Z",
-    "totalRecords": 255305,
-    "last24Hours": 182250,
+    "latestAt": "2026-07-18T17:11:27.087Z",
+    "totalRecords": 258697,
+    "last24Hours": 184023,
     "realtimePrices": {
       "status": "healthy",
-      "records": 30847,
-      "last24Hours": 30847,
-      "latestAt": "2026-07-18T16:53:13.254Z",
+      "records": 31793,
+      "last24Hours": 31793,
+      "latestAt": "2026-07-18T17:11:26.906Z",
       "maximumSkewMs": 117467,
       "activeMarkets": 4,
       "assets": [
@@ -22,53 +22,53 @@
       "arbitrageViolations": 214,
       "targetCadenceSeconds": 5,
       "synchronizationVersion": "websocket-v6-near-term-discovery",
-      "executionRecords": 22812,
-      "executionLast24Hours": 22812,
-      "executionLatestAt": "2026-07-18T16:53:13.254Z",
+      "executionRecords": 23676,
+      "executionLast24Hours": 23676,
+      "executionLatestAt": "2026-07-18T17:11:26.906Z",
       "executionMaximumSkewMs": 13165,
       "executionSynchronizationVersion": "websocket-asset-v1"
     },
     "synchronizedPrices": {
-      "records": 109167,
-      "last24Hours": 104073,
-      "latestAt": "2026-07-18T16:52:56.380Z",
+      "records": 110331,
+      "last24Hours": 103940,
+      "latestAt": "2026-07-18T17:10:29.831Z",
       "maximumSkewMs": 19058,
       "targetCadenceMinutes": 1,
       "quality": {
         "status": "collecting",
-        "records": 109167,
-        "completeRecords": 109167,
-        "windowRecords": 104073,
-        "windowCompleteRecords": 104073,
-        "totalRecords": 115978,
-        "coverage": 0.8973512217834417,
-        "durationHours": 5.7413244444444445,
+        "records": 110331,
+        "completeRecords": 110331,
+        "windowRecords": 103940,
+        "windowCompleteRecords": 103940,
+        "totalRecords": 115988,
+        "coverage": 0.8961271855709211,
+        "durationHours": 6.033949722222222,
         "startedAt": "2026-07-17T15:26:56.226Z",
         "continuousStartedAt": "2026-07-18T11:08:27.612Z",
-        "latestAt": "2026-07-18T16:52:56.380Z",
+        "latestAt": "2026-07-18T17:10:29.831Z",
         "medianSkewMs": 4012,
-        "p95SkewMs": 4659,
+        "p95SkewMs": 4658,
         "medianSpread": 0.004999999999999998,
-        "p95Spread": 0.03399999999999992,
-        "medianAbsoluteBasisPct": 0.0002540183752984815,
+        "p95Spread": 0.03299999999999992,
+        "medianAbsoluteBasisPct": 0.000256984550748296,
         "p95AbsoluteBasisPct": 0.0006329957356077109,
         "maximumCaptureGapMs": 815799,
         "assets": [
           {
             "asset": "BTC",
-            "records": 36565
+            "records": 36604
           },
           {
             "asset": "ETH",
-            "records": 26799
+            "records": 26701
           },
           {
             "asset": "SOL",
-            "records": 19979
+            "records": 19897
           },
           {
             "asset": "XRP",
-            "records": 20730
+            "records": 20810
           }
         ],
         "passedGates": 5,
@@ -109,8 +109,8 @@
       "prospective": {
         "methodology": "prospective-1m-orderbook-holdout",
         "collectionStartedAt": "2026-07-17T15:26:56.226Z",
-        "latestSnapshotAt": "2026-07-18T16:52:56.380Z",
-        "generatedAt": "2026-07-18T16:53:14.813Z",
+        "latestSnapshotAt": "2026-07-18T17:10:29.831Z",
+        "generatedAt": "2026-07-18T17:11:28.341Z",
         "completedEvents": 0,
         "targetEvents": 50,
         "horizons": [
@@ -235,9 +235,9 @@
   "combinedShadow": {
     "status": "running",
     "startedAt": "2026-07-17T16:18:34.585Z",
-    "updatedAt": "2026-07-18T16:52:51.643Z",
+    "updatedAt": "2026-07-18T17:10:25.695Z",
     "initialEquity": 40000,
-    "equity": 39998.0453869051,
+    "equity": 39998.1408877669,
     "returnPct": 0,
     "cash": 39999.775,
     "realizedPnl": 0,
@@ -247,7 +247,7 @@
         "side": "SHORT",
         "quantity": 0.007800837954467829,
         "entryPrice": 64095.6783,
-        "markPrice": 64279.5,
+        "markPrice": 64267.5,
         "signalZ": -0.6255913555132823,
         "polymarketSide": "SHORT",
         "entryTrendZ6h": 0.448099556973332,
@@ -261,7 +261,7 @@
     "trades": 0,
     "wins": 0,
     "winRate": null,
-    "maxDrawdownPct": 0.000255409420707763,
+    "maxDrawdownPct": 0.0002670125753767091,
     "riskStatus": "NORMAL",
     "emergencyStopped": false,
     "experimentKey": "forward-v2-6-12-24-48",
@@ -418,7 +418,7 @@
           "progressPct": 0,
           "netReturnPct": null,
           "excessReturnPct": null,
-          "maxDrawdownPct": 0.000255409420707763,
+          "maxDrawdownPct": 0.0002670125753767091,
           "passedGates": 0,
           "totalGates": 8,
           "horizonEligibleMarkets": 11,
@@ -435,28 +435,28 @@
       "status": "collecting",
       "running": true,
       "startedAt": "2026-07-18T06:35:12.058Z",
-      "updatedAt": "2026-07-18T16:52:51.643Z",
-      "trades": 67,
-      "controlTrades": 70,
+      "updatedAt": "2026-07-18T17:11:26.734Z",
+      "trades": 69,
+      "controlTrades": 72,
       "minimumTrades": 50,
       "progressPct": 1,
-      "netReturnPct": -0.004784506742748329,
-      "excessReturnPct": -0.0007995285335276386,
-      "confidenceLowerPct": -0.001752345023352393,
-      "maxDrawdownPct": 0.004784506742748635,
+      "netReturnPct": -0.004836622023496434,
+      "excessReturnPct": -0.004836622023496434,
+      "confidenceLowerPct": -0.0059349037837758585,
+      "maxDrawdownPct": 0.004836622023496784,
       "passedGates": 0,
       "totalGates": 10,
       "openPositions": 2,
-      "scannedMarkets": 37,
-      "fifteenMinuteMarkets": 8,
+      "scannedMarkets": 49,
+      "fifteenMinuteMarkets": 12,
       "decisionWindowMarkets": 0,
       "priceReadyMarkets": 0,
-      "thresholdSignals": 69,
-      "opened": 69,
+      "thresholdSignals": 71,
+      "opened": 71,
       "latestAction": "NO_SIGNAL",
-      "latestReason": "次回は7/19 02:02",
-      "nextDecisionAt": "2026-07-18T17:02:00.000Z",
-      "observedAt": "2026-07-18T16:52:51.643Z",
+      "latestReason": "次回は7/19 02:17",
+      "nextDecisionAt": "2026-07-18T17:17:00.000Z",
+      "observedAt": "2026-07-18T17:11:26.734Z",
       "specificationHash": "655dac2ae6bf6768",
       "executionAudit": {
         "status": "collecting",
@@ -469,41 +469,41 @@
         "collectionStartedAt": "2026-07-18T06:35:18.248Z",
         "minimumAuditedPositions": 50,
         "minimumIndependentEvents": 50,
-        "eligiblePositions": 67,
-        "auditedPositions": 62,
-        "coverage": 0.9253731343283582,
-        "verifiedPositions": 62,
-        "verifiedIndependentEvents": 34,
+        "eligiblePositions": 69,
+        "auditedPositions": 64,
+        "coverage": 0.927536231884058,
+        "verifiedPositions": 64,
+        "verifiedIndependentEvents": 35,
         "directionCoverage": {
           "minimumIndependentEventsPerSide": 5,
-          "longIndependentEvents": 22,
+          "longIndependentEvents": 23,
           "shortIndependentEvents": 17,
           "passed": true
         },
-        "verifiedCoverage": 0.9253731343283582,
-        "resolvedPredictions": 67,
-        "predictionAccuracy": 0.6865671641791045,
-        "polymarketAuditedPositions": 66,
-        "polymarketNetReturnPct": -0.08540939815029903,
-        "hyperliquidNetReturnPct": -0.0015469363317674215,
-        "storedNetReturnPct": -0.0014605015891113954,
-        "portfolioNetReturnPct": -0.004784506742748329,
-        "storedPortfolioReturnPct": -0.004517173433320537,
+        "verifiedCoverage": 0.927536231884058,
+        "resolvedPredictions": 69,
+        "predictionAccuracy": 0.6956521739130435,
+        "polymarketAuditedPositions": 68,
+        "polymarketNetReturnPct": -0.07605970905882695,
+        "hyperliquidNetReturnPct": -0.0015150353557900427,
+        "storedNetReturnPct": -0.0014371365072065915,
+        "portfolioNetReturnPct": -0.004836622023496434,
+        "storedPortfolioReturnPct": -0.004587936548782042,
         "meanTradeReturnConfidenceInterval95": [
-          -0.0018146665070312082,
-          -0.0011911979579928972
+          -0.0017916622846998504,
+          -0.0011982048639129525
         ],
-        "benchmarkReturnPct": -0.00398497820922069,
-        "benchmarkLabel": "常時ショート",
-        "excessReturnPct": -0.0007995285335276386,
+        "benchmarkReturnPct": 0,
+        "benchmarkLabel": "現金待機",
+        "excessReturnPct": -0.004836622023496434,
         "excessConfidenceInterval95": [
-          -0.001752345023352393,
-          0.00011329176112670825
+          -0.0059349037837758585,
+          -0.003856515196066267
         ],
-        "deflatedSharpeProbability": 0.002686628370496158,
+        "deflatedSharpeProbability": 1.3600232051658168e-14,
         "strategyTrials": 11,
         "randomBenchmarkTrials": 200,
-        "maxDrawdownPct": 0.004784506742748635,
+        "maxDrawdownPct": 0.004836622023496784,
         "attribution": {
           "byAsset": [
             {
@@ -515,17 +515,17 @@
             },
             {
               "asset": "ETH",
-              "trades": 21,
+              "trades": 22,
               "wins": 1,
-              "netPnl": -14.24563584496394,
-              "returnContributionPct": -0.001424563584496394
+              "netPnl": -14.543185737681062,
+              "returnContributionPct": -0.0014543185737681062
             },
             {
               "asset": "SOL",
-              "trades": 20,
+              "trades": 21,
               "wins": 0,
-              "netPnl": -19.454018554435265,
-              "returnContributionPct": -0.0019454018554435266
+              "netPnl": -19.677621469199188,
+              "returnContributionPct": -0.001967762146919919
             },
             {
               "asset": "XRP",
@@ -538,10 +538,10 @@
           "bySide": [
             {
               "side": "LONG",
-              "trades": 35,
+              "trades": 37,
               "wins": 0,
-              "netPnl": -28.75220608643554,
-              "returnContributionPct": -0.002875220608643554
+              "netPnl": -29.273358893916583,
+              "returnContributionPct": -0.0029273358893916585
             },
             {
               "side": "SHORT",
@@ -552,15 +552,16 @@
             }
           ]
         },
-        "controlComparablePositions": 65,
-        "comparableEvents": 66,
-        "comparableIndependentEvents": 35,
-        "controlCoverage": 0.9848484848484849,
+        "controlComparablePositions": 67,
+        "comparableEvents": 68,
+        "comparableIndependentEvents": 36,
+        "controlCoverage": 0.9852941176470589,
         "benchmarks": {
-          "polymarketOnlyReturnPct": -0.004852518194423196,
-          "alwaysLongReturnPct": -0.004898386487345958,
-          "alwaysShortReturnPct": -0.00398497820922069,
-          "randomMedianReturnPct": -0.00446443686276552
+          "cashReturnPct": 0,
+          "polymarketOnlyReturnPct": -0.004904633475171301,
+          "alwaysLongReturnPct": -0.004950501768094063,
+          "alwaysShortReturnPct": -0.0041984847088819615,
+          "randomMedianReturnPct": -0.0045948466791586075
         },
         "passedReadinessGates": 0,
         "currentlyPassingReadinessGates": 3,
@@ -629,12 +630,12 @@
           }
         ],
         "settlementResolutionStatus": "attention",
-        "returnDifferencePct": -0.00008643474265602612,
+        "returnDifferencePct": -0.0000778988485834512,
         "medianTimingErrorMs": 1485,
         "maximumTimingErrorMs": 6332,
-        "medianPolymarketQuoteAgeMs": 36,
+        "medianPolymarketQuoteAgeMs": 40,
         "maximumPolymarketQuoteAgeMs": 314,
-        "medianCloseDelayMs": 34428,
+        "medianCloseDelayMs": 36300,
         "maximumCloseDelayMs": 72143,
         "allowedTimingErrorMs": 15000,
         "allowedPolymarketQuoteAgeMs": 120000,
@@ -647,12 +648,12 @@
         "source": "CHAINLINK",
         "rule": "終了価格が開始価格以上ならUp",
         "targetMarkets": 50,
-        "resolvedObservedMarkets": 67,
-        "completeMarkets": 63,
+        "resolvedObservedMarkets": 69,
+        "completeMarkets": 65,
         "missingBoundaryMarkets": 4,
-        "matchedMarkets": 63,
+        "matchedMarkets": 65,
         "mismatchedMarkets": 0,
-        "coverage": 0.9402985074626866,
+        "coverage": 0.9420289855072463,
         "matchRate": 1,
         "medianBoundaryErrorMs": 1000,
         "maximumBoundaryErrorMs": 5000,
@@ -667,14 +668,14 @@
           },
           {
             "asset": "ETH",
-            "completeMarkets": 21,
-            "matchedMarkets": 21,
+            "completeMarkets": 22,
+            "matchedMarkets": 22,
             "mismatchedMarkets": 0
           },
           {
             "asset": "SOL",
-            "completeMarkets": 20,
-            "matchedMarkets": 20,
+            "completeMarkets": 21,
+            "matchedMarkets": 21,
             "mismatchedMarkets": 0
           },
           {
@@ -1168,16 +1169,16 @@
         ]
       },
       "realtimeResearch": {
-        "generatedAt": "2026-07-18T16:50:42.301Z",
+        "generatedAt": "2026-07-18T17:09:20.053Z",
         "status": "insufficient",
         "promotionAllowed": false,
-        "completeMarkets": 164,
-        "replayableMarkets": 143,
-        "independentWindows": 36,
+        "completeMarkets": 168,
+        "replayableMarkets": 148,
+        "independentWindows": 37,
         "minimumHoldoutWindows": 20,
         "minimumHoldoutWindowsPerSide": 5,
-        "selectedTrades": 409,
-        "strategyTrials": 9,
+        "selectedTrades": 448,
+        "strategyTrials": 12,
         "holdoutCoverage": {
           "passed": false,
           "total": {
@@ -1186,7 +1187,7 @@
             "passed": false
           },
           "long": {
-            "observed": 9,
+            "observed": 5,
             "required": 5,
             "passed": true
           },
@@ -1196,122 +1197,124 @@
             "passed": false
           }
         },
-        "calibrationPositiveVariants": 6,
-        "holdoutPositiveVariants": 3,
-        "calibrationBenchmarkBeatingVariants": 0,
+        "calibrationPositiveVariants": 8,
+        "holdoutPositiveVariants": 4,
+        "calibrationBenchmarkBeatingVariants": 3,
         "holdoutBenchmarkBeatingVariants": 1,
         "selectedCandidate": {
-          "id": "trend_confirmed-60s",
-          "strategy": "trend_confirmed",
-          "entryOffsetSeconds": 60,
+          "id": "market_direction-30s",
+          "strategy": "market_direction",
+          "entryOffsetSeconds": 30,
           "calibration": {
             "independentWindows": 21,
-            "longTrades": 25,
-            "shortTrades": 7,
-            "longIndependentWindows": 11,
-            "shortIndependentWindows": 5,
-            "trades": 32,
-            "correctTrades": 23,
-            "directionAccuracy": 0.71875,
-            "equalWeightWinRate": 0.71875,
-            "equalWeightAverageReturnPct": 0.03586597801021693,
-            "equalWeightNetReturnPct": 0.057385564816347066,
+            "longTrades": 17,
+            "shortTrades": 3,
+            "longIndependentWindows": 9,
+            "shortIndependentWindows": 1,
+            "trades": 20,
+            "correctTrades": 17,
+            "directionAccuracy": 0.85,
+            "equalWeightWinRate": 0.85,
+            "equalWeightAverageReturnPct": 0.15466308521301103,
+            "equalWeightNetReturnPct": 0.15466308521301103,
             "equalWeightConfidenceInterval95": [
-              -0.010883527693196443,
-              0.014108325737192067
+              -0.001050655121576575,
+              0.014718474862932554
             ],
-            "deflatedSharpeProbability": 0.14750236705335584,
-            "hyperliquidAverageReturnPct": -0.0013295401659797115,
-            "hyperliquidNetReturnPct": -0.0021272642655675383,
-            "polymarketAverageReturnPct": 0.07306149618641357,
-            "polymarketNetReturnPct": 0.11689839389826176,
-            "maximumDrawdownPct": 0.13731720992109656,
-            "marketBrierScore": 0.20755312499999992,
-            "modelBrierScore": 0.20755312499999992,
+            "deflatedSharpeProbability": 0.49911145606092533,
+            "hyperliquidAverageReturnPct": -0.0005006241354459997,
+            "hyperliquidNetReturnPct": -0.0005006241354459995,
+            "polymarketAverageReturnPct": 0.309826794561468,
+            "polymarketNetReturnPct": 0.309826794561468,
+            "maximumDrawdownPct": 0.046594477595678696,
+            "marketBrierScore": 0.18341500000000005,
+            "modelBrierScore": 0.18341500000000005,
             "brierImprovement": 0,
             "brierSkillScore": 0,
             "brierImprovementConfidenceInterval95": [
               0,
               0
             ],
-            "marketLogLoss": 0.6043057854910211,
-            "modelLogLoss": 0.6043057854910211,
+            "marketLogLoss": 0.5575732170972969,
+            "modelLogLoss": 0.5575732170972969,
             "logLossImprovement": 0,
             "logLossImprovementConfidenceInterval95": [
               0,
               0
             ],
             "probabilityEdgePassed": false,
-            "bestBenchmarkId": "polymarket_only",
-            "bestBenchmarkNetReturnPct": 0.11689839389826176,
-            "excessReturnPct": -0.059512829081914694,
-            "excessAverageReturnPct": -0.0028339442419959343,
+            "bestBenchmarkId": "cash",
+            "bestBenchmarkNetReturnPct": 0,
+            "excessReturnPct": 0.15466308521301103,
+            "excessAverageReturnPct": 0.007364908819667192,
             "excessConfidenceInterval95": [
-              -0.014165020754375828,
-              0.010770468143315722
+              -0.001050655121576575,
+              0.014718474862932554
             ],
-            "excessDeflatedSharpeProbability": 0.03141681872734836,
+            "excessDeflatedSharpeProbability": 0.49911145606092533,
             "benchmarks": {
-              "polymarketOnlyNetReturnPct": 0.11689839389826176,
-              "hyperliquidOnlyNetReturnPct": -0.0021272642655675383,
-              "alwaysLongNetReturnPct": 0.11162155134128518,
-              "alwaysShortNetReturnPct": -0.24682002272970732,
-              "randomMedianNetReturnPct": -0.06943277531240698
+              "cashNetReturnPct": 0,
+              "polymarketOnlyNetReturnPct": -0.03525231909392759,
+              "hyperliquidOnlyNetReturnPct": -0.0043341752329218025,
+              "alwaysLongNetReturnPct": -0.07564724432563592,
+              "alwaysShortNetReturnPct": -0.11233976134781169,
+              "randomMedianNetReturnPct": -0.06961980101017683
             }
           },
           "holdout": {
             "independentWindows": 15,
-            "longTrades": 19,
-            "shortTrades": 8,
-            "longIndependentWindows": 9,
+            "longTrades": 11,
+            "shortTrades": 6,
+            "longIndependentWindows": 5,
             "shortIndependentWindows": 3,
-            "trades": 27,
-            "correctTrades": 18,
-            "directionAccuracy": 0.6666666666666666,
-            "equalWeightWinRate": 0.6666666666666666,
-            "equalWeightAverageReturnPct": -0.011376063113019181,
-            "equalWeightNetReturnPct": -0.0153576852025759,
+            "trades": 17,
+            "correctTrades": 12,
+            "directionAccuracy": 0.7058823529411765,
+            "equalWeightWinRate": 0.7058823529411765,
+            "equalWeightAverageReturnPct": 0.013625109451423933,
+            "equalWeightNetReturnPct": 0.011581343033710341,
             "equalWeightConfidenceInterval95": [
-              -0.02400239242740514,
-              0.015697929008713505
+              -0.006746390708634579,
+              0.00864605075610802
             ],
-            "deflatedSharpeProbability": 0.048002054059143484,
-            "hyperliquidAverageReturnPct": -0.0011596615266448373,
-            "hyperliquidNetReturnPct": -0.001565543060970531,
-            "polymarketAverageReturnPct": -0.021592464699393524,
-            "polymarketNetReturnPct": -0.02914982734418134,
-            "maximumDrawdownPct": 0.13550380002782625,
-            "marketBrierScore": 0.21877962962962963,
-            "modelBrierScore": 0.21877962962962963,
+            "deflatedSharpeProbability": 0.0653242914588602,
+            "hyperliquidAverageReturnPct": -0.0012700612467572059,
+            "hyperliquidNetReturnPct": -0.001079552059743625,
+            "polymarketAverageReturnPct": 0.028520280149605053,
+            "polymarketNetReturnPct": 0.0242422381271643,
+            "maximumDrawdownPct": 0.0743964157970575,
+            "marketBrierScore": 0.19694264705882353,
+            "modelBrierScore": 0.19694264705882353,
             "brierImprovement": 0,
             "brierSkillScore": 0,
             "brierImprovementConfidenceInterval95": [
               0,
               0
             ],
-            "marketLogLoss": 0.6290768071718278,
-            "modelLogLoss": 0.6290768071718278,
+            "marketLogLoss": 0.582946862378099,
+            "modelLogLoss": 0.582946862378099,
             "logLossImprovement": 0,
             "logLossImprovementConfidenceInterval95": [
               0,
               0
             ],
             "probabilityEdgePassed": false,
-            "bestBenchmarkId": "always_short",
-            "bestBenchmarkNetReturnPct": 0.016173649834030898,
-            "excessReturnPct": -0.031531335036606795,
-            "excessAverageReturnPct": -0.002102089002440452,
+            "bestBenchmarkId": "always_long",
+            "bestBenchmarkNetReturnPct": 0.10060587531920073,
+            "excessReturnPct": -0.0890245322854904,
+            "excessAverageReturnPct": -0.005934968819032692,
             "excessConfidenceInterval95": [
-              -0.05682854753841781,
-              0.04021884553730969
+              -0.035466521860379095,
+              0.025336632205864653
             ],
-            "excessDeflatedSharpeProbability": 0.05109139814364666,
+            "excessDeflatedSharpeProbability": 0.020357038045653753,
             "benchmarks": {
-              "polymarketOnlyNetReturnPct": -0.02914982734418134,
-              "hyperliquidOnlyNetReturnPct": -0.001565543060970531,
-              "alwaysLongNetReturnPct": -0.08977214489472987,
-              "alwaysShortNetReturnPct": 0.016173649834030898,
-              "randomMedianNetReturnPct": -0.027094726272842085
+              "cashNetReturnPct": 0,
+              "polymarketOnlyNetReturnPct": -0.13077634465879873,
+              "hyperliquidOnlyNetReturnPct": -0.0029767732883628404,
+              "alwaysLongNetReturnPct": 0.10060587531920073,
+              "alwaysShortNetReturnPct": -0.2425901925651736,
+              "randomMedianNetReturnPct": -0.08407682672142457
             }
           },
           "profitableFolds": 3,
@@ -1319,15 +1322,192 @@
           "totalFolds": 4
         },
         "reproducibility": {
-          "runId": "2026-07-18T16-50-42.301Z",
-          "codeRevision": null,
-          "specificationSha256": "18c678c4079c478ff6363da94e3fbef1a40d65257265ba17f663172aca31b84c",
-          "datasetSha256": "bc8a74a2986dbd61ee205f3d235dc1e6819bd823cebaaefcbbef80f2bb2c0cf1",
+          "runId": "2026-07-18T17-09-20.053Z",
+          "codeRevision": "364c231180065963e4d8d39723380f379477c977-dirty",
+          "specificationSha256": "4674842bb184dfc14b562a3c326075426c75372c983c18b599ee7cdf9bc8be88",
+          "datasetSha256": "6bbf3316a0a4bad3bb883f9c338875d5d8c82bac1a76db0493de7efe6e4e7c70",
           "hashAlgorithm": "sha256",
-          "tradeRows": 409,
-          "tradesCsvSha256": "51a1fa4bb59a40c5d7422b8710e88c7dc625e5f51389eba28e6e232c0d6ef033"
+          "tradeRows": 448,
+          "opportunityRows": 440,
+          "tradesCsvSha256": "1ca8b73d74d6328cf8c389677b17cd5442ce783720f04bd4672f69b2fe384356",
+          "opportunitiesCsvSha256": "438c9dd4d03f89a98b43e8b07e23c8be4e232093352bc844474cf9b6251b421c"
         },
         "history": [
+          {
+            "runId": "2026-07-18T17-09-20.053Z",
+            "generatedAt": "2026-07-18T17:09:20.053Z",
+            "status": "insufficient",
+            "selectedCandidateId": "market_direction-30s",
+            "completeMarkets": 168,
+            "replayableMarkets": 148,
+            "independentWindows": 37,
+            "holdoutWindows": 15,
+            "holdoutTrades": 17,
+            "holdoutLongWindows": 5,
+            "holdoutShortWindows": 3,
+            "holdoutEqualWeightNetReturnPct": 0.011581343033710341,
+            "holdoutHyperliquidNetReturnPct": -0.001079552059743625,
+            "holdoutPolymarketNetReturnPct": 0.0242422381271643,
+            "holdoutBestBenchmarkId": "always_long",
+            "holdoutBestBenchmarkNetReturnPct": 0.10060587531920073,
+            "holdoutExcessReturnPct": -0.0890245322854904,
+            "holdoutExcessConfidenceLowerPct": -0.035466521860379095,
+            "holdoutMarketBrierScore": 0.19694264705882353,
+            "holdoutModelBrierScore": 0.19694264705882353,
+            "holdoutBrierImprovement": 0,
+            "holdoutBrierSkillScore": 0,
+            "holdoutBrierImprovementConfidenceLower": 0,
+            "holdoutMarketLogLoss": 0.582946862378099,
+            "holdoutModelLogLoss": 0.582946862378099,
+            "holdoutLogLossImprovement": 0,
+            "holdoutProbabilityEdgePassed": false,
+            "profitableFolds": 3,
+            "benchmarkBeatingFolds": 0,
+            "totalFolds": 4,
+            "codeRevision": "364c231180065963e4d8d39723380f379477c977-dirty",
+            "datasetSha256": "6bbf3316a0a4bad3bb883f9c338875d5d8c82bac1a76db0493de7efe6e4e7c70",
+            "specificationSha256": "4674842bb184dfc14b562a3c326075426c75372c983c18b599ee7cdf9bc8be88"
+          },
+          {
+            "runId": "2026-07-18T17-08-41.594Z",
+            "generatedAt": "2026-07-18T17:08:41.594Z",
+            "status": "insufficient",
+            "selectedCandidateId": "market_direction-30s",
+            "completeMarkets": 168,
+            "replayableMarkets": 148,
+            "independentWindows": 37,
+            "holdoutWindows": 15,
+            "holdoutTrades": 17,
+            "holdoutLongWindows": 5,
+            "holdoutShortWindows": 3,
+            "holdoutEqualWeightNetReturnPct": 0.011581343033710341,
+            "holdoutHyperliquidNetReturnPct": -0.001079552059743625,
+            "holdoutPolymarketNetReturnPct": 0.0242422381271643,
+            "holdoutBestBenchmarkId": "always_long",
+            "holdoutBestBenchmarkNetReturnPct": 0.10060587531920073,
+            "holdoutExcessReturnPct": -0.0890245322854904,
+            "holdoutExcessConfidenceLowerPct": -0.035466521860379095,
+            "holdoutMarketBrierScore": 0.19694264705882353,
+            "holdoutModelBrierScore": 0.19694264705882353,
+            "holdoutBrierImprovement": 0,
+            "holdoutBrierSkillScore": 0,
+            "holdoutBrierImprovementConfidenceLower": 0,
+            "holdoutMarketLogLoss": 0.582946862378099,
+            "holdoutModelLogLoss": 0.582946862378099,
+            "holdoutLogLossImprovement": 0,
+            "holdoutProbabilityEdgePassed": false,
+            "profitableFolds": 3,
+            "benchmarkBeatingFolds": 0,
+            "totalFolds": 4,
+            "codeRevision": null,
+            "datasetSha256": "242c923f9635cf7434082f70e43c90aefb38be69fcbd419c240a79a56063e63e",
+            "specificationSha256": "4674842bb184dfc14b562a3c326075426c75372c983c18b599ee7cdf9bc8be88"
+          },
+          {
+            "runId": "2026-07-18T17-04-54.925Z",
+            "generatedAt": "2026-07-18T17:04:54.925Z",
+            "status": "insufficient",
+            "selectedCandidateId": "market_direction-30s",
+            "completeMarkets": 168,
+            "replayableMarkets": 148,
+            "independentWindows": 37,
+            "holdoutWindows": 15,
+            "holdoutTrades": 17,
+            "holdoutLongWindows": 5,
+            "holdoutShortWindows": 3,
+            "holdoutEqualWeightNetReturnPct": 0.011581343033710341,
+            "holdoutHyperliquidNetReturnPct": -0.001079552059743625,
+            "holdoutPolymarketNetReturnPct": 0.0242422381271643,
+            "holdoutBestBenchmarkId": "always_long",
+            "holdoutBestBenchmarkNetReturnPct": 0.10060587531920073,
+            "holdoutExcessReturnPct": -0.0890245322854904,
+            "holdoutExcessConfidenceLowerPct": -0.035466521860379095,
+            "holdoutMarketBrierScore": 0.19694264705882353,
+            "holdoutModelBrierScore": 0.19694264705882353,
+            "holdoutBrierImprovement": 0,
+            "holdoutBrierSkillScore": 0,
+            "holdoutBrierImprovementConfidenceLower": 0,
+            "holdoutMarketLogLoss": 0.582946862378099,
+            "holdoutModelLogLoss": 0.582946862378099,
+            "holdoutLogLossImprovement": 0,
+            "holdoutProbabilityEdgePassed": false,
+            "profitableFolds": 3,
+            "benchmarkBeatingFolds": 0,
+            "totalFolds": 4,
+            "codeRevision": null,
+            "datasetSha256": "83d3664b4bbd8d1d724a18f2093f100312b5c868bf80dec04d45c60fae506a7f",
+            "specificationSha256": "4674842bb184dfc14b562a3c326075426c75372c983c18b599ee7cdf9bc8be88"
+          },
+          {
+            "runId": "2026-07-18T17-02-17.827Z",
+            "generatedAt": "2026-07-18T17:02:17.827Z",
+            "status": "insufficient",
+            "selectedCandidateId": "market_direction-30s",
+            "completeMarkets": 168,
+            "replayableMarkets": 144,
+            "independentWindows": 36,
+            "holdoutWindows": 15,
+            "holdoutTrades": 17,
+            "holdoutLongWindows": 4,
+            "holdoutShortWindows": 4,
+            "holdoutEqualWeightNetReturnPct": 0.025193124661861264,
+            "holdoutHyperliquidNetReturnPct": -0.0008500626318799384,
+            "holdoutPolymarketNetReturnPct": 0.05123631195560248,
+            "holdoutBestBenchmarkId": "hyperliquid_only",
+            "holdoutBestBenchmarkNetReturnPct": -0.0027472838604991542,
+            "holdoutExcessReturnPct": 0.02794040852236042,
+            "holdoutExcessConfidenceLowerPct": -0.007091102224373684,
+            "holdoutMarketBrierScore": 0.20708382352941176,
+            "holdoutModelBrierScore": 0.20708382352941176,
+            "holdoutBrierImprovement": 0,
+            "holdoutBrierSkillScore": 0,
+            "holdoutBrierImprovementConfidenceLower": 0,
+            "holdoutMarketLogLoss": 0.6059027526127703,
+            "holdoutModelLogLoss": 0.6059027526127703,
+            "holdoutLogLossImprovement": 0,
+            "holdoutProbabilityEdgePassed": false,
+            "profitableFolds": 3,
+            "benchmarkBeatingFolds": 0,
+            "totalFolds": 4,
+            "codeRevision": null,
+            "datasetSha256": "28e3fff3a9437a26f1f1be4940b2248c1c07e5d58419184395a5ce9fc81dfacd",
+            "specificationSha256": "2918190f2d8f0992e9d7422cc109aad5e51b7fa3b51ded040c58b5f0de08d960"
+          },
+          {
+            "runId": "2026-07-18T17-00-00.084Z",
+            "generatedAt": "2026-07-18T17:00:00.084Z",
+            "status": "insufficient",
+            "selectedCandidateId": "logit_pool-30s",
+            "completeMarkets": 168,
+            "replayableMarkets": 144,
+            "independentWindows": 36,
+            "holdoutWindows": 15,
+            "holdoutTrades": 0,
+            "holdoutLongWindows": 0,
+            "holdoutShortWindows": 0,
+            "holdoutEqualWeightNetReturnPct": 0,
+            "holdoutHyperliquidNetReturnPct": 0,
+            "holdoutPolymarketNetReturnPct": 0,
+            "holdoutBestBenchmarkId": "polymarket_only",
+            "holdoutBestBenchmarkNetReturnPct": 0,
+            "holdoutExcessReturnPct": 0,
+            "holdoutExcessConfidenceLowerPct": 0,
+            "holdoutMarketBrierScore": null,
+            "holdoutModelBrierScore": null,
+            "holdoutBrierImprovement": null,
+            "holdoutBrierSkillScore": null,
+            "holdoutBrierImprovementConfidenceLower": null,
+            "holdoutMarketLogLoss": null,
+            "holdoutModelLogLoss": null,
+            "holdoutLogLossImprovement": null,
+            "holdoutProbabilityEdgePassed": false,
+            "profitableFolds": 2,
+            "benchmarkBeatingFolds": 0,
+            "totalFolds": 4,
+            "codeRevision": null,
+            "datasetSha256": "17ea74d19964d71488c507c54de71fe6c6bcc75050655a62f39d58b83999a3f3",
+            "specificationSha256": "e78ccd3d792b5ddeb1d8171733842acd27534ad5559af9d0e2f493a04d62fedd"
+          },
           {
             "runId": "2026-07-18T16-50-42.301Z",
             "generatedAt": "2026-07-18T16:50:42.301Z",
@@ -1640,13 +1820,13 @@
       "medianReferenceCaptureLagSeconds": null
     },
     "funnel": {
-      "scans": 343,
+      "scans": 347,
       "scannedMarkets": 81,
       "structuredMarkets": 11,
       "horizonEligibleMarkets": 11,
       "groupedEvents": 1,
       "priceReadyEvents": 1,
-      "thresholdSignals": 72,
+      "thresholdSignals": 76,
       "opened": 1,
       "closed": 0
     },
@@ -1670,7 +1850,7 @@
       "priceBasisPct": null,
       "ladderViolations": null,
       "nextWindowAt": "2026-07-19T13:00:00.000Z",
-      "observedAt": "2026-07-18T16:52:51.643Z"
+      "observedAt": "2026-07-18T17:10:25.695Z"
     },
     "testnet": {
       "environment": "testnet",
@@ -1698,8 +1878,8 @@
         "label": "testnet API疎通",
         "cadence": "10分ごと",
         "status": "healthy",
-        "lastSuccessAt": "2026-07-18T16:52:57.719Z",
-        "records": 6510
+        "lastSuccessAt": "2026-07-18T17:10:31.335Z",
+        "records": 6930
       },
       "verifiedReady": false,
       "verification": {
@@ -1753,9 +1933,9 @@
     }
   },
   "polymarket": {
-    "snapshots": 157459,
-    "markets": 550,
-    "latestAt": "2026-07-18T16:52:56.380Z",
+    "snapshots": 158809,
+    "markets": 558,
+    "latestAt": "2026-07-18T17:10:29.831Z",
     "backtestRuns": 7,
     "backtestPoints": 781
   },
@@ -2379,7 +2559,7 @@
     "maximumExecutionTimingErrorMinutes": 0.000016666666666666667,
     "probabilityLadderEvents": 240,
     "probabilityLadderViolationEvents": 0,
-    "aiPredictions": 294,
+    "aiPredictions": 296,
     "aiResolved": 0,
     "aiBrierScore": null,
     "marketBrierScore": null,
@@ -2470,53 +2650,53 @@
     ]
   },
   "hyperliquid": {
-    "snapshots": 9555,
-    "latestAt": "2026-07-18T16:52:52.424Z",
+    "snapshots": 9645,
+    "latestAt": "2026-07-18T17:10:26.471Z",
     "assets": [
       {
         "asset": "BTC",
-        "price": 64279.5,
-        "change24hPct": 0.010604512223881812,
-        "dayVolume": 855325752.13615,
-        "openInterestUsd": 2528230585.8525,
+        "price": 64267.5,
+        "change24hPct": 0.0046663227500820526,
+        "dayVolume": 796136449.9713297,
+        "openInterestUsd": 2531991817.41086,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-18T16:52:52.424Z"
+        "capturedAt": "2026-07-18T17:10:26.471Z"
       },
       {
         "asset": "ETH",
-        "price": 1845.55,
-        "change24hPct": 0.005146778497903126,
-        "dayVolume": 288569530.5352401,
-        "openInterestUsd": 1782367180.5895212,
+        "price": 1844.95,
+        "change24hPct": -0.0010017327268788678,
+        "dayVolume": 273112162.39324,
+        "openInterestUsd": 1782386916.5430002,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-18T16:52:52.424Z"
+        "capturedAt": "2026-07-18T17:10:26.471Z"
       },
       {
         "asset": "SOL",
-        "price": 75.2475,
-        "change24hPct": 0.004465179608345693,
-        "dayVolume": 51359505.65617001,
-        "openInterestUsd": 329435900.6076179,
-        "fundingRate": 0.0000062756,
-        "capturedAt": "2026-07-18T16:52:52.424Z"
+        "price": 75.0265,
+        "change24hPct": -0.00359244060188324,
+        "dayVolume": 48689552.82994002,
+        "openInterestUsd": 328659468.54192,
+        "fundingRate": 0.000007332,
+        "capturedAt": "2026-07-18T17:10:26.471Z"
       },
       {
         "asset": "XRP",
-        "price": 1.0898,
-        "change24hPct": 0.003406684467360366,
-        "dayVolume": 9317923.089699997,
-        "openInterestUsd": 101779893.3888,
-        "fundingRate": 0.0000115097,
-        "capturedAt": "2026-07-18T16:52:52.424Z"
+        "price": 1.08815,
+        "change24hPct": -0.003160498351044261,
+        "dayVolume": 8396475.634399999,
+        "openInterestUsd": 101587575.2112,
+        "fundingRate": 0.0000125,
+        "capturedAt": "2026-07-18T17:10:26.471Z"
       },
       {
         "asset": "HYPE",
         "price": 59.5245,
-        "change24hPct": -0.01186108667142538,
-        "dayVolume": 198504584.50482,
-        "openInterestUsd": 1357844382.7864788,
+        "change24hPct": -0.01516354792276764,
+        "dayVolume": 195626880.5040699,
+        "openInterestUsd": 1358935952.15256,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-18T16:52:52.424Z"
+        "capturedAt": "2026-07-18T17:10:26.471Z"
       }
     ]
   },
@@ -2524,7 +2704,7 @@
     "alerts": {
       "status": "healthy",
       "message": "異常1件を監視中",
-      "lastSuccessAt": "2026-07-18T16:53:06.542Z",
+      "lastSuccessAt": "2026-07-18T17:10:40.610Z",
       "webhookConfigured": false
     },
     "tunnel": {
@@ -2533,10 +2713,10 @@
       "publicUrl": "https://model-insurance-nancy-julian.trycloudflare.com",
       "fixedUrl": false,
       "fallback": false,
-      "publishedAt": "2026-07-18T16:52:04.773Z",
-      "lastCheckedAt": "2026-07-18T16:53:05.118Z",
+      "publishedAt": "2026-07-18T17:07:16.253Z",
+      "lastCheckedAt": "2026-07-18T17:11:17.800Z",
       "consecutiveFailures": 0,
-      "updatedAt": "2026-07-18T16:53:05.118Z"
+      "updatedAt": "2026-07-18T17:11:17.800Z"
     },
     "backup": {
       "encrypted": true,
@@ -2553,24 +2733,24 @@
       "label": "価格同期収集",
       "cadence": "1分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T16:52:56.450Z",
-      "records": 150810
+      "lastSuccessAt": "2026-07-18T17:10:29.902Z",
+      "records": 152160
     },
     {
       "id": "hyperliquid",
       "label": "相場データ収集",
       "cadence": "1分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T16:52:52.430Z",
-      "records": 9555
+      "lastSuccessAt": "2026-07-18T17:10:26.476Z",
+      "records": 9645
     },
     {
       "id": "realtime-market-data",
       "label": "秒単位の板収集",
       "cadence": "5秒ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T16:53:13.262Z",
-      "records": 74597
+      "lastSuccessAt": "2026-07-18T17:11:16.909Z",
+      "records": 76391
     },
     {
       "id": "backtest",
@@ -2585,48 +2765,48 @@
       "label": "15分モデル過去検証",
       "cadence": "6時間ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T16:52:51.620Z",
-      "records": 48174
+      "lastSuccessAt": "2026-07-18T17:10:25.672Z",
+      "records": 49321
     },
     {
       "id": "realtime-short-term-backtest",
       "label": "5秒板リプレイ",
       "cadence": "30分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T16:52:51.624Z",
-      "records": 2216
+      "lastSuccessAt": "2026-07-18T17:10:25.683Z",
+      "records": 2364
     },
     {
       "id": "testnet-transport",
       "label": "testnet API疎通",
       "cadence": "10分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T16:52:57.719Z",
-      "records": 6510
+      "lastSuccessAt": "2026-07-18T17:10:31.335Z",
+      "records": 6930
     },
     {
       "id": "forward-experiment",
       "label": "固定フォワード検証",
       "cadence": "5分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T16:52:56.499Z",
-      "records": 2818
+      "lastSuccessAt": "2026-07-18T17:10:30.428Z",
+      "records": 2850
     },
     {
       "id": "short-term-direction",
       "label": "15分モデル検証",
       "cadence": "1分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T16:52:52.742Z",
-      "records": 26151
+      "lastSuccessAt": "2026-07-18T17:11:27.087Z",
+      "records": 27481
     },
     {
       "id": "forward-execution-audit-report",
       "label": "前向き監査の保存",
       "cadence": "5分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T16:52:53.793Z",
-      "records": 1147
+      "lastSuccessAt": "2026-07-18T17:10:27.696Z",
+      "records": 1285
     }
   ]
 }

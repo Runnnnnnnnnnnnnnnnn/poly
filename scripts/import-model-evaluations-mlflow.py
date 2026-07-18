@@ -249,6 +249,7 @@ def import_realtime_short_term_runs(args):
             "dataset_sha256": reproducibility["datasetSha256"],
             "specification_sha256": reproducibility["specificationSha256"],
             "trades_csv_sha256": reproducibility.get("tradesCsvSha256") or "unavailable",
+            "opportunities_csv_sha256": reproducibility.get("opportunitiesCsvSha256") or "unavailable",
         }
         coverage = report["coverage"]
         metrics = {
@@ -256,6 +257,7 @@ def import_realtime_short_term_runs(args):
             "replayable_markets": coverage["replayableMarkets"],
             "independent_windows": coverage["independentWindows"],
             "selected_trades": coverage["selectedTrades"],
+            "common_opportunities": coverage.get("opportunities", 0),
         }
         if selected:
             for split in ("calibration", "holdout"):
@@ -294,6 +296,15 @@ def import_realtime_short_term_runs(args):
                     if values.get("logLossImprovementConfidenceInterval95") else None,
                     "probability_edge_passed": 1.0 if values.get("probabilityEdgePassed") else 0.0,
                 }
+                benchmarks = values.get("benchmarks", {})
+                candidates.update({
+                    "cash_benchmark_net_return_pct": benchmarks.get("cashNetReturnPct"),
+                    "polymarket_benchmark_net_return_pct": benchmarks.get("polymarketOnlyNetReturnPct"),
+                    "hyperliquid_benchmark_net_return_pct": benchmarks.get("hyperliquidOnlyNetReturnPct"),
+                    "always_long_benchmark_net_return_pct": benchmarks.get("alwaysLongNetReturnPct"),
+                    "always_short_benchmark_net_return_pct": benchmarks.get("alwaysShortNetReturnPct"),
+                    "random_median_benchmark_net_return_pct": benchmarks.get("randomMedianNetReturnPct"),
+                })
                 metrics.update({
                     f"{split}_{key}": float(value)
                     for key, value in candidates.items()
