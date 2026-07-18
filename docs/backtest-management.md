@@ -105,6 +105,13 @@ selected only on development folds, and evaluated on a new untouched period. A p
 is not evidence of an edge until the independent-event count, benchmark, uncertainty, drawdown, and selection-bias
 gates all pass.
 
+The 6/12/24/48-hour historical study keeps Hyperliquid one-hour candles only as non-promotable research
+features. A row is executable only when it has a Polymarket order book captured no more than five minutes
+before the decision boundary, a Hyperliquid entry order book captured after that boundary, a Hyperliquid
+exit order book captured no more than five minutes before settlement, and a maximum cross-source capture
+skew of 60 seconds. Missing bid/ask or non-causal timestamps produce zero eligible trades; midpoint fallback
+is never counted as executable evidence. Promotion also requires observed funding for every holdout row.
+
 Direction accuracy alone is not a promotion metric. A forecast can be correct often and still lose after
 entry price, spread, taker fees, slippage, and funding. Retain Brier score or another proper scoring rule as
 a probability-quality diagnostic and compare it with the market probability on the same untouched windows.

@@ -207,6 +207,7 @@ function eventSupportsHorizon(event: HistoricalCryptoEvent, horizonHours: number
 }
 
 export function toHorizonStudy(metrics: ModelEvaluationMetrics): NonNullable<ModelEvaluationMetrics["horizonStudies"]>[number] {
+  const hasExecutableComparison = metrics.combinedTrading.eligibleSignals > 0;
   return {
     horizonHours: metrics.horizonHours,
     status: metrics.quality.status,
@@ -214,9 +215,9 @@ export function toHorizonStudy(metrics: ModelEvaluationMetrics): NonNullable<Mod
     testEvents: metrics.dataset.testEvents,
     eligibleSignals: metrics.combinedTrading.eligibleSignals,
     trades: metrics.combinedTrading.trades,
-    netReturnPct: metrics.combinedTrading.netReturnPct,
-    bestBenchmarkReturnPct: metrics.combinedTrading.benchmarks.bestReturnPct,
-    excessReturnPct: metrics.combinedTrading.excessReturnPct,
+    netReturnPct: hasExecutableComparison ? metrics.combinedTrading.netReturnPct : null,
+    bestBenchmarkReturnPct: hasExecutableComparison ? metrics.combinedTrading.benchmarks.bestReturnPct : null,
+    excessReturnPct: hasExecutableComparison ? metrics.combinedTrading.excessReturnPct : null,
     deflatedSharpeProbability: metrics.combinedTrading.deflatedSharpeProbability,
     testExecutionFeatureCoverage: metrics.dataset.testExecutionFeatureCoverage,
     testSynchronizedExecutionCoverage: metrics.dataset.testSynchronizedExecutionCoverage,

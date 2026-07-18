@@ -2125,6 +2125,7 @@ function BacktestResultsPanel({
   const signal = backtestResultSignal(selected);
   const ResultIcon = signal.icon;
   const isRejectedAudit = selected?.result.source === "closest-rejected-candidate";
+  const synchronizedHoldoutReady = (selected?.dataset.testSynchronizedExecutionCoverage ?? 0) >= 0.9;
   const backtestPipeline = monitoring?.pipelines.find((pipeline) => pipeline.id === "backtest");
   const research = monitoring?.combinedShadow.shortTermDirection?.research ?? null;
   const realtimeResearch = monitoring?.combinedShadow.shortTermDirection?.realtimeResearch ?? null;
@@ -2171,7 +2172,7 @@ function BacktestResultsPanel({
 
           <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-4 lg:divide-y-0">
             <BacktestMetric label={isRejectedAudit ? "最有力候補の取引" : "最終テストの取引"} value={`${selected.result.trades}件`} tone={selected.result.trades >= 50 ? "good" : "watch"} />
-            <BacktestMetric label="コスト後損益" value={selected.result.trades ? formatSignedPct(selected.result.netReturnPct) : "見送り"} tone={selected.result.trades ? signedMetricTone(selected.result.netReturnPct, true) : "neutral"} />
+            <BacktestMetric label="コスト後損益" value={selected.result.trades ? formatSignedPct(selected.result.netReturnPct) : synchronizedHoldoutReady ? "見送り" : "同期板待ち"} tone={selected.result.trades ? signedMetricTone(selected.result.netReturnPct, true) : synchronizedHoldoutReady ? "neutral" : "watch"} />
             <BacktestMetric label="最良の単純戦略" value={formatSignedPct(selected.result.benchmarkReturnPct)} tone="neutral" />
             <BacktestMetric label="単純戦略との差" value={selected.result.trades ? formatSignedPct(selected.result.excessReturnPct) : "未判定"} tone={signedMetricTone(selected.result.excessReturnPct, selected.result.trades > 0)} />
           </div>
@@ -2184,7 +2185,7 @@ function BacktestResultsPanel({
                     <span className="text-sm font-bold text-slate-950">{horizon.horizonHours}時間前</span>
                     <span className={`h-2 w-2 shrink-0 rounded-full ${horizonStatusClass(horizon.status)}`} />
                   </div>
-                  <p className={`mt-2 text-xl font-bold leading-none ${horizon.trades > 0 && (horizon.netReturnPct ?? 0) < 0 ? "text-rose-700" : "text-slate-950"}`}>{horizon.trades > 0 ? formatSignedPct(horizon.netReturnPct) : "見送り"}</p>
+                  <p className={`mt-2 text-xl font-bold leading-none ${horizon.trades > 0 && (horizon.netReturnPct ?? 0) < 0 ? "text-rose-700" : "text-slate-950"}`}>{horizon.trades > 0 ? formatSignedPct(horizon.netReturnPct) : (horizon.testSynchronizedExecutionCoverage ?? 0) < 0.9 ? "同期板待ち" : "見送り"}</p>
                   <p className="mt-2 text-[10px] font-semibold text-slate-500">取引 {horizon.trades}件 / テスト {horizon.testEvents}件</p>
                 </div>
               ))}
@@ -2532,6 +2533,7 @@ function backtestResultSignal(item: ModelEvaluationSummary | null): Signal {
   if (item.status === "failed" || item.qualityStatus === "failed") return { label: "実行エラー", description: "再実行が必要です", tone: "bad", icon: AlertCircle };
   if (item.qualityStatus === "promising") return { label: "候補あり", description: "採用条件を満たす候補があります", tone: "good", icon: CheckCircle2 };
   if (item.qualityStatus === "underperforming") return { label: "基準未達", description: "未使用期間で優位性を確認できません", tone: "bad", icon: TrendingDown };
+  if ((item.dataset.testSynchronizedExecutionCoverage ?? 0) < 0.9) return { label: "同期板を収集中", description: "集約履歴は参考値です。売買判定には前向きの同期板が必要です", tone: "watch", icon: Clock3 };
   return { label: "データ不足", description: "採用判断に必要な取引数が不足しています", tone: "watch", icon: Clock3 };
 }
 
@@ -2565,7 +2567,7 @@ function shortHash(value: string | null | undefined, length = 8) {
 
 export function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | null }) {
   const model = monitoring?.model;
-  const decision = getEvaluationSignal(model?.evaluationStatus, model?.combinedStrategy);
+  const decision = getEvaluationSignal(model?.evaluationStatus, model?.combinedStrategy, model?.testSynchronizedExecutionCoverage);
   const DecisionIcon = decision.icon;
   const hasTrades = (model?.trades ?? 0) > 0;
   const leadingCandidate = selectLeadingCandidate(model?.candidateDiagnostics);
@@ -2659,7 +2661,7 @@ export function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapsh
       <details className="border-t">
         <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">詳しい検証数値を見る</summary>
         <div className="border-t">
-          {!hasTrades ? <p className="px-5 py-4 text-sm leading-6 text-slate-600">採用基準を通ったルールがないため、最終テストでは資金を動かしていません。単純戦略の成績は、見送り結果とは別に比較しています。</p> : null}
+          {!hasTrades ? <p className="px-5 py-4 text-sm leading-6 text-slate-600">{(model?.testSynchronizedExecutionCoverage ?? 0) < 0.9 ? "集約履歴足は一次判定にだけ使います。実際に売買できた証拠となる同期板を前向きに収集中です。" : "採用基準を通ったルールがないため、最終テストでは資金を動かしていません。単純戦略の成績は、見送り結果とは別に比較しています。"}</p> : null}
           <ModelSampleFlow model={model} />
           <HoldoutAttribution audit={holdoutAudit} />
           <CandidateDiagnosis diagnostics={model?.candidateDiagnostics} />
@@ -2831,7 +2833,7 @@ function HorizonComparison({ studies }: { studies: MonitoringSnapshot["model"]["
                 <span className="text-base font-bold tabular-nums text-slate-950">{row.horizonHours}時間前</span>
                 <span className={`h-2 w-2 shrink-0 rounded-full ${row.status === "promising" ? "bg-emerald-500" : row.status === "underperforming" ? "bg-rose-500" : "bg-amber-400"}`} />
               </div>
-              <p className="mt-2 text-xl font-bold leading-none text-slate-950">{noTrade ? "見送り" : formatSignedPct(row.netReturnPct)}</p>
+              <p className="mt-2 text-xl font-bold leading-none text-slate-950">{noTrade ? (row.testSynchronizedExecutionCoverage ?? 0) < 0.9 ? "同期板待ち" : "見送り" : formatSignedPct(row.netReturnPct)}</p>
               <p className="mt-2 text-[10px] font-semibold leading-4 text-muted-foreground">テスト {row.testEvents}件 / 取引 {row.trades}件</p>
               <div className={`mt-2 h-1 rounded-full ${noTrade ? "bg-amber-300" : positive ? "bg-emerald-500" : "bg-rose-500"}`} />
             </div>
@@ -3071,6 +3073,7 @@ function scoreBacktest(run: BacktestRun) {
 function getEvaluationSignal(
   status: MonitoringSnapshot["model"]["evaluationStatus"] | undefined,
   combinedStrategy?: string | null,
+  synchronizedHoldoutCoverage?: number | null,
 ): Signal {
   if (status === "promising") {
     return { label: "優位性を確認", description: "Polymarketの予測を使ったHyperliquid取引が、未使用期間でもコスト控除後に基準を上回りました。", tone: "good", icon: CheckCircle2 };
@@ -3079,6 +3082,9 @@ function getEvaluationSignal(
     return { label: "改善が必要", description: "十分な履歴で単純戦略を下回りました。本番利用せず、モデルを見直します。", tone: "bad", icon: TrendingDown };
   }
   if (status === "inconclusive") {
+    if ((synchronizedHoldoutCoverage ?? 0) < 0.9) {
+      return { label: "同期板を収集中", description: "集約履歴は一次判定のみ。実売買可能な板価格を前向きに蓄積しています。", tone: "watch", icon: Clock3 };
+    }
     if (combinedStrategy === "no-trade guard") {
       return { label: "実取引はまだ不可", description: "検証条件を満たす売買ルールがまだ見つかっていません。0%は利益ではなく、見送りルールが働いて0回だった結果です。", tone: "watch", icon: AlertCircle };
     }

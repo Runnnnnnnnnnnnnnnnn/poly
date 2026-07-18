@@ -1753,24 +1753,45 @@ const combinedSamples: EvaluationSample[] = [];
 for (let eventIndex = 0; eventIndex < 60; eventIndex += 1) {
   const long = eventIndex % 5 === 0 || eventIndex % 5 === 1;
   const polymarketLong = eventIndex % 2 === 0;
-  const entryAt = new Date(Date.UTC(2024, 0, 1 + eventIndex * 2, 0));
-  const exitAt = new Date(entryAt.getTime() + 24 * 60 * 60 * 1_000);
+  const targetAt = new Date(Date.UTC(2024, 0, 1 + eventIndex * 2, 0));
+  const observedAt = new Date(targetAt.getTime() - 30_000);
+  const entryAt = new Date(targetAt.getTime() + 30_000);
+  const endAt = new Date(targetAt.getTime() + 24 * 60 * 60 * 1_000);
+  const exitAt = new Date(endAt.getTime() - 30_000);
+  const marketProbability = polymarketLong ? 0.8 : 0.2;
+  const exitPrice = long ? 102 : 98;
   combinedSamples.push({
     eventId: `combined-${eventIndex}`,
     marketId: `combined-market-${eventIndex}`,
     asset: "BTC",
     title: "Will Bitcoin be above $100 on the test date?",
-    endAt: exitAt.toISOString(),
-    observedAt: entryAt.toISOString(),
-    marketProbability: polymarketLong ? 0.8 : 0.2,
+    endAt: endAt.toISOString(),
+    observedAt: observedAt.toISOString(),
+    horizonHours: 24,
+    observationLagMinutes: 0.5,
+    marketProbability,
+    marketBestBid: marketProbability - 0.01,
+    marketBestAsk: marketProbability + 0.01,
+    marketSpread: 0.02,
     realizedVolatility24h: 0.02,
     hyperliquidEntryAt: entryAt.toISOString(),
     hyperliquidEntryPrice: 100,
+    hyperliquidEntryBestBid: 99.99,
+    hyperliquidEntryBestAsk: 100.01,
+    hyperliquidEntrySpread: 0.02,
+    hyperliquidEntryLagMinutes: 0.5,
     hyperliquidExitAt: exitAt.toISOString(),
-    hyperliquidExitPrice: long ? 102 : 98,
+    hyperliquidExitPrice: exitPrice,
+    hyperliquidExitBestBid: exitPrice - 0.01,
+    hyperliquidExitBestAsk: exitPrice + 0.01,
+    hyperliquidExitSpread: 0.02,
+    hyperliquidExitLeadMinutes: 0.5,
     executionPriceSource: "synchronized-1m",
+    executionSynchronizationSkewMs: 2_000,
     hyperliquidMomentum6h: long ? 0.01 : -0.01,
     hyperliquidMomentum24h: long ? 0.02 : -0.02,
+    hyperliquidFunding24h: 0,
+    hyperliquidFundingDuringTrade: 0,
     thresholdKind: "above",
     thresholdLower: 100,
     thresholdUpper: null,
@@ -1824,13 +1845,44 @@ assert.equal(hourlyFallbackCombined.trades, 0);
 assert.equal(hourlyFallbackCombined.selectedStrategy.id, "no-trade guard");
 assert.equal(hourlyFallbackCombined.walkForwardChronologyValid, false);
 
+const missingOrderBookCombined = evaluateCombinedTrading(combinedSamples.map((sample) => ({
+  ...sample,
+  hyperliquidEntryBestAsk: null,
+})));
+assert.equal(missingOrderBookCombined.totalEligibleSignals, 0);
+assert.equal(missingOrderBookCombined.trades, 0);
+
+const nonCausalEntryCombined = evaluateCombinedTrading(combinedSamples.map((sample) => ({
+  ...sample,
+  hyperliquidEntryAt: new Date(new Date(sample.endAt).getTime() - 24 * 60 * 60 * 1_000).toISOString(),
+})));
+assert.equal(nonCausalEntryCombined.totalEligibleSignals, 0);
+assert.equal(nonCausalEntryCombined.trades, 0);
+
 const combinedChronologicalEvaluation = evaluateChronologicalModel(combinedSamples);
 assert.equal(combinedChronologicalEvaluation.quality.gates.find((gate) => gate.id === "chronology")?.passed, true);
+assert.equal(combinedChronologicalEvaluation.dataset.testSynchronizedExecutionCoverage, 1);
+assert.equal(combinedChronologicalEvaluation.quality.gates.find((gate) => gate.id === "synchronized-prices")?.passed, true);
+assert.equal(combinedChronologicalEvaluation.quality.gates.find((gate) => gate.id === "funding")?.passed, true);
+const missingOrderBookEvaluation = evaluateChronologicalModel(combinedSamples.map((sample) => ({
+  ...sample,
+  marketBestAsk: null,
+})));
+assert.equal(missingOrderBookEvaluation.dataset.testSynchronizedExecutionCoverage, 0);
+assert.equal(missingOrderBookEvaluation.dataset.maximumExecutionTimingErrorMinutes, null);
+assert.equal(missingOrderBookEvaluation.quality.gates.find((gate) => gate.id === "same-holdout")?.passed, false);
+assert.equal(missingOrderBookEvaluation.quality.gates.find((gate) => gate.id === "costs")?.passed, false);
+assert.equal(missingOrderBookEvaluation.quality.gates.find((gate) => gate.id === "timing")?.passed, false);
+assert.equal(missingOrderBookEvaluation.quality.gates.find((gate) => gate.id === "funding")?.passed, false);
 const combinedHorizonStudy = toHorizonStudy(combinedChronologicalEvaluation);
 assert.equal(combinedHorizonStudy.testEvents, combinedChronologicalEvaluation.dataset.testEvents);
 assert.equal(combinedHorizonStudy.eligibleSignals, combinedChronologicalEvaluation.combinedTrading.eligibleSignals);
 assert.equal(combinedHorizonStudy.netReturnPct, combinedChronologicalEvaluation.combinedTrading.netReturnPct);
 assert.equal(combinedHorizonStudy.excessReturnPct, combinedChronologicalEvaluation.combinedTrading.excessReturnPct);
+const missingOrderBookHorizonStudy = toHorizonStudy(missingOrderBookEvaluation);
+assert.equal(missingOrderBookHorizonStudy.netReturnPct, null);
+assert.equal(missingOrderBookHorizonStudy.bestBenchmarkReturnPct, null);
+assert.equal(missingOrderBookHorizonStudy.excessReturnPct, null);
 
 const evaluationRunFixture = {
   id: "evaluation-run-1",
@@ -1849,6 +1901,9 @@ assert.equal(evaluationSummary.durationMs, 120_000);
 assert.equal(evaluationSummary.result.source, "selected-strategy");
 assert.equal(evaluationSummary.result.trades, combinedChronologicalEvaluation.combinedTrading.trades);
 assert.equal(evaluationSummary.horizons.length, 0);
+const missingOrderBookSummary = summarizeModelEvaluation(evaluationRunFixture, missingOrderBookEvaluation);
+assert.equal(missingOrderBookSummary.result.source, "selected-strategy");
+assert.equal(missingOrderBookSummary.result.trades, 0);
 assert.equal(
   modelEvaluationConfigHash(JSON.stringify({ b: 2, a: 1 })),
   modelEvaluationConfigHash(JSON.stringify({ a: 1, b: 2 })),
@@ -1874,10 +1929,17 @@ assert.equal(concurrentCombined.totalEligibleSignals, 120);
 assert.equal(concurrentCombined.validationEligibleSignals, 72);
 assert.equal(concurrentCombined.trades, 48);
 
-const reversionCombined = evaluateCombinedTrading(combinedSamples.map((sample) => ({
+const withSynchronizedExitPrice = (sample: EvaluationSample, exitPrice: number): EvaluationSample => ({
   ...sample,
-  hyperliquidExitPrice: sample.hyperliquidExitPrice === 102 ? 98 : 102,
-})));
+  hyperliquidExitPrice: exitPrice,
+  hyperliquidExitBestBid: exitPrice - 0.01,
+  hyperliquidExitBestAsk: exitPrice + 0.01,
+  hyperliquidExitSpread: 0.02,
+});
+
+const reversionCombined = evaluateCombinedTrading(combinedSamples.map((sample) => (
+  withSynchronizedExitPrice(sample, sample.hyperliquidExitPrice === 102 ? 98 : 102)
+)));
 assert.equal(reversionCombined.selectedStrategy.signalRule, "hyperliquid-reversion");
 assert.equal(reversionCombined.trades, 24);
 assert.ok(reversionCombined.netReturnPct > 0);
@@ -1887,8 +1949,7 @@ const fundingCombined = evaluateCombinedTrading(combinedSamples.map((sample, ind
   const positiveFunding = index % 4 < 2;
   const carryLong = !positiveFunding;
   return {
-    ...sample,
-    hyperliquidExitPrice: carryLong ? 102 : 98,
+    ...withSynchronizedExitPrice(sample, carryLong ? 102 : 98),
     hyperliquidMomentum6h: 0,
     hyperliquidFunding24h: positiveFunding ? 0.0007 : -0.0007,
     hyperliquidFundingDuringTrade: positiveFunding ? 0.0007 : -0.0007,
@@ -1900,10 +1961,9 @@ assert.equal(fundingCombined.trades, 24);
 assert.ok(fundingCombined.netReturnPct > 0);
 assert.ok(fundingCombined.excessReturnPct > 0);
 
-const guarded = evaluateCombinedTrading(combinedSamples.map((sample, index) => index < 36 ? ({
-  ...sample,
-  hyperliquidExitPrice: 100,
-}) : sample));
+const guarded = evaluateCombinedTrading(combinedSamples.map((sample, index) => (
+  index < 36 ? withSynchronizedExitPrice(sample, 100) : sample
+)));
 assert.equal(guarded.selectedStrategy.id, "no-trade guard");
 assert.equal(guarded.selectedFromValidation, false);
 assert.ok(guarded.closestValidationCandidate);

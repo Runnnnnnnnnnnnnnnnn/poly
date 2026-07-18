@@ -1,4 +1,5 @@
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
+import { hasExecutableSynchronizedOrderBook } from "@/src/lib/model-evaluation/execution-evidence";
 import type { CombinedCandidateDiagnostic, CombinedHoldoutSlice, CombinedStrategyCandidate, EvaluationSample, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
 const initialCapital = 10_000;
@@ -613,17 +614,10 @@ export function impliedTerminalMedianForCondition(
 }
 
 function hasExecutionData(sample: EvaluationSample) {
-  return sample.executionPriceSource === "synchronized-1m"
+  return hasExecutableSynchronizedOrderBook(sample)
     && typeof sample.realizedVolatility24h === "number"
     && Number.isFinite(sample.realizedVolatility24h)
-    && typeof sample.hyperliquidEntryPrice === "number"
-    && Number.isFinite(sample.hyperliquidEntryPrice)
-    && sample.hyperliquidEntryPrice > 0
-    && typeof sample.hyperliquidExitPrice === "number"
-    && Number.isFinite(sample.hyperliquidExitPrice)
-    && sample.hyperliquidExitPrice > 0
-    && typeof sample.hyperliquidEntryAt === "string"
-    && typeof sample.hyperliquidExitAt === "string";
+    && sample.realizedVolatility24h > 0;
 }
 
 function finitePositive(value: number | null | undefined) {

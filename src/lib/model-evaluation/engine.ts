@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { evaluateCombinedTrading } from "@/src/lib/model-evaluation/combined-trading";
+import { hasExecutableSynchronizedOrderBook, hasReferenceExecutionPrices } from "@/src/lib/model-evaluation/execution-evidence";
 import { fitMonotonicProbabilityLadder } from "@/src/lib/model-evaluation/probability-ladder";
 import type { EvaluationSample, ModelCandidate, ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 
@@ -71,9 +72,9 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
   const assets = samples.reduce<Record<string, number>>((counts, sample) => ({ ...counts, [sample.asset]: (counts[sample.asset] ?? 0) + 1 }), {});
   const structuralFeatureMarkets = samples.filter(hasStructuralProbability).length;
   const structuralFeatureCoverage = samples.length ? structuralFeatureMarkets / samples.length : 0;
-  const executionFeatureMarkets = samples.filter(hasExecutionData).length;
+  const executionFeatureMarkets = samples.filter(hasReferenceExecutionPrices).length;
   const executionFeatureCoverage = samples.length ? executionFeatureMarkets / samples.length : 0;
-  const testExecutionFeatureMarkets = test.filter(hasExecutionData).length;
+  const testExecutionFeatureMarkets = test.filter(hasReferenceExecutionPrices).length;
   const testExecutionFeatureCoverage = test.length ? testExecutionFeatureMarkets / test.length : 0;
   const synchronizedExecutionMarkets = samples.filter(hasSynchronizedExecutionData).length;
   const synchronizedExecutionCoverage = samples.length ? synchronizedExecutionMarkets / samples.length : 0;
@@ -87,10 +88,11 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
   const fundingCostCoverage = samples.length ? fundingCostMarkets / samples.length : 0;
   const testFundingCostMarkets = test.filter(hasFundingCost).length;
   const testFundingCostCoverage = test.length ? testFundingCostMarkets / test.length : 0;
-  const observationLags = samples.flatMap((sample) => typeof sample.observationLagMinutes === "number" ? [sample.observationLagMinutes] : []);
-  const entryLags = samples.flatMap((sample) => typeof sample.hyperliquidEntryLagMinutes === "number" ? [sample.hyperliquidEntryLagMinutes] : []);
-  const exitLeads = samples.flatMap((sample) => typeof sample.hyperliquidExitLeadMinutes === "number" ? [sample.hyperliquidExitLeadMinutes] : []);
-  const executionTimingErrors = samples.flatMap((sample) => {
+  const synchronizedSamples = samples.filter(hasSynchronizedExecutionData);
+  const observationLags = synchronizedSamples.flatMap((sample) => typeof sample.observationLagMinutes === "number" ? [sample.observationLagMinutes] : []);
+  const entryLags = synchronizedSamples.flatMap((sample) => typeof sample.hyperliquidEntryLagMinutes === "number" ? [sample.hyperliquidEntryLagMinutes] : []);
+  const exitLeads = synchronizedSamples.flatMap((sample) => typeof sample.hyperliquidExitLeadMinutes === "number" ? [sample.hyperliquidExitLeadMinutes] : []);
+  const executionTimingErrors = synchronizedSamples.flatMap((sample) => {
     const values = [sample.hyperliquidEntryLagMinutes, sample.hyperliquidExitLeadMinutes]
       .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
     return values.length ? [Math.max(...values)] : [];
@@ -114,18 +116,22 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
       label: "未使用期間の同期板価格で売買検証",
       passed: testSynchronizedExecutionCoverage >= 0.9 && combinedTrading.eligibleSignals >= MIN_HOLDOUT_EVENTS,
     },
-    { id: "features", label: "最終テストの売買価格を90%以上取得", passed: testExecutionFeatureCoverage >= 0.9 },
+    { id: "features", label: "最終テストの集約参考価格を90%以上取得", passed: testExecutionFeatureCoverage >= 0.9 },
     { id: "synchronized-prices", label: "最終テストの1分同期板価格を90%以上取得", passed: testSynchronizedExecutionCoverage >= 0.9 },
     { id: "timing", label: "売買時刻の誤差を5分以内に制限", passed: maximumExecutionTimingErrorMinutes !== null && maximumExecutionTimingErrorMinutes <= 5 },
     { id: "ladder", label: "価格帯の確率矛盾を単調補正", passed: ladder.events > 0 },
     {
       id: "costs",
-      label: "同期板・手数料・滑り・実期間の資金調達を反映",
+      label: "同期板・手数料・滑り・全取引期間の資金調達を反映",
       passed: combinedTrading.trades >= minimumCombinedTrades
         && testSynchronizedExecutionCoverage >= 0.9
-        && testFundingCostCoverage >= 0.9,
+        && testFundingCostCoverage === 1,
     },
-    { id: "funding", label: "最終テストの資金調達率を90%以上取得", passed: testFundingFeatureCoverage >= 0.9 && testFundingCostCoverage >= 0.9 },
+    {
+      id: "funding",
+      label: "同期板テストの資金調達率と取引期間コストを全件取得",
+      passed: testSynchronizedExecutionCoverage >= 0.9 && testFundingFeatureCoverage === 1 && testFundingCostCoverage === 1,
+    },
     { id: "sample", label: `売買可能な最終テスト${MIN_HOLDOUT_EVENTS}イベント以上`, passed: combinedTrading.eligibleSignals >= MIN_HOLDOUT_EVENTS },
     { id: "trades", label: `最終テスト${minimumCombinedTrades}取引以上`, passed: combinedTrading.trades >= minimumCombinedTrades },
     {
@@ -164,8 +170,8 @@ export function evaluateChronologicalModel(input: EvaluationSample[], options: {
       : testEvents.length >= MIN_HOLDOUT_EVENTS
         && combinedTrading.trades >= minimumCombinedTrades
         && testSynchronizedExecutionCoverage >= 0.9
-        && testFundingFeatureCoverage >= 0.9
-        && testFundingCostCoverage >= 0.9
+        && testFundingFeatureCoverage === 1
+        && testFundingCostCoverage === 1
         && combinedTrading.statisticallyPositive
         && (combinedTrading.deflatedSharpeProbability ?? 0) >= 0.95
       ? "promising"
@@ -422,15 +428,8 @@ function hasStructuralProbability(sample: EvaluationSample): sample is Evaluatio
   return typeof sample.structuralProbability === "number" && Number.isFinite(sample.structuralProbability);
 }
 
-function hasExecutionData(sample: EvaluationSample) {
-  return typeof sample.hyperliquidEntryPrice === "number"
-    && Number.isFinite(sample.hyperliquidEntryPrice)
-    && typeof sample.hyperliquidExitPrice === "number"
-    && Number.isFinite(sample.hyperliquidExitPrice);
-}
-
 function hasSynchronizedExecutionData(sample: EvaluationSample) {
-  return sample.executionPriceSource === "synchronized-1m" && hasExecutionData(sample);
+  return hasExecutableSynchronizedOrderBook(sample);
 }
 
 function hasFundingFeature(sample: EvaluationSample) {

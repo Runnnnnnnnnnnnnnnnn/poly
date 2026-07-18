@@ -39,7 +39,7 @@ export function summarizeModelEvaluation(
   const config = parseModelEvaluationConfig(run.configJson);
   const selected = metrics?.combinedTrading;
   const rejectedAudit = selected?.closestHoldoutAudit ?? null;
-  const useRejectedAudit = Boolean(rejectedAudit && (selected?.trades ?? 0) === 0);
+  const useRejectedAudit = Boolean(rejectedAudit && rejectedAudit.trades > 0 && (selected?.trades ?? 0) === 0);
   const display = useRejectedAudit ? rejectedAudit : selected;
   const qualityStatus = run.status === "failed"
     ? "failed"

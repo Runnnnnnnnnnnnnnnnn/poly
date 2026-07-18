@@ -1070,7 +1070,7 @@ export async function getMonitoringSnapshot() {
       excessReturnPct: evaluation?.combinedTrading?.excessReturnPct ?? null,
       eligibleSignals: evaluation?.combinedTrading?.eligibleSignals ?? 0,
       testedMarkets: evaluation?.dataset.testMarkets ?? 0,
-      testedEvents: evaluation?.combinedTrading?.eligibleSignals ?? evaluation?.dataset.testEvents ?? 0,
+      testedEvents: evaluation?.dataset.testEvents ?? 0,
       observations: evaluation?.dataset.totalMarkets ?? 0,
       brierImprovement: evaluation?.probability.relativeImprovement ?? null,
       previousBrierScore: evaluation?.probability.marketBrierScore ?? null,
