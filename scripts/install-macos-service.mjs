@@ -36,7 +36,9 @@ const modelRevision = fileFingerprint([
   "src/lib/model-evaluation/price-structure.ts",
   "src/lib/model-evaluation/probability-ladder.ts",
   "src/lib/model-evaluation/synchronized-execution.ts",
+  "src/lib/model-evaluation/realtime-short-term-replay.ts",
   "src/lib/model-evaluation/service.ts",
+  "scripts/backtest-realtime-short-term.mts",
 ]);
 const runtimeDatabasePath = resolve(deployedRoot, "prisma/dev.db");
 const buildSnapshotDirectory = mkdtempSync(resolve(tmpdir(), "polymarket-watch-build-"));
