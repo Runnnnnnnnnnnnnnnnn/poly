@@ -6,6 +6,7 @@ import {
   shortTermDirectionSpecificationHash,
   shortTermDirectionStrategyKey,
 } from "../src/lib/combined-trading/short-term-direction";
+import type { CombinedSignalScan } from "../src/lib/combined-trading/live-signal";
 import { ensureCombinedShadowRun, loadCombinedMarkPrices, tickCombinedShadowRun, type CombinedShadowConfig } from "../src/lib/combined-trading/service";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "../src/lib/monitoring/heartbeat";
 import { prisma } from "../src/lib/server/prisma";
@@ -55,26 +56,27 @@ async function ensureRuns() {
     strategy: await ensureCombinedShadowRun(strategyConfig),
     control: await ensureCombinedShadowRun(controlConfig),
   };
-  await supersedeClosedLegacyRuns([active.strategy.id, active.control.id]);
-  return active;
+  const retiringRunIds = await reconcileLegacyRuns([active.strategy.id, active.control.id]);
+  return { ...active, retiringRunIds };
 }
 
-async function supersedeClosedLegacyRuns(activeIds: string[]) {
+async function reconcileLegacyRuns(activeIds: string[]) {
   const running = await prisma.combinedShadowRun.findMany({
     where: { status: "running", id: { notIn: activeIds } },
     select: { id: true, configJson: true, _count: { select: { positions: { where: { status: "OPEN" } } } } },
   });
-  const legacyIds = running.flatMap((run) => {
+  const legacy = running.filter((run) => {
     const key = parseExperimentKey(run.configJson);
-    return run._count.positions === 0 && isShortTermDirectionFamilyKey(key)
-      ? [run.id]
-      : [];
+    return isShortTermDirectionFamilyKey(key);
   });
-  if (!legacyIds.length) return;
-  await prisma.combinedShadowRun.updateMany({
-    where: { id: { in: legacyIds }, status: "running" },
-    data: { status: "superseded", stoppedAt: new Date() },
-  });
+  const completedIds = legacy.filter((run) => run._count.positions === 0).map((run) => run.id);
+  if (completedIds.length) {
+    await prisma.combinedShadowRun.updateMany({
+      where: { id: { in: completedIds }, status: "running" },
+      data: { status: "superseded", stoppedAt: new Date() },
+    });
+  }
+  return legacy.filter((run) => run._count.positions > 0).map((run) => run.id);
 }
 
 function parseExperimentKey(configJson: string) {
@@ -95,6 +97,9 @@ async function tick() {
       scanShortTermDirectionSignal(observedAt),
       loadCombinedMarkPrices(observedAt),
     ]);
+    for (const retiringRunId of runs.retiringRunIds) {
+      await tickCombinedShadowRun(retiringRunId, observedAt, retirementScan(observedAt), markPrices);
+    }
     const strategy = await tickCombinedShadowRun(runs.strategy.id, observedAt, scan, markPrices);
     const control = await tickCombinedShadowRun(runs.control.id, observedAt, scan, markPrices);
     const records = (strategy?.closedTrades ?? 0) + (strategy?.openPositions.length ?? 0);
@@ -113,11 +118,29 @@ async function tick() {
       controlAction: control?.lastDecision?.action,
       strategyClosedTrades: strategy?.closedTrades ?? 0,
       controlClosedTrades: control?.closedTrades ?? 0,
+      retiringRuns: runs.retiringRunIds.length,
     }));
   } catch (error) {
     await markPipelineError("short-term-direction", error);
     console.error(error instanceof Error ? error.message : error);
   }
+}
+
+function retirementScan(now: Date): CombinedSignalScan {
+  return {
+    signal: null,
+    signals: [],
+    horizons: [],
+    scannedMarkets: 0,
+    structuredMarkets: 0,
+    horizonEligibleMarkets: 0,
+    groupedEvents: 0,
+    priceReadyEvents: 0,
+    eligibleEvents: 0,
+    nextWindowAt: null,
+    closestHoursToEnd: null,
+    reason: `旧実験の未決済を期限まで監視中 (${now.toISOString()})`,
+  };
 }
 
 console.log(`15-minute direction experiment running every ${intervalMs}ms without backfill`);
