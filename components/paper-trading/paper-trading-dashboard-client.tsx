@@ -1534,9 +1534,12 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
       </div>
       <div className="grid grid-cols-3 divide-x divide-border border-t bg-slate-50/70">
         {operationRows.map((row) => (
-          <div key={row.label} className="flex min-w-0 items-center justify-center gap-2 px-2 py-2.5 sm:px-4">
+          <div key={row.label} className="flex min-w-0 items-start justify-center gap-2 px-2 py-2.5 sm:items-center sm:px-4">
             <span className={`h-2 w-2 shrink-0 rounded-full ${row.status === "healthy" ? "bg-emerald-500" : row.status === "error" ? "bg-rose-500" : "bg-amber-400"}`} />
-            <span className="min-w-0 truncate text-[10px] font-bold text-slate-700 sm:text-xs">{row.label} {row.value}</span>
+            <span className="min-w-0 text-[10px] font-bold leading-4 text-slate-700 sm:text-xs">
+              <span className="block truncate sm:inline">{row.label}</span>
+              <span className="block truncate text-slate-500 sm:ml-1 sm:inline">{row.value}</span>
+            </span>
           </div>
         ))}
       </div>
