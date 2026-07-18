@@ -60,6 +60,7 @@ import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/proba
 import { parseTerminalPriceCondition, probabilityForCondition, summarizeFundingAt } from "../src/lib/model-evaluation/price-structure";
 import { selectProspectiveExecutionTriplet } from "../src/lib/model-evaluation/prospective-synchronized";
 import {
+  buildExpandingReplayFolds,
   buildRealtimeReplayBenchmarkSummary,
   calculateDigitalFairProbability,
   calculateHyperliquidReplayReturn,
@@ -642,6 +643,19 @@ assert.deepEqual(replayBenchmark, buildRealtimeReplayBenchmarkSummary([
     shortEqualWeightReturnPct: 0.1,
   },
 ]));
+const replayWindows = Array.from({ length: 15 }, (_, index) => `2026-01-01T${String(Math.floor(index / 4)).padStart(2, "0")}:${String((index % 4) * 15).padStart(2, "0")}:00Z`);
+const expandingReplayFolds = buildExpandingReplayFolds(replayWindows, 4, 0.2);
+assert.deepEqual(expandingReplayFolds.map((fold) => [fold.calibration.length, fold.validation.length]), [
+  [3, 3],
+  [6, 3],
+  [9, 3],
+  [12, 3],
+]);
+assert.deepEqual(expandingReplayFolds.flatMap((fold) => fold.validation), replayWindows.slice(3));
+for (const fold of expandingReplayFolds) {
+  assert.equal(fold.calibration.some((window) => fold.validation.includes(window)), false);
+  assert.equal(fold.calibration.at(-1)! < fold.validation[0], true);
+}
 const settlementRows = [
   { marketId: "settlement-up", asset: "BTC", officialResult: 1, startPrice: 100, endPrice: 101, startErrorMs: 1_000, endErrorMs: 2_000 },
   { marketId: "settlement-down", asset: "ETH", officialResult: 0, startPrice: 200, endPrice: 199, startErrorMs: 3_000, endErrorMs: 4_000 },

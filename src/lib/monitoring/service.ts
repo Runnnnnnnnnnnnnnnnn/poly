@@ -199,6 +199,19 @@ const realtimeReplaySchema = z.object({
       totalFolds: z.number(),
     }).passthrough(),
   })),
+  walkForwardSelection: z.object({
+    methodology: z.literal("expanding-calibration-next-block"),
+    folds: z.array(z.object({
+      fold: z.number(),
+      calibrationWindows: z.number(),
+      validationWindows: z.number(),
+      selectedCandidateId: z.string().nullable(),
+      validation: realtimeReplayMetricSchema,
+    })),
+    profitableFolds: z.number(),
+    benchmarkBeatingFolds: z.number(),
+    totalFolds: z.number(),
+  }).optional(),
   reproducibility: z.object({
     runId: z.string(),
     codeRevision: z.string().nullable(),
@@ -1243,6 +1256,7 @@ function loadRealtimeShortTermResearchSummary() {
   try {
     const parsed = realtimeReplaySchema.parse(JSON.parse(readFileSync(path, "utf8")));
     const selected = parsed.variants.find((variant) => variant.id === parsed.selection.selectedExploratoryCandidateId) ?? null;
+    const walkForward = parsed.walkForwardSelection ?? selected?.walkForward ?? null;
     return {
       generatedAt: parsed.generatedAt,
       status: parsed.selection.status,
@@ -1263,9 +1277,9 @@ function loadRealtimeShortTermResearchSummary() {
         entryOffsetSeconds: selected.entryOffsetSeconds,
         calibration: selected.calibration,
         holdout: selected.holdout,
-        profitableFolds: selected.walkForward.profitableFolds,
-        benchmarkBeatingFolds: selected.walkForward.benchmarkBeatingFolds,
-        totalFolds: selected.walkForward.totalFolds,
+        profitableFolds: walkForward?.profitableFolds ?? 0,
+        benchmarkBeatingFolds: walkForward?.benchmarkBeatingFolds ?? 0,
+        totalFolds: walkForward?.totalFolds ?? 0,
       } : null,
       reproducibility: parsed.reproducibility,
       history: loadRealtimeShortTermResearchHistory(root),

@@ -145,9 +145,9 @@ async function updateHistory(path: string, value: typeof report) {
     holdoutBestBenchmarkNetReturnPct: selected?.holdout.bestBenchmarkNetReturnPct ?? null,
     holdoutExcessReturnPct: selected?.holdout.excessReturnPct ?? null,
     holdoutExcessConfidenceLowerPct: selected?.holdout.excessConfidenceInterval95?.[0] ?? null,
-    profitableFolds: selected?.walkForward.profitableFolds ?? 0,
-    benchmarkBeatingFolds: selected?.walkForward.benchmarkBeatingFolds ?? 0,
-    totalFolds: selected?.walkForward.totalFolds ?? 4,
+    profitableFolds: value.walkForwardSelection.profitableFolds,
+    benchmarkBeatingFolds: value.walkForwardSelection.benchmarkBeatingFolds,
+    totalFolds: value.walkForwardSelection.totalFolds,
   };
   const items = [item, ...(current?.items ?? [])]
     .filter((entry, index, all) => (

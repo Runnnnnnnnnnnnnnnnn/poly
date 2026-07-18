@@ -7,7 +7,7 @@ import {
 import { calculatePolymarketTakerFee } from "@/src/lib/realtime-market-data/execution-audit";
 
 export const realtimeShortTermReplaySpecification = Object.freeze({
-  version: 2,
+  version: 3,
   purpose: "diagnostic_only",
   promotionPolicy: "new_forward_cohort_required",
   synchronizationVersion: "websocket-v6-near-term-discovery",
@@ -35,6 +35,7 @@ export const realtimeShortTermReplaySpecification = Object.freeze({
   maximumConcurrentPositions: 3,
   calibrationFraction: 0.6,
   walkForwardFolds: 4,
+  walkForwardInitialFraction: 0.2,
   minimumHoldoutWindows: 20,
 });
 
@@ -297,21 +298,27 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
   const splitIndex = Math.max(1, Math.floor(windows.length * realtimeShortTermReplaySpecification.calibrationFraction));
   const calibrationWindows = new Set(windows.slice(0, splitIndex));
   const holdoutWindows = new Set(windows.slice(splitIndex));
-  const variants = realtimeShortTermReplaySpecification.strategies.flatMap((strategy) => (
-    realtimeShortTermReplaySpecification.entryOffsetsSeconds.map((entryOffsetSeconds) => {
+  const variantDefinitions = realtimeShortTermReplaySpecification.strategies.flatMap((strategy) => (
+    realtimeShortTermReplaySpecification.entryOffsetsSeconds.map((entryOffsetSeconds) => ({
+      id: variantId(strategy, entryOffsetSeconds),
+      strategy,
+      entryOffsetSeconds,
+    }))
+  ));
+  const variants = variantDefinitions.map(({ id, strategy, entryOffsetSeconds }) => {
       const trades = selectedTrades.filter((trade) => trade.strategy === strategy && trade.entryOffsetSeconds === entryOffsetSeconds);
       const calibration = summarizeReplayTrades(trades.filter((trade) => calibrationWindows.has(trade.windowAt)));
       const holdout = summarizeReplayTrades(trades.filter((trade) => holdoutWindows.has(trade.windowAt)));
       return {
-        id: variantId(strategy, entryOffsetSeconds),
+        id,
         strategy,
         entryOffsetSeconds,
         calibration,
         holdout,
         walkForward: walkForwardSummary(trades, windows),
       };
-    })
-  ));
+    });
+  const walkForwardSelection = expandingWalkForwardSelectionSummary(selectedTrades, windows, variantDefinitions);
   const selectedExploratoryCandidate = [...variants]
     .filter((variant) => variant.calibration.independentWindows > 0)
     .sort((left, right) => (
@@ -325,7 +332,7 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       && (selectedHoldout.excessReturnPct ?? 0) > 0
       && (selectedHoldout.excessConfidenceInterval95?.[0] ?? 0) > 0
       && (selectedHoldout.excessDeflatedSharpeProbability ?? 0) >= 0.95
-      && selectedExploratoryCandidate.walkForward.benchmarkBeatingFolds >= 3
+      && walkForwardSelection.benchmarkBeatingFolds >= 3
       ? "promising" as const
       : "rejected" as const;
   const inputRows = {
@@ -363,6 +370,7 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       warning: "This replay selects a candidate on calibration data. It cannot modify or authorize the active 50-window forward cohort.",
       independentSampleUnit: "15-minute-window" as const,
       split: "chronological 60% calibration / 40% holdout" as const,
+      walkForwardSelection: "expanding calibration; each next block uses a candidate selected only from earlier windows" as const,
       execution: "first complete synchronized 5-second executable book after each fixed entry offset" as const,
       settlement: "official Polymarket result with Chainlink boundary audit" as const,
       costs: {
@@ -395,6 +403,7 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       strategyTrials: realtimeShortTermReplaySpecification.strategyTrials,
     },
     variants,
+    walkForwardSelection,
     reproducibility: {
       runId: generatedAt.replaceAll(":", "-"),
       codeRevision: input.codeRevision?.trim() || null,
@@ -596,6 +605,71 @@ function walkForwardSummary(trades: RealtimeReplayTrade[], windows: string[]) {
     benchmarkBeatingFolds: folds.filter((fold) => (fold.excessReturnPct ?? 0) > 0).length,
     totalFolds: folds.length,
   };
+}
+
+type RealtimeReplayVariantDefinition = {
+  id: string;
+  strategy: RealtimeReplayStrategy;
+  entryOffsetSeconds: number;
+};
+
+function expandingWalkForwardSelectionSummary(
+  trades: RealtimeReplayTrade[],
+  windows: string[],
+  variants: RealtimeReplayVariantDefinition[],
+) {
+  const folds = buildExpandingReplayFolds(
+    windows,
+    realtimeShortTermReplaySpecification.walkForwardFolds,
+    realtimeShortTermReplaySpecification.walkForwardInitialFraction,
+  ).map((range, index) => {
+    const calibrationWindows = new Set(range.calibration);
+    const validationWindows = new Set(range.validation);
+    const selected = variants.map((variant) => ({
+      ...variant,
+      calibration: summarizeReplayTrades(trades.filter((trade) => (
+        trade.variantId === variant.id && calibrationWindows.has(trade.windowAt)
+      ))),
+    }))
+      .filter((variant) => variant.calibration.independentWindows > 0)
+      .sort((left, right) => (
+        (right.calibration.excessAverageReturnPct ?? Number.NEGATIVE_INFINITY)
+        - (left.calibration.excessAverageReturnPct ?? Number.NEGATIVE_INFINITY)
+        || left.id.localeCompare(right.id)
+      ))[0] ?? null;
+    const validation = summarizeReplayTrades(selected ? trades.filter((trade) => (
+      trade.variantId === selected.id && validationWindows.has(trade.windowAt)
+    )) : []);
+    return {
+      fold: index + 1,
+      calibrationWindows: range.calibration.length,
+      validationWindows: range.validation.length,
+      selectedCandidateId: selected?.id ?? null,
+      validation,
+    };
+  });
+  return {
+    methodology: "expanding-calibration-next-block" as const,
+    folds,
+    profitableFolds: folds.filter((fold) => fold.validation.equalWeightNetReturnPct > 0).length,
+    benchmarkBeatingFolds: folds.filter((fold) => (fold.validation.excessReturnPct ?? 0) > 0).length,
+    totalFolds: folds.length,
+  };
+}
+
+export function buildExpandingReplayFolds(windows: string[], foldCount = 4, initialFraction = 0.2) {
+  const ordered = uniqueSorted(windows);
+  if (ordered.length < 2 || foldCount < 1) return [];
+  const initialCount = Math.max(1, Math.min(ordered.length - 1, Math.floor(ordered.length * initialFraction)));
+  const remaining = ordered.length - initialCount;
+  return Array.from({ length: foldCount }, (_, index) => {
+    const validationStart = initialCount + Math.floor(index * remaining / foldCount);
+    const validationEnd = initialCount + Math.floor((index + 1) * remaining / foldCount);
+    return {
+      calibration: ordered.slice(0, validationStart),
+      validation: ordered.slice(validationStart, validationEnd),
+    };
+  }).filter((fold) => fold.validation.length > 0);
 }
 
 function groupedWindowReturns(trades: RealtimeReplayTrade[], valueFor: (trade: RealtimeReplayTrade) => number) {

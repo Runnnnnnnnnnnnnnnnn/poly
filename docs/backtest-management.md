@@ -157,3 +157,6 @@ excess return rather than raw profit. A replay can only become exploratory-promi
 return and excess return are positive, the 95% lower bound of excess return is positive, the deflated
 Sharpe probability is at least 95%, and at least three of four walk-forward folds beat the best simple
 baseline. Even then, it must start a new frozen forward cohort and cannot modify the active 50-window run.
+Each walk-forward fold expands the calibration window, reselects one of the nine fixed candidates using
+only earlier windows, and evaluates that selection on the next non-overlapping block. The earlier
+per-candidate four-block output remains a stability diagnostic and is not used for the promotion gate.

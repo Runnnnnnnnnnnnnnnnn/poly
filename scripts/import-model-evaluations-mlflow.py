@@ -269,8 +269,9 @@ def import_realtime_short_term_runs(args):
                     for key, value in candidates.items()
                     if value is not None
                 })
-            metrics["profitable_walk_forward_folds"] = float(selected["walkForward"]["profitableFolds"])
-            metrics["benchmark_beating_walk_forward_folds"] = float(selected["walkForward"].get("benchmarkBeatingFolds", 0))
+            walk_forward = report.get("walkForwardSelection", selected["walkForward"])
+            metrics["profitable_walk_forward_folds"] = float(walk_forward["profitableFolds"])
+            metrics["benchmark_beating_walk_forward_folds"] = float(walk_forward.get("benchmarkBeatingFolds", 0))
             params["holdout_best_benchmark"] = selected["holdout"].get("bestBenchmarkId") or "unavailable"
         with mlflow.start_run(
             run_name=f"5s-replay-{source_run_id}",

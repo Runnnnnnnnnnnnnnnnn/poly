@@ -2279,7 +2279,7 @@ function RealtimeShortTermBacktest({
         <BacktestMetric label={holdout?.bestBenchmarkId ? `最良単純・${realtimeBenchmarkLabel(holdout.bestBenchmarkId)}` : "最良単純戦略"} value={holdout?.bestBenchmarkNetReturnPct === null || holdout?.bestBenchmarkNetReturnPct === undefined ? "未判定" : formatSignedPct(holdout.bestBenchmarkNetReturnPct)} tone="neutral" />
         <BacktestMetric label="Polymarket単体" value={holdout?.trades ? formatSignedPct(holdout.benchmarks.polymarketOnlyNetReturnPct) : "未判定"} tone="neutral" />
         <BacktestMetric label="Hyperliquid単体" value={holdout?.trades ? formatSignedPct(holdout.benchmarks.hyperliquidOnlyNetReturnPct) : "未判定"} tone="neutral" />
-        <BacktestMetric label="順次で単純超え" value={selected ? `${selected.benchmarkBeatingFolds} / ${selected.totalFolds}` : "未判定"} tone={selected && selected.benchmarkBeatingFolds >= 3 ? "good" : "bad"} />
+        <BacktestMetric label="順次選定で単純超え" value={selected ? `${selected.benchmarkBeatingFolds} / ${selected.totalFolds}` : "未判定"} tone={selected && selected.benchmarkBeatingFolds >= 3 ? "good" : "bad"} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
