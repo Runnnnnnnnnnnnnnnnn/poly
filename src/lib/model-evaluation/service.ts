@@ -187,17 +187,17 @@ function eventSupportsHorizon(event: HistoricalCryptoEvent, horizonHours: number
   return startAt < decisionAt && closedAt > decisionAt;
 }
 
-function toHorizonStudy(metrics: ModelEvaluationMetrics): NonNullable<ModelEvaluationMetrics["horizonStudies"]>[number] {
+export function toHorizonStudy(metrics: ModelEvaluationMetrics): NonNullable<ModelEvaluationMetrics["horizonStudies"]>[number] {
   return {
     horizonHours: metrics.horizonHours,
     status: metrics.quality.status,
     totalEvents: metrics.dataset.totalEvents,
-    testEvents: metrics.combinedTrading.eligibleSignals,
+    testEvents: metrics.dataset.testEvents,
     eligibleSignals: metrics.combinedTrading.eligibleSignals,
     trades: metrics.combinedTrading.trades,
-    netReturnPct: metrics.combinedTrading.trades ? metrics.combinedTrading.netReturnPct : null,
+    netReturnPct: metrics.combinedTrading.netReturnPct,
     bestBenchmarkReturnPct: metrics.combinedTrading.benchmarks.bestReturnPct,
-    excessReturnPct: metrics.combinedTrading.trades ? metrics.combinedTrading.excessReturnPct : null,
+    excessReturnPct: metrics.combinedTrading.excessReturnPct,
     deflatedSharpeProbability: metrics.combinedTrading.deflatedSharpeProbability,
     testExecutionFeatureCoverage: metrics.dataset.testExecutionFeatureCoverage,
     testSynchronizedExecutionCoverage: metrics.dataset.testSynchronizedExecutionCoverage,

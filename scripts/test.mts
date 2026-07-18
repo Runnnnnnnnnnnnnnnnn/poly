@@ -42,6 +42,7 @@ import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
 import { calculateDirectionalBookReturn, deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
+import { toHorizonStudy } from "../src/lib/model-evaluation/service";
 import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/probability-ladder";
 import { parseTerminalPriceCondition, probabilityForCondition, summarizeFundingAt } from "../src/lib/model-evaluation/price-structure";
 import { selectProspectiveExecutionTriplet } from "../src/lib/model-evaluation/prospective-synchronized";
@@ -1062,6 +1063,11 @@ assert.equal(hourlyFallbackCombined.walkForwardChronologyValid, false);
 
 const combinedChronologicalEvaluation = evaluateChronologicalModel(combinedSamples);
 assert.equal(combinedChronologicalEvaluation.quality.gates.find((gate) => gate.id === "chronology")?.passed, true);
+const combinedHorizonStudy = toHorizonStudy(combinedChronologicalEvaluation);
+assert.equal(combinedHorizonStudy.testEvents, combinedChronologicalEvaluation.dataset.testEvents);
+assert.equal(combinedHorizonStudy.eligibleSignals, combinedChronologicalEvaluation.combinedTrading.eligibleSignals);
+assert.equal(combinedHorizonStudy.netReturnPct, combinedChronologicalEvaluation.combinedTrading.netReturnPct);
+assert.equal(combinedHorizonStudy.excessReturnPct, combinedChronologicalEvaluation.combinedTrading.excessReturnPct);
 
 const concurrentCombined = evaluateCombinedTrading([
   ...combinedSamples,
