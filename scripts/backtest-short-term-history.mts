@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { calculateShortTermImpliedSignal } from "../src/lib/combined-trading/short-term-implied-signal";
 import {
@@ -74,7 +76,11 @@ type DirectionMarket = {
 };
 
 const generatedAt = new Date();
-const endAt = new Date(generatedAt.getTime() - 5 * 60_000);
+const latestSafeEndAtMs = generatedAt.getTime() - 5 * 60_000;
+const requestedEndAtMs = Date.parse(process.env.SHORT_TERM_HISTORY_END_AT ?? "");
+const endAt = new Date(Number.isFinite(requestedEndAtMs)
+  ? Math.min(requestedEndAtMs, latestSafeEndAtMs)
+  : latestSafeEndAtMs);
 const startAt = new Date(endAt.getTime() - lookbackHours * 60 * 60_000);
 const candleStartAt = new Date(startAt.getTime() - marketDuration.warmupMs);
 const markets = await fetchDirectionMarkets(startAt, endAt);
@@ -242,8 +248,75 @@ const holdoutSummary = summarizePeriod(holdout);
 const calibrationCrossSectional = summarizeCrossSectional(calibrationCrossSections);
 const holdoutCrossSectional = summarizeCrossSectional(holdoutCrossSections);
 const walkForward = buildWalkForwardValidation(observationTimes, observations, crossSections);
+const modelSpecification = {
+  version: "short-term-history-v2",
+  marketDuration: marketDuration.slug,
+  hyperliquidCandleInterval: marketDuration.candleInterval,
+  decisionWindowMs: [marketDuration.decisionStartMs, marketDuration.decisionEndMs],
+  validation: {
+    calibrationFraction,
+    walkForwardFolds,
+    minimumProfitableFolds,
+  },
+  execution: {
+    mode: executionMode,
+    takerFeePerSide,
+    makerFeePerSide,
+    slippagePerSide,
+    fundingPer24h,
+    roundTripCost,
+    positionPct,
+    maximumConcurrentPositions,
+    makerLimitOffset,
+  },
+  rules: {
+    baselineMinimumProbability: 0.58,
+    baselineMinimumTrendZ: 0.15,
+    impliedMinimumSignalZ,
+    impliedCostMultiplier,
+    impliedMinimumTrendZ,
+    impliedRequireTrend,
+    leadLagMinimumProbabilityChange,
+    leadLagRequireTrend,
+    crossSectionalMinimumExpectedPairReturnPct: roundTripCost,
+  },
+  trials: {
+    strategyTrials,
+    randomBenchmarkTrials,
+  },
+};
+const reproducibilityRows = researchDatasetRows(observations);
+const serializedObservations = researchObservationsCsv(reproducibilityRows);
+const runId = generatedAt.toISOString().replaceAll(":", "-");
+const reproducibility = {
+  runId,
+  codeRevision: process.env.POLYMARKET_MODEL_REVISION?.trim() || null,
+  hashAlgorithm: "sha256",
+  scriptSha256: await sha256File(fileURLToPath(import.meta.url)),
+  specificationSha256: sha256Json(modelSpecification),
+  datasetSha256: sha256Json(reproducibilityRows),
+  observationsCsvSha256: sha256Text(serializedObservations),
+  observationRows: reproducibilityRows.length,
+  randomSeedPolicy: "deterministic FNV-1a seed by window and trial",
+  replayEnvironment: {
+    SHORT_TERM_HISTORY_END_AT: endAt.toISOString(),
+    SHORT_TERM_HISTORY_HOURS: String(lookbackHours),
+    SHORT_TERM_MARKET_DURATION: marketDuration.slug,
+    SHORT_TERM_EXECUTION_MODE: executionMode,
+    SHORT_TERM_STRATEGY_TRIALS: String(strategyTrials),
+    SHORT_TERM_RANDOM_TRIALS: String(randomBenchmarkTrials),
+    SHORT_TERM_WALK_FORWARD_FOLDS: String(walkForwardFolds),
+    SHORT_TERM_IMPLIED_MIN_Z: String(impliedMinimumSignalZ),
+    SHORT_TERM_IMPLIED_COST_MULTIPLIER: String(impliedCostMultiplier),
+    SHORT_TERM_IMPLIED_MIN_TREND_Z: String(impliedMinimumTrendZ),
+    SHORT_TERM_IMPLIED_REQUIRE_TREND: impliedRequireTrend ? "1" : "0",
+    SHORT_TERM_LEAD_LAG_MIN_CHANGE: String(leadLagMinimumProbabilityChange),
+    SHORT_TERM_LEAD_LAG_REQUIRE_TREND: leadLagRequireTrend ? "1" : "0",
+  },
+};
 const report = {
   generatedAt: generatedAt.toISOString(),
+  reproducibility,
   methodology: {
     status: "screening_only",
     warning: "Aggregated price history has no executable order book and cannot authorize testnet or real trading.",
@@ -309,7 +382,7 @@ const serializedReport = `${JSON.stringify(report, null, 2)}\n`;
 if (process.env.SHORT_TERM_HISTORY_OUTPUT) {
   await writeAtomic(resolve(process.env.SHORT_TERM_HISTORY_OUTPUT), serializedReport);
 }
-await persistResearchArtifacts(report, serializedReport);
+await persistResearchArtifacts(report, serializedReport, serializedObservations);
 if (process.env.SHORT_TERM_HISTORY_QUIET !== "1") console.log(serializedReport.trimEnd());
 
 function buildCrossSectionalTrades(rows: typeof observations) {
@@ -833,7 +906,11 @@ function stableHash(value: string) {
   return hash >>> 0;
 }
 
-async function persistResearchArtifacts(value: typeof report, serialized: string) {
+async function persistResearchArtifacts(
+  value: typeof report,
+  serialized: string,
+  observationsCsv: string,
+) {
   const historyPath = process.env.SHORT_TERM_HISTORY_INDEX_OUTPUT
     ? resolve(process.env.SHORT_TERM_HISTORY_INDEX_OUTPUT)
     : null;
@@ -850,12 +927,13 @@ async function persistResearchArtifacts(value: typeof report, serialized: string
     ? resolve(process.env.SHORT_TERM_ARTIFACT_ROOT.replace(/^~(?=\/)/, homedir()))
     : null;
   if (!artifactRoot) return;
-  const runId = value.generatedAt.replaceAll(":", "-");
-  const runDirectory = resolve(artifactRoot, runId);
+  const runDirectory = resolve(artifactRoot, value.reproducibility.runId);
   await mkdir(runDirectory, { recursive: true });
   await writeAtomic(resolve(runDirectory, "report.json"), serialized);
   await writeAtomic(resolve(runDirectory, "metrics.csv"), researchMetricsCsv(value));
+  await writeAtomic(resolve(runDirectory, "observations.csv"), observationsCsv);
   await writeAtomic(resolve(artifactRoot, "latest.json"), serialized);
+  await writeAtomic(resolve(artifactRoot, "latest-observations.csv"), observationsCsv);
   await writeAtomic(resolve(artifactRoot, "history.json"), `${JSON.stringify({ items }, null, 2)}\n`);
 }
 
@@ -864,7 +942,13 @@ function researchHistoryItem(value: typeof report) {
   const screening = value.screening.baseline;
   const stability = value.walkForward.stability.baseline;
   return {
+    runId: value.reproducibility.runId,
     generatedAt: value.generatedAt,
+    codeRevision: value.reproducibility.codeRevision,
+    scriptSha256: value.reproducibility.scriptSha256,
+    specificationSha256: value.reproducibility.specificationSha256,
+    datasetSha256: value.reproducibility.datasetSha256,
+    observationsCsvSha256: value.reproducibility.observationsCsvSha256,
     marketDuration: value.methodology.marketDuration,
     lookbackHours: value.methodology.period.lookbackHours,
     executionMode: value.methodology.executionMode,
@@ -890,8 +974,14 @@ function researchMetricsCsv(value: typeof report) {
     ["leadLag", value.holdout.leadLag, value.screening.leadLag, value.walkForward.stability.leadLag],
     ["crossSectional", value.holdout.crossSectional, value.screening.crossSectional, value.walkForward.stability.crossSectional],
   ] as const;
-  const header = "candidate,status,trades,net_return_pct,average_return_pct,confidence_lower_pct,excess_return_pct,max_drawdown_pct,profitable_folds,total_folds,passed_gates,total_gates";
+  const header = "run_id,code_revision,dataset_sha256,observations_csv_sha256,specification_sha256,script_sha256,candidate,status,trades,net_return_pct,average_return_pct,confidence_lower_pct,excess_return_pct,max_drawdown_pct,profitable_folds,total_folds,passed_gates,total_gates";
   const rows = definitions.map(([id, metrics, screening, stability]) => [
+    value.reproducibility.runId,
+    value.reproducibility.codeRevision ?? "",
+    value.reproducibility.datasetSha256,
+    value.reproducibility.observationsCsvSha256,
+    value.reproducibility.specificationSha256,
+    value.reproducibility.scriptSha256,
     id,
     screening.status,
     metrics.trades,
@@ -906,6 +996,82 @@ function researchMetricsCsv(value: typeof report) {
     screening.totalGates,
   ].join(","));
   return `${header}\n${rows.join("\n")}\n`;
+}
+
+function researchDatasetRows(rows: typeof observations) {
+  return rows.map((row) => ({
+    marketId: row.marketId,
+    asset: row.asset,
+    startAt: row.startAt,
+    officialResult: row.officialResult,
+    polymarketProbability: row.crossSection.probability,
+    impliedExpectedReturnPct: row.crossSection.expectedReturnPct,
+    trendZ: row.crossSection.trendZ,
+    baselineSelected: row.baseline.selected,
+    baselineSide: row.baseline.side,
+    baselineReturnPct: row.baseline.returnPct,
+    controlSelected: row.control.selected,
+    controlSide: row.control.side,
+    controlReturnPct: row.control.returnPct,
+    alwaysLongReturnPct: row.control.alwaysLongReturnPct,
+    alwaysShortReturnPct: row.control.alwaysShortReturnPct,
+    impliedSelected: row.implied.selected,
+    impliedSide: row.implied.side,
+    impliedReturnPct: row.implied.returnPct,
+    leadLagSelected: row.leadLag.selected,
+    leadLagSide: row.leadLag.side,
+    leadLagReturnPct: row.leadLag.returnPct,
+  }));
+}
+
+function researchObservationsCsv(rows: ReturnType<typeof researchDatasetRows>) {
+  const keys = [
+    "marketId",
+    "asset",
+    "startAt",
+    "officialResult",
+    "polymarketProbability",
+    "impliedExpectedReturnPct",
+    "trendZ",
+    "baselineSelected",
+    "baselineSide",
+    "baselineReturnPct",
+    "controlSelected",
+    "controlSide",
+    "controlReturnPct",
+    "alwaysLongReturnPct",
+    "alwaysShortReturnPct",
+    "impliedSelected",
+    "impliedSide",
+    "impliedReturnPct",
+    "leadLagSelected",
+    "leadLagSide",
+    "leadLagReturnPct",
+  ] as const;
+  const header = keys.map(toSnakeCase).join(",");
+  const lines = rows.map((row) => keys.map((key) => csvCell(row[key])).join(","));
+  return `${header}\n${lines.join("\n")}\n`;
+}
+
+function toSnakeCase(value: string) {
+  return value.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+function csvCell(value: string | number | boolean) {
+  const serialized = String(value);
+  return /[",\n]/.test(serialized) ? `"${serialized.replaceAll('"', '""')}"` : serialized;
+}
+
+function sha256Json(value: unknown) {
+  return sha256Text(JSON.stringify(value));
+}
+
+function sha256Text(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+async function sha256File(path: string) {
+  return createHash("sha256").update(await readFile(path)).digest("hex");
 }
 
 async function readJson<T>(path: string) {
