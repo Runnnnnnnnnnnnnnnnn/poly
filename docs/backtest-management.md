@@ -178,6 +178,12 @@ to 50 total independent windows. Multiple assets with the same direction and 15-
 a close window containing both directions contributes once to each side. Before 50 total windows the gate
 is pending. At 50 or more, missing either direction fails promotion and real-money execution remains off.
 
+Settlement promotion is scoped to the markets actually opened by the frozen forward cohort. The global
+Chainlink boundary audit remains an operational alert and keeps historical gaps visible, but gaps from
+before the active cohort cannot permanently fail a later model. Cohort settlement still requires at least
+50 complete markets, 95% boundary coverage, zero disagreement with official Polymarket outcomes, and a
+maximum Chainlink boundary timing error of 60 seconds. Missing rows are never backfilled or discarded.
+
 Every changed production-audit result is stored immutably under
 `~/.polymarket-watch/artifacts/forward-execution-audits/<run-id>/`. The run ID combines the frozen cohort,
 independent-window count, and result fingerprint, so a later result cannot overwrite an earlier one and an

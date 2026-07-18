@@ -528,6 +528,14 @@ export async function getMonitoringSnapshot() {
       && position.openedAt >= executionAuditRealtimeAggregate._min.capturedAt
     ));
   const exactAuditMarketIds = Array.from(new Set(exactAuditPositions.map((position) => position.marketId)));
+  const exactAuditStrategyMarketIds = Array.from(new Set(shortTermPositions
+    .filter((position) => (
+      position.status === "CLOSED"
+      && position.closedAt
+      && executionAuditRealtimeAggregate._min.capturedAt
+      && position.openedAt >= executionAuditRealtimeAggregate._min.capturedAt
+    ))
+    .map((position) => position.marketId)));
   const exactAuditAssets = Array.from(new Set(exactAuditPositions.map((position) => position.asset)));
   const exactAuditStartedAt = earliestDate(...exactAuditPositions.map((position) => position.openedAt));
   const exactAuditEndedAt = latestDate(...exactAuditPositions.map((position) => position.exitAt));
@@ -674,7 +682,9 @@ export async function getMonitoringSnapshot() {
         strategyTrials: shortTermDirectionSpecification.strategyTrials,
       })
     : null;
-  const shortTermSettlementResolution = await loadReferenceSettlementAudit();
+  const shortTermSettlementResolution = await loadReferenceSettlementAudit({
+    marketIds: exactAuditStrategyMarketIds,
+  });
   const shortTermExecutionAudit = shortTermStrategyRun && shortTermConfig
     ? evaluateExactExecutionAudit({
         positions: shortTermPositions,

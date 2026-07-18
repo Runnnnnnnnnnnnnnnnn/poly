@@ -1370,7 +1370,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
         <ExecutiveGate
           label="公式決着"
           value={settlementResolution?.completeMarkets
-            ? `${settlementResolution.matchedMarkets}/${settlementResolution.completeMarkets}一致`
+            ? `${settlementResolution.completeMarkets}/${settlementResolution.resolvedObservedMarkets}取得`
             : "収集中"}
           tone={settlementReady ? "good" : settlementResolution?.mismatchedMarkets ? "bad" : "watch"}
         />
@@ -1658,9 +1658,9 @@ function ShortTermDirectionPanel({ snapshot, downloadsAvailable }: { snapshot: M
         <div className="grid min-w-0">
           <div className="grid grid-cols-3 divide-x divide-border">
             <CompactMetric
-              label="公式決着の一致"
+              label="決着価格の取得"
               value={settlementResolution?.completeMarkets
-                ? `${settlementResolution.matchedMarkets}/${settlementResolution.completeMarkets}`
+                ? `${settlementResolution.completeMarkets}/${settlementResolution.resolvedObservedMarkets}`
                 : "収集中"}
               tone={settlementResolution?.status === "healthy" ? "good" : settlementResolution?.mismatchedMarkets ? "bad" : "watch"}
             />
@@ -1743,7 +1743,7 @@ function ShortTermDirectionPanel({ snapshot, downloadsAvailable }: { snapshot: M
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
         <span>{research
-          ? `暫定合格 ${provisionalPassingGates}/${evaluatedGates || audit?.totalReadinessGates || 10}・最終合格 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 10}・公式決着 ${settlementResolution?.completeMarkets ?? 0}/${settlementResolution?.targetMarkets ?? 50}`
+          ? `暫定合格 ${provisionalPassingGates}/${evaluatedGates || audit?.totalReadinessGates || 10}・最終合格 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 10}・決着価格 ${settlementResolution?.completeMarkets ?? 0}/${settlementResolution?.resolvedObservedMarkets ?? 0}・不一致 ${settlementResolution?.mismatchedMarkets ?? 0}`
           : "発注後の最初の5秒板で約定を再現中"}</span>
         <span className="font-bold text-rose-700">実取引 OFF</span>
       </div>

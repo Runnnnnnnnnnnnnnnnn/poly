@@ -19,6 +19,7 @@ export type ReferenceSettlementAudit = ReturnType<typeof evaluateReferenceSettle
 export async function loadReferenceSettlementAudit(options: {
   targetMarkets?: number;
   maximumBoundaryErrorMs?: number;
+  marketIds?: string[];
 } = {}) {
   const maximumBoundaryErrorMs = positiveInteger(
     options.maximumBoundaryErrorMs,
@@ -138,7 +139,7 @@ export async function loadReferenceSettlementAudit(options: {
     ORDER BY market."id" ASC
   `;
 
-  return evaluateReferenceSettlementAudit(rows.map((row) => ({
+  const normalizedRows = rows.map((row) => ({
     marketId: row.marketId,
     asset: row.asset,
     officialResult: finiteNumber(row.officialResult) ?? -1,
@@ -146,10 +147,21 @@ export async function loadReferenceSettlementAudit(options: {
     endPrice: finiteNumber(row.endPrice),
     startErrorMs: finiteNumber(row.startErrorMs),
     endErrorMs: finiteNumber(row.endErrorMs),
-  })), {
+  }));
+
+  return evaluateReferenceSettlementAudit(filterReferenceSettlementRows(normalizedRows, options.marketIds), {
     targetMarkets: options.targetMarkets,
     maximumBoundaryErrorMs,
   });
+}
+
+export function filterReferenceSettlementRows(
+  rows: ReferenceSettlementBoundary[],
+  marketIds?: string[],
+) {
+  if (!marketIds) return rows;
+  const selected = new Set(marketIds);
+  return rows.filter((row) => selected.has(row.marketId));
 }
 
 export function evaluateReferenceSettlementAudit(

@@ -80,7 +80,7 @@ import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid
 import { buildRealtimeAssetTick, buildRealtimeMarketTick, isRealtimeCaptureWindow, selectRealtimeMarketsForCollection, shouldReconnectManagedSocket, shouldReportRealtimeCoverageFailure } from "../src/lib/realtime-market-data/collector";
 import { calculatePolymarketTakerFee, evaluateExactExecutionAudit, selectCausalExecutionTick, summarizeExactAuditDirectionCoverage } from "../src/lib/realtime-market-data/execution-audit";
 import { minimumAdditionalPerfectPositionsForCoverage, persistForwardExecutionAuditReport, type ForwardExecutionAuditReportInput } from "../src/lib/realtime-market-data/execution-audit-report";
-import { evaluateReferenceSettlementAudit } from "../src/lib/realtime-market-data/settlement-audit";
+import { evaluateReferenceSettlementAudit, filterReferenceSettlementRows } from "../src/lib/realtime-market-data/settlement-audit";
 import {
   normalizeHyperliquidWebSocketMessage,
   normalizePolymarketWebSocketMessage,
@@ -849,6 +849,12 @@ const healthySettlement = evaluateReferenceSettlementAudit([
 assert.equal(healthySettlement.status, "healthy");
 assert.equal(healthySettlement.matchRate, 1);
 assert.equal(healthySettlement.passedGates, healthySettlement.totalGates);
+assert.deepEqual(
+  filterReferenceSettlementRows(settlementRows, [settlementRows[1].marketId]).map((row) => row.marketId),
+  [settlementRows[1].marketId],
+);
+assert.equal(filterReferenceSettlementRows(settlementRows, []).length, 0);
+assert.equal(filterReferenceSettlementRows(settlementRows), settlementRows);
 assert.equal(evaluateSettlementResolutionAlerts(healthySettlement).length, 0);
 assert.equal(evaluateSettlementResolutionAlerts(attentionSettlement)[0]?.severity, "critical");
 assert.equal(isTransientHeartbeatWriteError(Object.assign(new Error("Socket timeout"), { code: "P1008" })), true);
