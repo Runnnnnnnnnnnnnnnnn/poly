@@ -25,7 +25,11 @@ import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { loadProspectiveSynchronizedData } from "@/src/lib/model-evaluation/prospective-synchronized";
 import { prisma } from "@/src/lib/server/prisma";
 import { readBackupStatus } from "@/src/lib/monitoring/backup-status";
-import { evaluateSynchronizedPriceQuality, synchronizedDataReadinessStatus } from "@/src/lib/monitoring/synchronized-quality";
+import {
+  evaluateSynchronizedPriceQuality,
+  synchronizedDataReadinessStatus,
+  synchronizedQualityRequirements,
+} from "@/src/lib/monitoring/synchronized-quality";
 import { realtimeAssetSynchronizationVersion, realtimeSynchronizationVersion } from "@/src/lib/realtime-market-data/collector";
 import { evaluateExactExecutionAudit } from "@/src/lib/realtime-market-data/execution-audit";
 import { loadReferenceSettlementAudit } from "@/src/lib/realtime-market-data/settlement-audit";
@@ -1339,6 +1343,7 @@ async function loadSynchronizedPriceQuality(input: {
     return evaluateSynchronizedPriceQuality({
       ...input,
       totalRecords: 0,
+      continuousStartedAt: null,
       medianSkewMs: null,
       p95SkewMs: null,
       medianSpread: null,
@@ -1410,7 +1415,11 @@ async function loadSynchronizedPriceQuality(input: {
       GROUP BY market."asset"
       ORDER BY market."asset"
     `,
-    prisma.$queryRaw<Array<{ maximumCaptureGapMs: number | bigint | null }>>`
+    prisma.$queryRaw<Array<{
+      maximumCaptureGapMs: number | bigint | null;
+      firstCaptureAt: Date | number | bigint | null;
+      lastLargeGapAt: Date | number | bigint | null;
+    }>>`
       WITH cycles AS (
         SELECT DISTINCT "capturedAt"
         FROM "MarketSnapshot"
@@ -1427,15 +1436,24 @@ async function loadSynchronizedPriceQuality(input: {
           AND "priceBasisPct" IS NOT NULL
           AND "captureSkewMs" IS NOT NULL
       ), gaps AS (
-        SELECT "capturedAt" - LAG("capturedAt") OVER (ORDER BY "capturedAt") AS "gapMs"
+        SELECT
+          "capturedAt",
+          "capturedAt" - LAG("capturedAt") OVER (ORDER BY "capturedAt") AS "gapMs"
         FROM cycles
       )
-      SELECT MAX("gapMs") AS "maximumCaptureGapMs" FROM gaps
+      SELECT
+        MAX("gapMs") AS "maximumCaptureGapMs",
+        MIN("capturedAt") AS "firstCaptureAt",
+        MAX(CASE WHEN "gapMs" > ${synchronizedQualityRequirements.maximumCaptureGapMs} THEN "capturedAt" END) AS "lastLargeGapAt"
+      FROM gaps
     `,
   ]);
   const quantiles = quantileRows[0] ?? {};
+  const continuity = continuityRows[0];
+  const continuousStartedAt = dateFromDatabaseValue(continuity?.lastLargeGapAt ?? continuity?.firstCaptureAt);
   return evaluateSynchronizedPriceQuality({
     ...input,
+    continuousStartedAt,
     totalRecords,
     medianSkewMs: finiteNumber(quantiles.medianSkewMs),
     p95SkewMs: finiteNumber(quantiles.p95SkewMs),
@@ -1446,6 +1464,14 @@ async function loadSynchronizedPriceQuality(input: {
     maximumCaptureGapMs: finiteNumber(continuityRows[0]?.maximumCaptureGapMs),
     assets: assetRows.map((row) => ({ asset: row.asset, records: finiteNumber(row.records) ?? 0 })),
   });
+}
+
+function dateFromDatabaseValue(value: Date | number | bigint | null | undefined) {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : null;
+  const milliseconds = finiteNumber(value);
+  if (milliseconds === null) return null;
+  const date = new Date(milliseconds);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
 function finiteNumber(value: number | bigint | null | undefined) {

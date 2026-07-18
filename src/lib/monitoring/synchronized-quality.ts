@@ -16,6 +16,7 @@ export type SynchronizedQualityInput = {
   windowCompleteRecords: number;
   totalRecords: number;
   startedAt: Date | null;
+  continuousStartedAt: Date | null;
   latestAt: Date | null;
   medianSkewMs: number | null;
   p95SkewMs: number | null;
@@ -40,8 +41,8 @@ export function synchronizedDataReadinessStatus(input: {
 }
 
 export function evaluateSynchronizedPriceQuality(input: SynchronizedQualityInput) {
-  const durationHours = input.startedAt && input.latestAt
-    ? Math.max(0, input.latestAt.getTime() - input.startedAt.getTime()) / (60 * 60 * 1_000)
+  const durationHours = input.continuousStartedAt && input.latestAt
+    ? Math.max(0, input.latestAt.getTime() - input.continuousStartedAt.getTime()) / (60 * 60 * 1_000)
     : 0;
   const coverage = input.totalRecords > 0 ? input.windowRecords / input.totalRecords : 0;
   const coveredAssets = new Set(input.assets.filter((asset) => asset.records > 0).map((asset) => asset.asset));
@@ -97,6 +98,7 @@ export function evaluateSynchronizedPriceQuality(input: SynchronizedQualityInput
     coverage,
     durationHours,
     startedAt: input.startedAt?.toISOString() ?? null,
+    continuousStartedAt: input.continuousStartedAt?.toISOString() ?? null,
     latestAt: input.latestAt?.toISOString() ?? null,
     medianSkewMs: input.medianSkewMs,
     p95SkewMs: input.p95SkewMs,

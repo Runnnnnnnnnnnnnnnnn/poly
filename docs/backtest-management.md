@@ -100,6 +100,10 @@ selected only on development folds, and evaluated on a new untouched period. A p
 is not evidence of an edge until the trade-count, benchmark, uncertainty, drawdown, and selection-bias
 gates all pass.
 
+The 48-hour synchronized-data gate measures the uninterrupted streak after the most recent capture gap
+longer than five minutes. Earlier records remain available for research, but they do not count toward
+operational continuity after a gap.
+
 The validation structure follows an expanding time-series split rather than shuffled cross-validation;
 see the official [TimeSeriesSplit documentation](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.TimeSeriesSplit.html).
 Hyperliquid fee assumptions use the base perpetual rates in the official

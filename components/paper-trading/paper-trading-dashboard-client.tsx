@@ -183,6 +183,7 @@ type MonitoringSnapshot = {
         totalRecords: number;
         coverage: number;
         durationHours: number;
+        continuousStartedAt: string | null;
         medianSkewMs: number | null;
         p95SkewMs: number | null;
         medianSpread: number | null;
@@ -1815,9 +1816,9 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
           note={`観測 ${observedProspective}・決着待ち ${awaitingProspective}`}
         />
         <MonitorMetric
-          label={synchronizedQuality ? "同期継続" : "連続蓄積"}
+          label={synchronizedQuality ? "連続稼働" : "連続蓄積"}
           value={synchronizedQuality ? formatDurationHours(synchronizedQuality.durationHours) : formatElapsed(snapshot?.collection.startedAt)}
-          note={synchronizedQuality ? "48時間で品質判定" : relativeTime(snapshot?.collection.latestAt)}
+          note={synchronizedQuality ? "最後の5分超欠損から・48時間で判定" : relativeTime(snapshot?.collection.latestAt)}
         />
       </div>
       <div className="grid grid-cols-2 border-t sm:grid-cols-3 lg:grid-cols-6 lg:divide-x lg:divide-border">

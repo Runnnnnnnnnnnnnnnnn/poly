@@ -218,6 +218,7 @@ const synchronizedQualityInput = {
   windowCompleteRecords: 1_300,
   totalRecords: 1_800,
   startedAt: new Date("2026-01-01T00:00:00Z"),
+  continuousStartedAt: new Date("2026-01-01T00:00:00Z"),
   latestAt: new Date("2026-01-03T00:00:00Z"),
   medianSkewMs: 5_000,
   p95SkewMs: 55_000,
@@ -233,6 +234,12 @@ assert.equal(synchronizedQuality.status, "healthy");
 assert.equal(synchronizedQuality.gates.every((gate) => gate.passed), true);
 assert.equal(evaluateSynchronizedPriceQuality({ ...synchronizedQualityInput, p95SkewMs: 75_000 }).status, "attention");
 assert.equal(evaluateSynchronizedPriceQuality({ ...synchronizedQualityInput, latestAt: new Date("2026-01-01T12:00:00Z") }).status, "collecting");
+const restartedSynchronizedQuality = evaluateSynchronizedPriceQuality({
+  ...synchronizedQualityInput,
+  continuousStartedAt: new Date("2026-01-02T12:00:00Z"),
+});
+assert.equal(restartedSynchronizedQuality.durationHours, 12);
+assert.equal(restartedSynchronizedQuality.status, "collecting");
 assert.equal(synchronizedDataReadinessStatus({ monitoringStatus: "live", realtimePriceStatus: "healthy", synchronizedQualityStatus: "healthy" }), "ready");
 assert.equal(synchronizedDataReadinessStatus({ monitoringStatus: "live", realtimePriceStatus: "healthy", synchronizedQualityStatus: "collecting" }), "running");
 assert.equal(synchronizedDataReadinessStatus({ monitoringStatus: "live", realtimePriceStatus: "healthy", synchronizedQualityStatus: "attention" }), "attention");
