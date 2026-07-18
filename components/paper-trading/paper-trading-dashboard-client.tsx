@@ -129,6 +129,19 @@ type RealtimeReplayMetric = {
   polymarketAverageReturnPct: number | null;
   polymarketNetReturnPct: number;
   maximumDrawdownPct: number;
+  bestBenchmarkId: "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median" | null;
+  bestBenchmarkNetReturnPct: number | null;
+  excessReturnPct: number | null;
+  excessAverageReturnPct: number | null;
+  excessConfidenceInterval95: [number, number] | null;
+  excessDeflatedSharpeProbability: number | null;
+  benchmarks: {
+    polymarketOnlyNetReturnPct: number;
+    hyperliquidOnlyNetReturnPct: number;
+    alwaysLongNetReturnPct: number;
+    alwaysShortNetReturnPct: number;
+    randomMedianNetReturnPct: number;
+  };
 };
 
 type MonitoringSnapshot = {
@@ -541,6 +554,8 @@ type MonitoringSnapshot = {
         strategyTrials: number;
         calibrationPositiveVariants: number;
         holdoutPositiveVariants: number;
+        calibrationBenchmarkBeatingVariants: number;
+        holdoutBenchmarkBeatingVariants: number;
         selectedCandidate: {
           id: string;
           strategy: "market_direction" | "trend_confirmed" | "fair_value";
@@ -548,6 +563,7 @@ type MonitoringSnapshot = {
           calibration: RealtimeReplayMetric;
           holdout: RealtimeReplayMetric;
           profitableFolds: number;
+          benchmarkBeatingFolds: number;
           totalFolds: number;
         } | null;
         reproducibility: {
@@ -569,7 +585,12 @@ type MonitoringSnapshot = {
           holdoutEqualWeightNetReturnPct: number;
           holdoutHyperliquidNetReturnPct: number;
           holdoutPolymarketNetReturnPct: number;
+          holdoutBestBenchmarkId?: "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median" | null;
+          holdoutBestBenchmarkNetReturnPct?: number | null;
+          holdoutExcessReturnPct?: number | null;
+          holdoutExcessConfidenceLowerPct?: number | null;
           profitableFolds: number;
+          benchmarkBeatingFolds?: number;
           totalFolds: number;
         }>;
       } | null;
@@ -2241,21 +2262,21 @@ function RealtimeShortTermBacktest({
 
       <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
         <BacktestMetric label="独立データ" value={`${research.independentWindows}枠`} tone={research.independentWindows >= research.minimumHoldoutWindows ? "good" : "watch"} />
-        <BacktestMetric label="学習側の損益" value={calibration ? formatSignedPct(calibration.equalWeightNetReturnPct) : "未判定"} tone={signedMetricTone(calibration?.equalWeightNetReturnPct, Boolean(calibration))} />
+        <BacktestMetric label="学習側・単純比" value={calibration?.excessReturnPct === null || calibration?.excessReturnPct === undefined ? "未判定" : formatSignedPct(calibration.excessReturnPct)} tone={signedMetricTone(calibration?.excessReturnPct, Boolean(calibration))} />
         <BacktestMetric label="未使用データ" value={`${holdout?.independentWindows ?? 0} / ${research.minimumHoldoutWindows}`} tone={sampleReady ? "good" : "bad"} />
-        <BacktestMetric label="未使用側の損益" value={holdout?.trades ? formatSignedPct(holdout.equalWeightNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.equalWeightNetReturnPct, true) : "watch"} />
-        <BacktestMetric label="学習側でプラス" value={`${research.calibrationPositiveVariants} / ${research.strategyTrials}`} tone={research.calibrationPositiveVariants > 0 ? "watch" : "bad"} />
+        <BacktestMetric label="複合モデル損益" value={holdout?.trades ? formatSignedPct(holdout.equalWeightNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.equalWeightNetReturnPct, true) : "watch"} />
+        <BacktestMetric label="最良単純との差" value={holdout?.excessReturnPct === null || holdout?.excessReturnPct === undefined ? "未判定" : formatSignedPct(holdout.excessReturnPct)} tone={signedMetricTone(holdout?.excessReturnPct, Boolean(holdout))} />
       </div>
 
       <div className="grid grid-cols-2 divide-x border-t bg-white sm:grid-cols-4">
-        <BacktestMetric label="Polymarket損益" value={holdout?.trades ? formatSignedPct(holdout.polymarketNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.polymarketNetReturnPct, true) : "neutral"} />
-        <BacktestMetric label="Hyperliquid損益" value={holdout?.trades ? formatSignedPct(holdout.hyperliquidNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.hyperliquidNetReturnPct, true) : "neutral"} />
-        <BacktestMetric label="方向正解率" value={holdout?.directionAccuracy === null || holdout?.directionAccuracy === undefined ? "未判定" : formatPct(holdout.directionAccuracy)} tone="neutral" />
-        <BacktestMetric label="順次プラス" value={selected ? `${selected.profitableFolds} / ${selected.totalFolds}` : "未判定"} tone={selected && selected.profitableFolds >= 3 ? "good" : "bad"} />
+        <BacktestMetric label={holdout?.bestBenchmarkId ? `最良単純・${realtimeBenchmarkLabel(holdout.bestBenchmarkId)}` : "最良単純戦略"} value={holdout?.bestBenchmarkNetReturnPct === null || holdout?.bestBenchmarkNetReturnPct === undefined ? "未判定" : formatSignedPct(holdout.bestBenchmarkNetReturnPct)} tone="neutral" />
+        <BacktestMetric label="Polymarket単体" value={holdout?.trades ? formatSignedPct(holdout.benchmarks.polymarketOnlyNetReturnPct) : "未判定"} tone="neutral" />
+        <BacktestMetric label="Hyperliquid単体" value={holdout?.trades ? formatSignedPct(holdout.benchmarks.hyperliquidOnlyNetReturnPct) : "未判定"} tone="neutral" />
+        <BacktestMetric label="順次で単純超え" value={selected ? `${selected.benchmarkBeatingFolds} / ${selected.totalFolds}` : "未判定"} tone={selected && selected.benchmarkBeatingFolds >= 3 ? "good" : "bad"} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-        <span>手数料・スプレッド・滑り・資金調達を控除済み</span>
+        <span>単純戦略との差の95%下限 {holdout?.excessConfidenceInterval95 ? formatSignedPct(holdout.excessConfidenceInterval95[0]) : "未判定"}</span>
         <span className="font-bold text-rose-700">{sampleReady ? "新しい前向き検証が必要" : `判定まであと${Math.max(0, research.minimumHoldoutWindows - (holdout?.independentWindows ?? 0))}枠`}</span>
       </div>
 
@@ -2272,7 +2293,7 @@ function RealtimeShortTermBacktest({
                   <p className="font-bold text-slate-800">{formatJapanDateTime(item.generatedAt)}</p>
                   <p className="truncate text-[10px] font-semibold text-slate-500">独立{item.independentWindows}枠・未使用{item.holdoutWindows}枠・{item.holdoutTrades}取引</p>
                 </div>
-                <span className={`font-bold ${item.holdoutEqualWeightNetReturnPct >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.holdoutEqualWeightNetReturnPct)}</span>
+                <span className={`font-bold ${(item.holdoutExcessReturnPct ?? item.holdoutEqualWeightNetReturnPct) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.holdoutExcessReturnPct ?? item.holdoutEqualWeightNetReturnPct)}</span>
                 <span className={`rounded-sm px-2 py-1 text-[10px] font-bold ${tonePillClass(item.status === "promising" ? "watch" : "bad")}`}>{item.status === "promising" ? "探索通過" : item.status === "rejected" ? "未達" : "不足"}</span>
               </div>
             ))}
@@ -2287,6 +2308,14 @@ function realtimeStrategyLabel(strategy: "market_direction" | "trend_confirmed" 
   if (strategy === "trend_confirmed") return "市場方向 + 値動き一致";
   if (strategy === "fair_value") return "理論確率との差";
   return "Polymarketの市場方向";
+}
+
+function realtimeBenchmarkLabel(benchmark: "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median") {
+  if (benchmark === "polymarket_only") return "Polymarket";
+  if (benchmark === "hyperliquid_only") return "Hyperliquid";
+  if (benchmark === "always_long") return "常時ロング";
+  if (benchmark === "always_short") return "常時ショート";
+  return "ランダム";
 }
 
 function ShortTermBacktestDiagnosis({

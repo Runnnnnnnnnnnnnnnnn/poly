@@ -150,6 +150,19 @@ const realtimeReplayMetricSchema = z.object({
   polymarketAverageReturnPct: z.number().nullable(),
   polymarketNetReturnPct: z.number(),
   maximumDrawdownPct: z.number(),
+  bestBenchmarkId: z.enum(["polymarket_only", "hyperliquid_only", "always_long", "always_short", "random_median"]).nullable(),
+  bestBenchmarkNetReturnPct: z.number().nullable(),
+  excessReturnPct: z.number().nullable(),
+  excessAverageReturnPct: z.number().nullable(),
+  excessConfidenceInterval95: z.tuple([z.number(), z.number()]).nullable(),
+  excessDeflatedSharpeProbability: z.number().nullable(),
+  benchmarks: z.object({
+    polymarketOnlyNetReturnPct: z.number(),
+    hyperliquidOnlyNetReturnPct: z.number(),
+    alwaysLongNetReturnPct: z.number(),
+    alwaysShortNetReturnPct: z.number(),
+    randomMedianNetReturnPct: z.number(),
+  }),
 });
 const realtimeReplaySchema = z.object({
   generatedAt: z.string(),
@@ -178,6 +191,7 @@ const realtimeReplaySchema = z.object({
     holdout: realtimeReplayMetricSchema,
     walkForward: z.object({
       profitableFolds: z.number(),
+      benchmarkBeatingFolds: z.number(),
       totalFolds: z.number(),
     }).passthrough(),
   })),
@@ -201,7 +215,12 @@ const realtimeReplayHistoryItemSchema = z.object({
   holdoutEqualWeightNetReturnPct: z.number(),
   holdoutHyperliquidNetReturnPct: z.number(),
   holdoutPolymarketNetReturnPct: z.number(),
+  holdoutBestBenchmarkId: z.enum(["polymarket_only", "hyperliquid_only", "always_long", "always_short", "random_median"]).nullable().optional(),
+  holdoutBestBenchmarkNetReturnPct: z.number().nullable().optional(),
+  holdoutExcessReturnPct: z.number().nullable().optional(),
+  holdoutExcessConfidenceLowerPct: z.number().nullable().optional(),
   profitableFolds: z.number(),
+  benchmarkBeatingFolds: z.number().optional(),
   totalFolds: z.number(),
 }).passthrough();
 
@@ -1232,6 +1251,8 @@ function loadRealtimeShortTermResearchSummary() {
       strategyTrials: parsed.selection.strategyTrials,
       calibrationPositiveVariants: parsed.variants.filter((variant) => variant.calibration.equalWeightNetReturnPct > 0).length,
       holdoutPositiveVariants: parsed.variants.filter((variant) => variant.holdout.equalWeightNetReturnPct > 0).length,
+      calibrationBenchmarkBeatingVariants: parsed.variants.filter((variant) => (variant.calibration.excessReturnPct ?? 0) > 0).length,
+      holdoutBenchmarkBeatingVariants: parsed.variants.filter((variant) => (variant.holdout.excessReturnPct ?? 0) > 0).length,
       selectedCandidate: selected ? {
         id: selected.id,
         strategy: selected.strategy,
@@ -1239,6 +1260,7 @@ function loadRealtimeShortTermResearchSummary() {
         calibration: selected.calibration,
         holdout: selected.holdout,
         profitableFolds: selected.walkForward.profitableFolds,
+        benchmarkBeatingFolds: selected.walkForward.benchmarkBeatingFolds,
         totalFolds: selected.walkForward.totalFolds,
       } : null,
       reproducibility: parsed.reproducibility,

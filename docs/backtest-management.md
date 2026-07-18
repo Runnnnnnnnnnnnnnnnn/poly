@@ -145,3 +145,11 @@ to date/asset-partitioned Parquet. Query those files with DuckDB for research, a
 parameters, metrics, and artifact paths in MLflow. This keeps the executive screen fast while preserving
 reproducible row-level analysis. The 5-second replay already writes immutable JSON and trade CSV artifacts;
 Parquet becomes worthwhile when repeated CSV scans or the SQLite runtime database become the bottleneck.
+
+The synchronized 5-second replay compares every candidate with the same execution timestamps and the
+same 5% capital budget against five fixed baselines: Polymarket-only, Hyperliquid-only, always long,
+always short, and the median of 200 seeded-random direction trials. Candidate selection uses calibration
+excess return rather than raw profit. A replay can only become exploratory-promising when its holdout
+return and excess return are positive, the 95% lower bound of excess return is positive, the deflated
+Sharpe probability is at least 95%, and at least three of four walk-forward folds beat the best simple
+baseline. Even then, it must start a new frozen forward cohort and cannot modify the active 50-window run.

@@ -113,8 +113,11 @@ if (process.env.REALTIME_SHORT_TERM_QUIET !== "1") {
       id: variant.id,
       calibrationWindows: variant.calibration.independentWindows,
       calibrationReturn: variant.calibration.equalWeightNetReturnPct,
+      calibrationExcessReturn: variant.calibration.excessReturnPct,
       holdoutWindows: variant.holdout.independentWindows,
       holdoutReturn: variant.holdout.equalWeightNetReturnPct,
+      holdoutBestBenchmark: variant.holdout.bestBenchmarkId,
+      holdoutExcessReturn: variant.holdout.excessReturnPct,
     })),
   }, null, 2));
 }
@@ -138,7 +141,12 @@ async function updateHistory(path: string, value: typeof report) {
     holdoutEqualWeightNetReturnPct: selected?.holdout.equalWeightNetReturnPct ?? 0,
     holdoutHyperliquidNetReturnPct: selected?.holdout.hyperliquidNetReturnPct ?? 0,
     holdoutPolymarketNetReturnPct: selected?.holdout.polymarketNetReturnPct ?? 0,
+    holdoutBestBenchmarkId: selected?.holdout.bestBenchmarkId ?? null,
+    holdoutBestBenchmarkNetReturnPct: selected?.holdout.bestBenchmarkNetReturnPct ?? null,
+    holdoutExcessReturnPct: selected?.holdout.excessReturnPct ?? null,
+    holdoutExcessConfidenceLowerPct: selected?.holdout.excessConfidenceInterval95?.[0] ?? null,
     profitableFolds: selected?.walkForward.profitableFolds ?? 0,
+    benchmarkBeatingFolds: selected?.walkForward.benchmarkBeatingFolds ?? 0,
     totalFolds: selected?.walkForward.totalFolds ?? 4,
   };
   const items = [item, ...(current?.items ?? [])]
@@ -188,6 +196,8 @@ function serializeTrades(trades: RealtimeReplayTrade[]) {
     "hyperliquidExitPrice",
     "hyperliquidReturnPct",
     "equalWeightReturnPct",
+    "longEqualWeightReturnPct",
+    "shortEqualWeightReturnPct",
   ] as const;
   const header = keys.map(toSnakeCase).join(",");
   const rows = trades.map((trade) => keys.map((key) => csvCell(trade[key])).join(","));

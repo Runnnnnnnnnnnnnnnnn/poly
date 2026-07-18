@@ -60,6 +60,7 @@ import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/proba
 import { parseTerminalPriceCondition, probabilityForCondition, summarizeFundingAt } from "../src/lib/model-evaluation/price-structure";
 import { selectProspectiveExecutionTriplet } from "../src/lib/model-evaluation/prospective-synchronized";
 import {
+  buildRealtimeReplayBenchmarkSummary,
   calculateDigitalFairProbability,
   calculateHyperliquidReplayReturn,
   calculatePolymarketReplayReturn,
@@ -591,6 +592,45 @@ assert.equal(selectCausalReferenceBoundary(
   new Date("2026-01-01T00:00:45Z"),
   15_000,
 )?.price, 100);
+const replayBenchmark = buildRealtimeReplayBenchmarkSummary([
+  {
+    windowAt: "2026-01-01T00:00:00Z",
+    polymarketReturnPct: 0.2,
+    hyperliquidReturnPct: 0,
+    equalWeightReturnPct: 0.1,
+    longEqualWeightReturnPct: 0.1,
+    shortEqualWeightReturnPct: -0.1,
+  },
+  {
+    windowAt: "2026-01-01T00:15:00Z",
+    polymarketReturnPct: 0.2,
+    hyperliquidReturnPct: 0,
+    equalWeightReturnPct: 0.1,
+    longEqualWeightReturnPct: -0.1,
+    shortEqualWeightReturnPct: 0.1,
+  },
+]);
+assert.equal(replayBenchmark.bestBenchmarkId, "polymarket_only");
+assert.ok(Math.abs((replayBenchmark.bestBenchmarkNetReturnPct ?? 0) - 0.02) < 1e-12);
+assert.ok(Math.abs((replayBenchmark.excessReturnPct ?? 0) + 0.01) < 1e-12);
+assert.deepEqual(replayBenchmark, buildRealtimeReplayBenchmarkSummary([
+  {
+    windowAt: "2026-01-01T00:00:00Z",
+    polymarketReturnPct: 0.2,
+    hyperliquidReturnPct: 0,
+    equalWeightReturnPct: 0.1,
+    longEqualWeightReturnPct: 0.1,
+    shortEqualWeightReturnPct: -0.1,
+  },
+  {
+    windowAt: "2026-01-01T00:15:00Z",
+    polymarketReturnPct: 0.2,
+    hyperliquidReturnPct: 0,
+    equalWeightReturnPct: 0.1,
+    longEqualWeightReturnPct: -0.1,
+    shortEqualWeightReturnPct: 0.1,
+  },
+]));
 const settlementRows = [
   { marketId: "settlement-up", asset: "BTC", officialResult: 1, startPrice: 100, endPrice: 101, startErrorMs: 1_000, endErrorMs: 2_000 },
   { marketId: "settlement-down", asset: "ETH", officialResult: 0, startPrice: 200, endPrice: 199, startErrorMs: 3_000, endErrorMs: 4_000 },

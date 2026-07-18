@@ -231,6 +231,7 @@ def import_realtime_short_term_runs(args):
             "purpose": report["methodology"]["status"],
             "selected_candidate": selected_id or "none",
             "strategy_trials": report["selection"]["strategyTrials"],
+            "random_benchmark_trials": report["specification"].get("randomBenchmarkTrials", 0),
             "minimum_holdout_windows": report["specification"]["minimumHoldoutWindows"],
             "code_revision": reproducibility.get("codeRevision") or "unknown",
             "dataset_sha256": reproducibility["datasetSha256"],
@@ -257,6 +258,11 @@ def import_realtime_short_term_runs(args):
                     "hyperliquid_net_return_pct": values["hyperliquidNetReturnPct"],
                     "polymarket_net_return_pct": values["polymarketNetReturnPct"],
                     "maximum_drawdown_pct": values["maximumDrawdownPct"],
+                    "best_benchmark_net_return_pct": values.get("bestBenchmarkNetReturnPct"),
+                    "excess_return_pct": values.get("excessReturnPct"),
+                    "excess_confidence_lower_pct": values.get("excessConfidenceInterval95", [None])[0]
+                    if values.get("excessConfidenceInterval95") else None,
+                    "excess_deflated_sharpe_probability": values.get("excessDeflatedSharpeProbability"),
                 }
                 metrics.update({
                     f"{split}_{key}": float(value)
@@ -264,6 +270,8 @@ def import_realtime_short_term_runs(args):
                     if value is not None
                 })
             metrics["profitable_walk_forward_folds"] = float(selected["walkForward"]["profitableFolds"])
+            metrics["benchmark_beating_walk_forward_folds"] = float(selected["walkForward"].get("benchmarkBeatingFolds", 0))
+            params["holdout_best_benchmark"] = selected["holdout"].get("bestBenchmarkId") or "unavailable"
         with mlflow.start_run(
             run_name=f"5s-replay-{source_run_id}",
             tags={

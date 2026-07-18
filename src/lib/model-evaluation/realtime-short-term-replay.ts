@@ -7,7 +7,7 @@ import {
 import { calculatePolymarketTakerFee } from "@/src/lib/realtime-market-data/execution-audit";
 
 export const realtimeShortTermReplaySpecification = Object.freeze({
-  version: 1,
+  version: 2,
   purpose: "diagnostic_only",
   promotionPolicy: "new_forward_cohort_required",
   synchronizationVersion: "websocket-v6-near-term-discovery",
@@ -15,6 +15,7 @@ export const realtimeShortTermReplaySpecification = Object.freeze({
   entryOffsetsSeconds: [30, 60, 120] as const,
   strategies: ["market_direction", "trend_confirmed", "fair_value"] as const,
   strategyTrials: 9,
+  randomBenchmarkTrials: 200,
   marketProbabilityThreshold: 0.58,
   fairValueMinimumEdge: 0.03,
   trendMinimumLogReturn: 0,
@@ -38,6 +39,7 @@ export const realtimeShortTermReplaySpecification = Object.freeze({
 });
 
 export type RealtimeReplayStrategy = (typeof realtimeShortTermReplaySpecification.strategies)[number];
+export type RealtimeReplayBenchmark = "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median";
 
 export type RealtimeReplayMarketTick = {
   id: string;
@@ -137,6 +139,8 @@ export type RealtimeReplayTrade = {
   hyperliquidExitPrice: number;
   hyperliquidReturnPct: number;
   equalWeightReturnPct: number;
+  longEqualWeightReturnPct: number;
+  shortEqualWeightReturnPct: number;
 };
 
 export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput) {
@@ -218,12 +222,16 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
         trendLogReturn,
       });
       for (const candidate of candidates) {
-        const polymarket = calculatePolymarketReplayReturn({
-          price: candidate.polymarketEntryPrice,
-          correct: candidate.side === "LONG" ? officialResult === 1 : officialResult === 0,
+        const longPolymarket = calculatePolymarketReplayReturn({
+          price: entry.polymarketBestAsk,
+          correct: officialResult === 1,
         });
-        const hyperliquid = calculateHyperliquidReplayReturn({
-          side: candidate.side,
+        const shortPolymarket = calculatePolymarketReplayReturn({
+          price: entry.negativeBestAsk,
+          correct: officialResult === 0,
+        });
+        const longHyperliquid = calculateHyperliquidReplayReturn({
+          side: "LONG",
           entryBestBid: entry.hyperliquidBestBid,
           entryBestAsk: entry.hyperliquidBestAsk,
           exitBestBid: exitExecution.hyperliquidBestBid,
@@ -231,7 +239,18 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
           fundingRatePerHour: entry.hyperliquidFundingRate,
           holdingHours: Math.max(0, (market.marketEndAt.getTime() - entry.capturedAt.getTime()) / 3_600_000),
         });
-        if (!polymarket || !hyperliquid) continue;
+        const shortHyperliquid = calculateHyperliquidReplayReturn({
+          side: "SHORT",
+          entryBestBid: entry.hyperliquidBestBid,
+          entryBestAsk: entry.hyperliquidBestAsk,
+          exitBestBid: exitExecution.hyperliquidBestBid,
+          exitBestAsk: exitExecution.hyperliquidBestAsk,
+          fundingRatePerHour: entry.hyperliquidFundingRate,
+          holdingHours: Math.max(0, (market.marketEndAt.getTime() - entry.capturedAt.getTime()) / 3_600_000),
+        });
+        if (!longPolymarket || !shortPolymarket || !longHyperliquid || !shortHyperliquid) continue;
+        const polymarket = candidate.side === "LONG" ? longPolymarket : shortPolymarket;
+        const hyperliquid = candidate.side === "LONG" ? longHyperliquid : shortHyperliquid;
         marketHasReplay = true;
         allTrades.push({
           variantId: variantId(candidate.strategy, entryOffsetSeconds),
@@ -265,6 +284,8 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
           hyperliquidExitPrice: hyperliquid.exitPrice,
           hyperliquidReturnPct: hyperliquid.returnPct,
           equalWeightReturnPct: (polymarket.returnPct + hyperliquid.returnPct) / 2,
+          longEqualWeightReturnPct: (longPolymarket.returnPct + longHyperliquid.returnPct) / 2,
+          shortEqualWeightReturnPct: (shortPolymarket.returnPct + shortHyperliquid.returnPct) / 2,
         });
       }
     }
@@ -294,15 +315,17 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
   const selectedExploratoryCandidate = [...variants]
     .filter((variant) => variant.calibration.independentWindows > 0)
     .sort((left, right) => (
-      (right.calibration.equalWeightAverageReturnPct ?? Number.NEGATIVE_INFINITY)
-      - (left.calibration.equalWeightAverageReturnPct ?? Number.NEGATIVE_INFINITY)
+      (right.calibration.excessAverageReturnPct ?? Number.NEGATIVE_INFINITY)
+      - (left.calibration.excessAverageReturnPct ?? Number.NEGATIVE_INFINITY)
     ))[0] ?? null;
   const selectedHoldout = selectedExploratoryCandidate?.holdout ?? null;
   const status = !selectedHoldout || selectedHoldout.independentWindows < realtimeShortTermReplaySpecification.minimumHoldoutWindows
     ? "insufficient" as const
     : selectedHoldout.equalWeightNetReturnPct > 0
-      && (selectedHoldout.equalWeightConfidenceInterval95?.[0] ?? 0) > 0
-      && selectedExploratoryCandidate.walkForward.profitableFolds >= 3
+      && (selectedHoldout.excessReturnPct ?? 0) > 0
+      && (selectedHoldout.excessConfidenceInterval95?.[0] ?? 0) > 0
+      && (selectedHoldout.excessDeflatedSharpeProbability ?? 0) >= 0.95
+      && selectedExploratoryCandidate.walkForward.benchmarkBeatingFolds >= 3
       ? "promising" as const
       : "rejected" as const;
   const inputRows = {
@@ -367,7 +390,7 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
         ? `holdout has fewer than ${realtimeShortTermReplaySpecification.minimumHoldoutWindows} independent windows`
         : status === "promising"
           ? "diagnostic gate passed; a new frozen forward cohort is still required"
-          : "holdout or walk-forward gate failed",
+          : "holdout, benchmark, selection-bias, or walk-forward gate failed",
       selectedExploratoryCandidateId: selectedExploratoryCandidate?.id ?? null,
       strategyTrials: realtimeShortTermReplaySpecification.strategyTrials,
     },
@@ -492,6 +515,7 @@ function summarizeReplayTrades(trades: RealtimeReplayTrade[]) {
   const windowReturns = groupedWindowReturns(trades, (trade) => trade.equalWeightReturnPct);
   const hyperliquidWindowReturns = groupedWindowReturns(trades, (trade) => trade.hyperliquidReturnPct);
   const polymarketWindowReturns = groupedWindowReturns(trades, (trade) => trade.polymarketReturnPct);
+  const benchmark = buildRealtimeReplayBenchmarkSummary(trades);
   return {
     independentWindows: windowReturns.length,
     trades: trades.length,
@@ -507,6 +531,54 @@ function summarizeReplayTrades(trades: RealtimeReplayTrade[]) {
     polymarketAverageReturnPct: average(trades.map((trade) => trade.polymarketReturnPct)),
     polymarketNetReturnPct: sum(polymarketWindowReturns),
     maximumDrawdownPct: maximumDrawdown(windowReturns),
+    ...benchmark,
+  };
+}
+
+export function buildRealtimeReplayBenchmarkSummary(trades: Array<Pick<
+  RealtimeReplayTrade,
+  "windowAt" | "polymarketReturnPct" | "hyperliquidReturnPct" | "equalWeightReturnPct" | "longEqualWeightReturnPct" | "shortEqualWeightReturnPct"
+>>) {
+  const strategyReturns = groupedWindowReturnEntries(trades, (trade) => trade.equalWeightReturnPct);
+  const polymarketOnly = groupedWindowReturnEntries(trades, (trade) => trade.polymarketReturnPct);
+  const hyperliquidOnly = groupedWindowReturnEntries(trades, (trade) => trade.hyperliquidReturnPct);
+  const alwaysLong = groupedWindowReturnEntries(trades, (trade) => trade.longEqualWeightReturnPct);
+  const alwaysShort = groupedWindowReturnEntries(trades, (trade) => trade.shortEqualWeightReturnPct);
+  const randomTrials = Array.from({ length: realtimeShortTermReplaySpecification.randomBenchmarkTrials }, (_, trial) => {
+    const random = createSeededRandom(trial + 1);
+    return groupedWindowReturnEntries(trades, (trade) => (
+      random() < 0.5 ? trade.longEqualWeightReturnPct : trade.shortEqualWeightReturnPct
+    ));
+  });
+  const randomMedian = medianWindowTrial(randomTrials);
+  const candidates: Array<{ id: RealtimeReplayBenchmark; returns: Array<{ windowAt: string; value: number }> }> = [
+    { id: "polymarket_only", returns: polymarketOnly },
+    { id: "hyperliquid_only", returns: hyperliquidOnly },
+    { id: "always_long", returns: alwaysLong },
+    { id: "always_short", returns: alwaysShort },
+    { id: "random_median", returns: randomMedian },
+  ];
+  const ranked = candidates.map((candidate) => ({ ...candidate, netReturnPct: sum(candidate.returns.map((row) => row.value)) }))
+    .sort((left, right) => right.netReturnPct - left.netReturnPct);
+  const best = strategyReturns.length ? ranked[0] : null;
+  const bestByWindow = new Map(best?.returns.map((row) => [row.windowAt, row.value]) ?? []);
+  const excessReturns = strategyReturns.map((row) => row.value - (bestByWindow.get(row.windowAt) ?? 0));
+  const strategyNetReturnPct = sum(strategyReturns.map((row) => row.value));
+  const bestBenchmarkNetReturnPct = best?.netReturnPct ?? null;
+  return {
+    bestBenchmarkId: best?.id ?? null,
+    bestBenchmarkNetReturnPct,
+    excessReturnPct: bestBenchmarkNetReturnPct === null ? null : strategyNetReturnPct - bestBenchmarkNetReturnPct,
+    excessAverageReturnPct: average(excessReturns),
+    excessConfidenceInterval95: blockBootstrapMeanConfidenceInterval(excessReturns),
+    excessDeflatedSharpeProbability: deflatedSharpeProbability(excessReturns, realtimeShortTermReplaySpecification.strategyTrials),
+    benchmarks: {
+      polymarketOnlyNetReturnPct: sum(polymarketOnly.map((row) => row.value)),
+      hyperliquidOnlyNetReturnPct: sum(hyperliquidOnly.map((row) => row.value)),
+      alwaysLongNetReturnPct: sum(alwaysLong.map((row) => row.value)),
+      alwaysShortNetReturnPct: sum(alwaysShort.map((row) => row.value)),
+      randomMedianNetReturnPct: sum(randomMedian.map((row) => row.value)),
+    },
   };
 }
 
@@ -521,15 +593,23 @@ function walkForwardSummary(trades: RealtimeReplayTrade[], windows: string[]) {
   return {
     folds,
     profitableFolds: folds.filter((fold) => fold.equalWeightNetReturnPct > 0).length,
+    benchmarkBeatingFolds: folds.filter((fold) => (fold.excessReturnPct ?? 0) > 0).length,
     totalFolds: folds.length,
   };
 }
 
 function groupedWindowReturns(trades: RealtimeReplayTrade[], valueFor: (trade: RealtimeReplayTrade) => number) {
+  return groupedWindowReturnEntries(trades, valueFor).map((row) => row.value);
+}
+
+function groupedWindowReturnEntries<T extends { windowAt: string }>(trades: T[], valueFor: (trade: T) => number) {
   const grouped = groupBy(trades, (trade) => trade.windowAt);
   return [...grouped.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([, rows]) => sum(rows.map((trade) => valueFor(trade) * realtimeShortTermReplaySpecification.positionPct)));
+    .map(([windowAt, rows]) => ({
+      windowAt,
+      value: sum(rows.map((trade) => valueFor(trade) * realtimeShortTermReplaySpecification.positionPct)),
+    }));
 }
 
 function applyConcurrentPositionLimit(trades: RealtimeReplayTrade[]) {
@@ -687,6 +767,19 @@ function maximumDrawdown(returns: number[]) {
     drawdown = Math.max(drawdown, peak > 0 ? (peak - equity) / peak : 1);
   }
   return drawdown;
+}
+
+function medianWindowTrial(trials: Array<Array<{ windowAt: string; value: number }>>) {
+  if (!trials.length) return [];
+  return [...trials].sort((left, right) => sum(left.map((row) => row.value)) - sum(right.map((row) => row.value)))[Math.floor(trials.length / 2)];
+}
+
+function createSeededRandom(initialSeed: number) {
+  let seed = Math.imul(initialSeed, 0x9e3779b9) >>> 0;
+  return () => {
+    seed = (1664525 * seed + 1013904223) >>> 0;
+    return seed / 0x1_0000_0000;
+  };
 }
 
 function normalCdf(value: number) {
