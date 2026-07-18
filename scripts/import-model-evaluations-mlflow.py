@@ -229,10 +229,12 @@ def import_realtime_short_term_runs(args):
         selected = next((item for item in report["variants"] if item["id"] == selected_id), None)
         params = {
             "purpose": report["methodology"]["status"],
+            "specification_version": report["specification"]["version"],
             "selected_candidate": selected_id or "none",
             "strategy_trials": report["selection"]["strategyTrials"],
             "random_benchmark_trials": report["specification"].get("randomBenchmarkTrials", 0),
             "minimum_holdout_windows": report["specification"]["minimumHoldoutWindows"],
+            "minimum_holdout_windows_per_side": report["specification"].get("minimumHoldoutWindowsPerSide", 0),
             "code_revision": reproducibility.get("codeRevision") or "unknown",
             "dataset_sha256": reproducibility["datasetSha256"],
             "specification_sha256": reproducibility["specificationSha256"],
