@@ -105,9 +105,27 @@ selected only on development folds, and evaluated on a new untouched period. A p
 is not evidence of an edge until the independent-event count, benchmark, uncertainty, drawdown, and selection-bias
 gates all pass.
 
+Direction accuracy alone is not a promotion metric. A forecast can be correct often and still lose after
+entry price, spread, taker fees, slippage, and funding. Retain Brier score or another proper scoring rule as
+a probability-quality diagnostic and compare it with the market probability on the same untouched windows.
+Promotion remains based on executable after-cost return, synchronized baselines, confidence intervals, and
+forward-only evidence.
+
 The 48-hour synchronized-data gate measures the uninterrupted streak after the most recent capture gap
 longer than five minutes. Earlier records remain available for research, but they do not count toward
 operational continuity after a gap.
+
+The 15-minute settlement audit selects the first Chainlink report timestamped at or after each market
+boundary. A value immediately before the boundary is never substituted, even when it is equally close in
+wall-clock time. This keeps settlement causal and prevents near-flat markets from being assigned the wrong
+direction.
+
+The public dashboard endpoint uses stale-while-revalidate caching: the most recent complete snapshot is
+returned immediately while a refresh runs in the background. Its original `generatedAt` remains unchanged,
+so stale data stays detectable. On macOS, `com.polymarket-watch.watchdog` checks the runtime and dashboard
+timestamp every minute. It restarts the runtime only after three consecutive failures and then applies a
+ten-minute cooldown; a single host CPU spike does not trigger a restart. Watchdog state is stored at
+`~/.polymarket-watch/runtime-watchdog.json`.
 
 The validation structure follows an expanding time-series split rather than shuffled cross-validation;
 see the official [TimeSeriesSplit documentation](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.TimeSeriesSplit.html).

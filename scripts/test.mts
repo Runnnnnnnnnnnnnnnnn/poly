@@ -23,6 +23,7 @@ import {
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
 import { calculateShortTermImpliedSignal } from "../src/lib/combined-trading/short-term-implied-signal";
 import { authorizeApiRequest, requiredApiAccess, resolveViewerAccessToken } from "../src/lib/server/api-access";
+import { createAsyncStaleWhileRevalidateCache } from "../src/lib/server/async-swr-cache";
 import { selectCombinedSignalScan, type CombinedSignalScan } from "../src/lib/combined-trading/live-signal";
 import { applyCombinedSignalRule, calculateCombinedClose, selectCombinedSignalCandidate, type CombinedShadowConfig, validateFrozenExperimentConfig } from "../src/lib/combined-trading/service";
 import {
@@ -57,6 +58,7 @@ import { nextRealtimeReplayDelayMs } from "./realtime-short-term-schedule.mjs";
 import { buildLiveConnectionRegistry } from "./publish-live-connection.mjs";
 import { isProtectedRuntimeDatabasePath, runtimeDatabaseRsyncExcludes, untrackedRuntimeSourceRsyncExcludes } from "./runtime-deployment-policy.mjs";
 import { processSignalTarget, supervisorExitDelayMs, supervisorForceKillDelayMs } from "./process-supervisor-policy.mjs";
+import { evaluateRuntimeWatchdog } from "./runtime-watchdog-policy.mjs";
 import { calculateDirectionalBookReturn, deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
 import { modelEvaluationConfigHash, modelEvaluationSummariesCsv, summarizeModelEvaluation } from "../src/lib/model-evaluation/report";
@@ -222,6 +224,65 @@ assert.equal(processSignalTarget(123, "win32"), 123);
 assert.equal(processSignalTarget(0, "darwin"), null);
 assert.ok(supervisorExitDelayMs > supervisorForceKillDelayMs);
 console.log("process supervisor shutdown policy tests passed");
+
+const healthyWatchdog = evaluateRuntimeWatchdog({
+  nowMs: Date.parse("2026-01-01T00:04:00Z"),
+  healthOk: true,
+  dashboardGeneratedAt: "2026-01-01T00:03:30Z",
+  previousFailures: 2,
+});
+assert.equal(healthyWatchdog.action, "healthy");
+assert.equal(healthyWatchdog.consecutiveFailures, 0);
+const waitingWatchdog = evaluateRuntimeWatchdog({
+  nowMs: Date.parse("2026-01-01T00:10:00Z"),
+  healthOk: true,
+  dashboardGeneratedAt: "2026-01-01T00:00:00Z",
+  previousFailures: 0,
+  failureThreshold: 3,
+});
+assert.equal(waitingWatchdog.action, "waiting");
+assert.equal(waitingWatchdog.consecutiveFailures, 1);
+const restartWatchdog = evaluateRuntimeWatchdog({
+  nowMs: Date.parse("2026-01-01T00:10:00Z"),
+  healthOk: false,
+  dashboardGeneratedAt: null,
+  previousFailures: 2,
+  failureThreshold: 3,
+});
+assert.equal(restartWatchdog.action, "restart");
+const coolingWatchdog = evaluateRuntimeWatchdog({
+  nowMs: Date.parse("2026-01-01T00:10:00Z"),
+  healthOk: false,
+  dashboardGeneratedAt: null,
+  previousFailures: 2,
+  failureThreshold: 3,
+  lastRestartAt: "2026-01-01T00:05:00Z",
+});
+assert.equal(coolingWatchdog.action, "cooldown");
+console.log("runtime watchdog policy tests passed");
+
+let cacheNow = 1_000;
+let cacheLoads = 0;
+let releaseCacheRefresh: (() => void) | null = null;
+const dashboardCache = createAsyncStaleWhileRevalidateCache({
+  ttlMs: 100,
+  now: () => cacheNow,
+  load: async () => {
+    cacheLoads += 1;
+    if (cacheLoads > 1) await new Promise<void>((resolve) => { releaseCacheRefresh = resolve; });
+    return { version: cacheLoads };
+  },
+});
+assert.equal((await dashboardCache.get()).value.version, 1);
+cacheNow = 1_200;
+const staleCacheValue = await dashboardCache.get();
+assert.equal(staleCacheValue.value.version, 1);
+assert.equal(staleCacheValue.refreshing, true);
+releaseCacheRefresh?.();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal((await dashboardCache.get()).value.version, 2);
+assert.equal(cacheLoads, 2);
+console.log("stale-while-revalidate cache tests passed");
 
 assert.equal(
   dashboardStateFingerprint({ ...snapshotState, generatedAt: "2026-01-01T00:01:00Z" }),
@@ -771,6 +832,30 @@ assert.equal(selectCausalReferenceBoundary(
   new Date("2026-01-01T00:00:45Z"),
   15_000,
 )?.price, 100);
+const beforeBoundaryTick = {
+  capturedAt: new Date("2026-01-01T00:00:00Z"),
+  chainlinkPrice: 99,
+  chainlinkUpdatedAt: new Date("2025-12-31T23:59:57Z"),
+  hyperliquidMidPrice: 99.9,
+};
+const afterBoundaryTick = {
+  capturedAt: new Date("2026-01-01T00:00:04Z"),
+  chainlinkPrice: 101,
+  chainlinkUpdatedAt: new Date("2026-01-01T00:00:03Z"),
+  hyperliquidMidPrice: 100.1,
+};
+assert.equal(selectCausalReferenceBoundary(
+  [beforeBoundaryTick, afterBoundaryTick],
+  new Date("2026-01-01T00:00:00Z"),
+  new Date("2026-01-01T00:00:05Z"),
+  15_000,
+)?.price, 101);
+assert.equal(selectCausalReferenceBoundary(
+  [beforeBoundaryTick],
+  new Date("2026-01-01T00:00:00Z"),
+  new Date("2026-01-01T00:00:05Z"),
+  15_000,
+), null);
 const replayBenchmark = buildRealtimeReplayBenchmarkSummary([
   {
     windowAt: "2026-01-01T00:00:00Z",

@@ -1323,6 +1323,9 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
         : testnet?.nextStep ?? "専用口座を設定してください";
   const liveEnabled = snapshot?.tradeReadiness.realTradingEnabled === true;
   const promising = audit?.readinessStatus === "promising" && sampleReady && netPositive && edgePositive && drawdownReady;
+  const accuracyAndReturnNote = audit?.predictionAccuracy !== null && audit?.predictionAccuracy !== undefined && auditedNetReturn !== null
+    ? `方向正解 ${formatPct(audit.predictionAccuracy)}でも、コスト後損益は${formatSignedPct(auditedNetReturn)}。独立${verifiedTrades}/${minimumTrades}枠を監査中です。`
+    : null;
   const verdict = liveEnabled
     ? { label: "実取引中", note: "運用条件を満たし、実取引を監視しています。", tone: "good" as const, icon: CheckCircle2 }
     : promising && testnetReady
@@ -1330,7 +1333,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
       : audit?.readinessStatus === "underperforming" && sampleReady
         ? { label: "モデル改善が必要", note: "50件の検証で採用基準に届きませんでした。実取引には進みません。", tone: "bad" as const, icon: TrendingDown }
         : { label: "検証中・実取引不可", note: trades > 0
-          ? `${trades}件決済、板と決着を確認した独立時間枠${verifiedTrades}件を合格判定に使用します。`
+          ? accuracyAndReturnNote ?? `${trades}件決済、板と決着を確認した独立時間枠${verifiedTrades}件を合格判定に使用します。`
           : "最初の決済結果を待っています。", tone: "watch" as const, icon: Clock3 };
   const VerdictIcon = verdict.icon;
   const pnlTone: Tone = verifiedTrades === 0 ? "neutral" : (auditedNetReturn ?? 0) > 0 ? "good" : "bad";
@@ -1688,7 +1691,7 @@ function ShortTermDirectionPanel({ snapshot, downloadsAvailable }: { snapshot: M
               tone={!audit?.eligiblePositions ? "neutral" : audit.coverage >= 0.95 ? "good" : "bad"}
             />
             <CompactMetric label="95%下限" value={(audit?.verifiedIndependentEvents ?? audit?.verifiedPositions ?? 0) > 0 ? formatSignedPct(audit?.excessConfidenceInterval95?.[0]) : "収集中"} />
-            <CompactMetric label="最大取得遅延" value={(audit?.auditedPositions ?? 0) > 0 ? formatMilliseconds(audit?.maximumTimingErrorMs) : "収集中"} />
+            <CompactMetric label="方向の正解" value={audit?.resolvedPredictions ? formatPct(audit.predictionAccuracy) : "収集中"} tone="neutral" />
           </div>
         </div>
       </div>

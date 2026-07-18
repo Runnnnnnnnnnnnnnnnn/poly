@@ -55,13 +55,14 @@ export async function loadReferenceSettlementAudit(options: {
         tick."marketId" AS "marketId",
         'START' AS "boundary",
         tick."referencePrice" AS "referencePrice",
-        ABS(tick."referenceUpdatedAt" - tick."marketStartAt") AS "errorMs",
+        tick."referenceUpdatedAt" - tick."marketStartAt" AS "errorMs",
         tick."capturedAt" AS "capturedAt"
       FROM "RealtimeMarketTick" tick
       INNER JOIN observed ON observed."marketId" = tick."marketId"
       WHERE tick."synchronizationVersion" = ${realtimeSynchronizationVersion}
         AND tick."referenceSource" = 'CHAINLINK'
-        AND ABS(tick."referenceUpdatedAt" - tick."marketStartAt") <= ${maximumBoundaryErrorMs}
+        AND tick."referenceUpdatedAt" >= tick."marketStartAt"
+        AND tick."referenceUpdatedAt" - tick."marketStartAt" <= ${maximumBoundaryErrorMs}
 
       UNION ALL
 
@@ -69,13 +70,14 @@ export async function loadReferenceSettlementAudit(options: {
         tick."marketId" AS "marketId",
         'END' AS "boundary",
         tick."referencePrice" AS "referencePrice",
-        ABS(tick."referenceUpdatedAt" - tick."marketEndAt") AS "errorMs",
+        tick."referenceUpdatedAt" - tick."marketEndAt" AS "errorMs",
         tick."capturedAt" AS "capturedAt"
       FROM "RealtimeMarketTick" tick
       INNER JOIN observed ON observed."marketId" = tick."marketId"
       WHERE tick."synchronizationVersion" = ${realtimeSynchronizationVersion}
         AND tick."referenceSource" = 'CHAINLINK'
-        AND ABS(tick."referenceUpdatedAt" - tick."marketEndAt") <= ${maximumBoundaryErrorMs}
+        AND tick."referenceUpdatedAt" >= tick."marketEndAt"
+        AND tick."referenceUpdatedAt" - tick."marketEndAt" <= ${maximumBoundaryErrorMs}
 
       UNION ALL
 
@@ -83,7 +85,7 @@ export async function loadReferenceSettlementAudit(options: {
         observed."marketId" AS "marketId",
         'START' AS "boundary",
         asset_tick."chainlinkPrice" AS "referencePrice",
-        ABS(asset_tick."chainlinkUpdatedAt" - observed."marketStartAt") AS "errorMs",
+        asset_tick."chainlinkUpdatedAt" - observed."marketStartAt" AS "errorMs",
         asset_tick."capturedAt" AS "capturedAt"
       FROM observed
       INNER JOIN "RealtimeAssetTick" asset_tick
@@ -91,9 +93,10 @@ export async function loadReferenceSettlementAudit(options: {
       WHERE asset_tick."synchronizationVersion" = ${realtimeAssetSynchronizationVersion}
         AND asset_tick."chainlinkPrice" IS NOT NULL
         AND asset_tick."chainlinkUpdatedAt" IS NOT NULL
-        AND asset_tick."capturedAt" BETWEEN observed."marketStartAt" - ${maximumBoundaryErrorMs + 15_000}
+        AND asset_tick."capturedAt" BETWEEN observed."marketStartAt"
           AND observed."marketStartAt" + ${maximumBoundaryErrorMs + 15_000}
-        AND ABS(asset_tick."chainlinkUpdatedAt" - observed."marketStartAt") <= ${maximumBoundaryErrorMs}
+        AND asset_tick."chainlinkUpdatedAt" >= observed."marketStartAt"
+        AND asset_tick."chainlinkUpdatedAt" - observed."marketStartAt" <= ${maximumBoundaryErrorMs}
 
       UNION ALL
 
@@ -101,7 +104,7 @@ export async function loadReferenceSettlementAudit(options: {
         observed."marketId" AS "marketId",
         'END' AS "boundary",
         asset_tick."chainlinkPrice" AS "referencePrice",
-        ABS(asset_tick."chainlinkUpdatedAt" - observed."marketEndAt") AS "errorMs",
+        asset_tick."chainlinkUpdatedAt" - observed."marketEndAt" AS "errorMs",
         asset_tick."capturedAt" AS "capturedAt"
       FROM observed
       INNER JOIN "RealtimeAssetTick" asset_tick
@@ -109,9 +112,10 @@ export async function loadReferenceSettlementAudit(options: {
       WHERE asset_tick."synchronizationVersion" = ${realtimeAssetSynchronizationVersion}
         AND asset_tick."chainlinkPrice" IS NOT NULL
         AND asset_tick."chainlinkUpdatedAt" IS NOT NULL
-        AND asset_tick."capturedAt" BETWEEN observed."marketEndAt" - ${maximumBoundaryErrorMs + 15_000}
+        AND asset_tick."capturedAt" BETWEEN observed."marketEndAt"
           AND observed."marketEndAt" + ${maximumBoundaryErrorMs + 15_000}
-        AND ABS(asset_tick."chainlinkUpdatedAt" - observed."marketEndAt") <= ${maximumBoundaryErrorMs}
+        AND asset_tick."chainlinkUpdatedAt" >= observed."marketEndAt"
+        AND asset_tick."chainlinkUpdatedAt" - observed."marketEndAt" <= ${maximumBoundaryErrorMs}
     ), ranked AS (
       SELECT
         *,
@@ -239,6 +243,7 @@ export function evaluateReferenceSettlementAudit(
     medianBoundaryErrorMs,
     maximumBoundaryErrorMs: maximumObservedBoundaryErrorMs,
     allowedBoundaryErrorMs: maximumBoundaryErrorMs,
+    boundarySelection: "first-chainlink-update-at-or-after-boundary" as const,
     byAsset,
     passedGates: gates.filter((gate) => gate.passed).length,
     totalGates: gates.length,

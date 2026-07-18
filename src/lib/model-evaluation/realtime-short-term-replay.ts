@@ -7,7 +7,7 @@ import {
 import { calculatePolymarketTakerFee } from "@/src/lib/realtime-market-data/execution-audit";
 
 export const realtimeShortTermReplaySpecification = Object.freeze({
-  version: 4,
+  version: 5,
   purpose: "diagnostic_only",
   promotionPolicy: "new_forward_cohort_required",
   synchronizationVersion: "websocket-v6-near-term-discovery",
@@ -820,8 +820,8 @@ export function selectCausalReferenceBoundary(
 ) {
   const candidates = ticks.flatMap((tick) => {
     if (!positive(tick.chainlinkPrice) || !tick.chainlinkUpdatedAt || tick.capturedAt.getTime() > knownBy.getTime()) return [];
-    const errorMs = Math.abs(tick.chainlinkUpdatedAt.getTime() - target.getTime());
-    return tick.chainlinkUpdatedAt.getTime() <= knownBy.getTime() && errorMs <= maximumErrorMs
+    const errorMs = tick.chainlinkUpdatedAt.getTime() - target.getTime();
+    return errorMs >= 0 && tick.chainlinkUpdatedAt.getTime() <= knownBy.getTime() && errorMs <= maximumErrorMs
       ? [{ price: tick.chainlinkPrice, hyperliquidMidPrice: tick.hyperliquidMidPrice, updatedAt: tick.chainlinkUpdatedAt, errorMs }]
       : [];
   });
@@ -831,8 +831,8 @@ export function selectCausalReferenceBoundary(
 function selectAssetReferenceBoundary(ticks: PriceTick[], target: Date, maximumErrorMs: number) {
   const candidates = ticks.flatMap((tick) => {
     if (!positive(tick.chainlinkPrice) || !tick.chainlinkUpdatedAt) return [];
-    const errorMs = Math.abs(tick.chainlinkUpdatedAt.getTime() - target.getTime());
-    return errorMs <= maximumErrorMs ? [{ price: tick.chainlinkPrice, errorMs }] : [];
+    const errorMs = tick.chainlinkUpdatedAt.getTime() - target.getTime();
+    return errorMs >= 0 && errorMs <= maximumErrorMs ? [{ price: tick.chainlinkPrice, errorMs }] : [];
   });
   return candidates.sort((left, right) => left.errorMs - right.errorMs)[0] ?? null;
 }

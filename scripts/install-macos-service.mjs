@@ -10,6 +10,7 @@ import { runtimeDatabaseRsyncExcludes, untrackedRuntimeSourceRsyncExcludes } fro
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeLabel = "com.polymarket-watch.runtime";
 const tunnelLabel = "com.polymarket-watch.tunnel";
+const watchdogLabel = "com.polymarket-watch.watchdog";
 const agentsDir = resolve(homedir(), "Library/LaunchAgents");
 const domain = `gui/${process.getuid()}`;
 const runtimeNode = [
@@ -22,7 +23,7 @@ if (!runtimeNode) throw new Error("Node.js runtime was not found");
 const deployedRoot = resolve(homedir(), ".polymarket-watch/runtime");
 
 if (process.argv.includes("--uninstall")) {
-  for (const label of [tunnelLabel, runtimeLabel]) {
+  for (const label of [watchdogLabel, tunnelLabel, runtimeLabel]) {
     try { execFileSync("launchctl", ["bootout", `${domain}/${label}`], { stdio: "ignore" }); } catch {}
     rmSync(resolve(agentsDir, `${label}.plist`), { force: true });
     console.log(`removed ${label}`);
@@ -112,6 +113,17 @@ if (cloudflared) {
   console.warn("cloudflared was not found; the local runtime is installed without public tunneling");
 }
 
+const watchdogRevision = fileFingerprint([
+  "scripts/run-runtime-watchdog.mjs",
+  "scripts/runtime-watchdog-policy.mjs",
+]);
+const watchdogCommand = `cd ${shellQuote(homedir())}; APP_PORT=3001 POLYMARKET_WATCHDOG_REVISION=${shellQuote(watchdogRevision)} ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-runtime-watchdog.mjs"))}`;
+installAgent(
+  watchdogLabel,
+  makeIntervalPlist(watchdogLabel, watchdogCommand, "/tmp/polymarket-watch-watchdog.log", 60),
+  { preserveIfUnchanged: true },
+);
+
 function makePlist(label, serviceCommand, logPath) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -124,6 +136,25 @@ function makePlist(label, serviceCommand, logPath) {
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>${xmlEscape(logPath)}</string>
+  <key>StandardErrorPath</key><string>${xmlEscape(logPath)}</string>
+</dict>
+</plist>
+`;
+}
+
+function makeIntervalPlist(label, serviceCommand, logPath, intervalSeconds) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${label}</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/zsh</string><string>-lc</string><string>${xmlEscape(serviceCommand)}</string></array>
+  <key>WorkingDirectory</key><string>${xmlEscape(homedir())}</string>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>${Math.max(30, Math.round(intervalSeconds))}</integer>
+  <key>ProcessType</key><string>Background</string>
   <key>StandardOutPath</key><string>${xmlEscape(logPath)}</string>
   <key>StandardErrorPath</key><string>${xmlEscape(logPath)}</string>
 </dict>
