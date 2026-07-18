@@ -37,7 +37,7 @@ const strategyConfig: Partial<CombinedShadowConfig> = {
   experimentKey: shortTermDirectionStrategyKey,
   experimentLabel: "15分Up/Down × Hyperliquid開始後トレンド一致",
   signalRule: "trend-confirmed",
-  modelVersion: "Short Direction v6 2026-07-18 / persisted synchronized 5s signal / causal 5s execution audit / independent 15m windows / 11 trials / official resolution / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
+  modelVersion: "Short Direction v7 2026-07-18 / all sources fresh within 15s / persisted synchronized 5s signal / causal 5s execution audit / independent 15m windows / 11 trials / official resolution / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
 };
 
 const controlConfig: Partial<CombinedShadowConfig> = {
@@ -46,7 +46,7 @@ const controlConfig: Partial<CombinedShadowConfig> = {
   experimentLabel: "15分Up/Downの方向のみ（同時対照）",
   minimumTrendZ: 0,
   signalRule: "polymarket-only",
-  modelVersion: "Short Direction Control v6 2026-07-18 / persisted synchronized 5s signal / causal 5s execution audit / independent 15m windows / 11 trials / official resolution / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
+  modelVersion: "Short Direction Control v7 2026-07-18 / all sources fresh within 15s / persisted synchronized 5s signal / causal 5s execution audit / independent 15m windows / 11 trials / official resolution / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
 };
 
 let runs = await ensureRuns();

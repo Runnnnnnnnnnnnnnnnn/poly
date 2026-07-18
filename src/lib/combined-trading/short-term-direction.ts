@@ -13,11 +13,11 @@ import { realtimeSynchronizationVersion } from "@/src/lib/realtime-market-data/c
 import { prisma } from "@/src/lib/server/prisma";
 
 export const shortTermDirectionHorizonKey = 0;
-export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v6-m15";
-export const shortTermDirectionControlKey = "poly-updown-forward-control-v6-m15";
+export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v7-m15";
+export const shortTermDirectionControlKey = "poly-updown-forward-control-v7-m15";
 
 export const shortTermDirectionSpecification = Object.freeze({
-  version: 6,
+  version: 7,
   executionAuditVersion: 3,
   decisionDataSource: "persisted-synchronized-5s-orderbook",
   independentSampleUnit: "15-minute-window",
@@ -255,7 +255,14 @@ function emptyHorizonScan(input: { nextWindowAt: string | null; closestHoursToEn
   };
 }
 
-export function selectLatestSynchronizedDecisionTick<T extends { capturedAt: Date }>(
+export function selectLatestSynchronizedDecisionTick<T extends {
+  capturedAt: Date;
+  polymarketUpdatedAt: Date;
+  negativeUpdatedAt: Date;
+  hyperliquidUpdatedAt: Date;
+  referenceUpdatedAt: Date;
+  captureSkewMs: number;
+}>(
   ticks: T[],
   now: Date,
   maximumAgeMs: number,
@@ -263,7 +270,16 @@ export function selectLatestSynchronizedDecisionTick<T extends { capturedAt: Dat
   return [...ticks]
     .filter((tick) => {
       const ageMs = now.getTime() - tick.capturedAt.getTime();
-      return ageMs >= 0 && ageMs <= maximumAgeMs;
+      const sourceAges = [
+        tick.polymarketUpdatedAt,
+        tick.negativeUpdatedAt,
+        tick.hyperliquidUpdatedAt,
+        tick.referenceUpdatedAt,
+      ].map((updatedAt) => tick.capturedAt.getTime() - updatedAt.getTime());
+      return ageMs >= 0
+        && ageMs <= maximumAgeMs
+        && tick.captureSkewMs <= maximumAgeMs
+        && sourceAges.every((sourceAgeMs) => sourceAgeMs >= -5_000 && sourceAgeMs <= maximumAgeMs);
     })
     .sort((left, right) => right.capturedAt.getTime() - left.capturedAt.getTime())[0] ?? null;
 }
