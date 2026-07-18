@@ -11,6 +11,8 @@ from hyperliquid.info import Info
 from hyperliquid.utils import constants
 from hyperliquid.utils.types import Cloid
 
+from hyperliquid_testnet_safety import clear_dead_man_switch_if_flat, schedule_dead_man_switch
+
 
 def output(payload):
     print(json.dumps(payload, separators=(",", ":")))
@@ -109,7 +111,12 @@ def main():
             except Exception as error:
                 result = {"status": "error", "error": str(error)}
             results.append({"asset": asset, "oid": oid, "result": result})
-        output({"ok": True, "environment": "testnet", "cancelResults": results})
+        output({
+            "ok": True,
+            "environment": "testnet",
+            "cancelResults": results,
+            "deadManCleared": clear_dead_man_switch_if_flat(info, exchange, account_address),
+        })
         return
 
     if action == "flatten":
@@ -158,7 +165,13 @@ def main():
 
     if action == "cancel":
         result = exchange.cancel_by_cloid(asset, cloid)
-        output({"ok": result.get("status") == "ok", "environment": "testnet", "result": result})
+        ok = result.get("status") == "ok"
+        output({
+            "ok": ok,
+            "environment": "testnet",
+            "result": result,
+            "deadManCleared": ok and clear_dead_man_switch_if_flat(info, exchange, account_address),
+        })
         return
 
     if account_value <= 0:
@@ -169,6 +182,7 @@ def main():
 
     exchange.update_leverage(1, asset, is_cross=False)
     if action == "rest":
+        dead_man_scheduled_at = schedule_dead_man_switch(exchange, request["deadManDeadlineMs"])
         is_buy = bool(request["isBuy"])
         limit_price = exchange._slippage_price(
             asset,
@@ -213,7 +227,10 @@ def main():
         )
     else:
         raise ValueError("unsupported action")
-    output({"ok": result.get("status") == "ok", "environment": "testnet", "result": result})
+    response = {"ok": result.get("status") == "ok", "environment": "testnet", "result": result}
+    if action == "rest":
+        response["deadManScheduledAt"] = dead_man_scheduled_at
+    output(response)
 
 
 if __name__ == "__main__":

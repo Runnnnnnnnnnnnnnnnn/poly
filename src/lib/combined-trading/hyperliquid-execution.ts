@@ -56,6 +56,8 @@ type ExecutorResponse = {
   orderStatuses?: Array<{ clientOrderId?: string; exchangeCloid?: string; result?: unknown }>;
   cancelResults?: Array<{ asset?: string; oid?: string | number; result?: unknown }>;
   flattenResults?: Array<{ asset?: string; size?: number; clientOrderId?: string; result?: unknown }>;
+  deadManScheduledAt?: number;
+  deadManCleared?: boolean;
   error?: string;
 };
 
@@ -64,6 +66,7 @@ export type TestnetAccountSafety = ReturnType<typeof evaluateTestnetAccountSafet
 type TestnetEmergencyCleanupDependencies = {
   cancelOutstanding: () => Promise<{
     verified: boolean;
+    deadManCleared: boolean;
     attempted: number;
     cancelled: number;
     failed: number;
@@ -167,8 +170,16 @@ export async function executeHyperliquidTestnetOrder(request: TestnetOrderReques
     throw new HyperliquidDefinitiveOrderError(`Hyperliquid testnet order exceeds $${readiness.maximumNotionalUsd} limit`);
   }
   if (request.action !== "close") await assertRecentTestnetReconciliation();
-  const response = await runExecutor({ ...request, slippage: 0.01 });
+  const deadManDeadlineMs = request.action === "rest" ? nextHyperliquidDeadManDeadlineMs() : null;
+  const response = await runExecutor({
+    ...request,
+    slippage: 0.01,
+    ...(deadManDeadlineMs === null ? {} : { deadManDeadlineMs }),
+  });
   if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet order failed");
+  if (deadManDeadlineMs !== null && response.deadManScheduledAt !== deadManDeadlineMs) {
+    throw new Error("Hyperliquid testnet resting order dead-man switch is unverified");
+  }
   const evidence = normalizeHyperliquidFillAgainstRequestedQuantity(
     parseHyperliquidOrderEvidence(response.result, "order"),
     request.size,
@@ -192,7 +203,10 @@ export async function cancelHyperliquidTestnetOrder(request: TestnetCancelReques
       status: evidence.status,
       exchangeStatus: evidence.exchangeStatus,
       ...(evidence.exchangeOrderId ? { exchangeOrderId: evidence.exchangeOrderId } : {}),
-      responseJson: JSON.stringify(response.result ?? null),
+      responseJson: JSON.stringify({
+        result: response.result ?? null,
+        deadManCleared: response.deadManCleared ?? false,
+      }),
       lastReconciledAt: new Date(),
     },
   });
@@ -202,7 +216,7 @@ export async function cancelHyperliquidTestnetOrder(request: TestnetCancelReques
 export async function cancelOutstandingHyperliquidTestnetOrders() {
   const readiness = getHyperliquidExecutionReadiness();
   if (!readiness.ready) {
-    return { ...readiness, verified: false, attempted: 0, cancelled: 0, failed: 0, remainingOpenOrders: [] };
+    return { ...readiness, verified: false, deadManCleared: false, attempted: 0, cancelled: 0, failed: 0, remainingOpenOrders: [] };
   }
   const response = await runExecutor({ action: "cancel_all" });
   if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet cancellation failed");
@@ -221,7 +235,9 @@ export async function cancelOutstandingHyperliquidTestnetOrders() {
     ...readiness,
     verified: reconciliation.connected
       && reconciliation.openOrders.length === 0
-      && reconciliation.orderMismatches.length === 0,
+      && reconciliation.orderMismatches.length === 0
+      && response.deadManCleared === true,
+    deadManCleared: response.deadManCleared === true,
     attempted: response.cancelResults?.length ?? 0,
     cancelled,
     failed,
@@ -308,7 +324,7 @@ export async function performHyperliquidTestnetEmergencyCleanup(
 
   try {
     cancellation = await cancelOutstanding();
-    if (!cancellation.verified || cancellation.failed > 0 || cancellation.remainingOpenOrders.length > 0) {
+    if (!cancellation.verified || !cancellation.deadManCleared || cancellation.failed > 0 || cancellation.remainingOpenOrders.length > 0) {
       issues.push(`cancel-unverified:${cancellation.failed}:${cancellation.remainingOpenOrders.length}`);
     }
   } catch (error) {
@@ -597,6 +613,7 @@ export async function runHyperliquidTestnetVerificationSuite(input: {
     closeFillPassed: false,
     restingOrderPassed: false,
     cancelPassed: false,
+    deadManSwitchPassed: false,
     partialFillObserved: false,
     reconnectPassed: false,
     reconciliationPassed: false,
@@ -662,8 +679,12 @@ export async function runHyperliquidTestnetVerificationSuite(input: {
       reason: "manual testnet resting-order verification",
     });
     checks.restingOrderPassed = resting.status === "OPEN";
+    checks.deadManSwitchPassed = typeof resting.deadManScheduledAt === "number"
+      && resting.deadManScheduledAt > Date.now();
     checks.partialFillObserved ||= resting.status === "PARTIALLY_FILLED";
-    if (!checks.restingOrderPassed) throw new Error("testnet post-only order did not rest on the book");
+    if (!checks.restingOrderPassed || !checks.deadManSwitchPassed) {
+      throw new Error("testnet post-only order or dead-man switch was not verified");
+    }
     const restingOrder = await prisma.combinedExecutionOrder.findFirst({
       where: { runId: run.id, environment: "TESTNET", action: "VERIFY_REST" },
       orderBy: { createdAt: "desc" },
@@ -674,7 +695,10 @@ export async function runHyperliquidTestnetVerificationSuite(input: {
       clientOrderId: restingOrder.clientOrderId,
     });
     checks.cancelPassed = cancellation.evidence.status === "CANCELLED";
-    if (!checks.cancelPassed) throw new Error("testnet order cancellation was not verified");
+    checks.deadManSwitchPassed &&= cancellation.deadManCleared === true;
+    if (!checks.cancelPassed || !checks.deadManSwitchPassed) {
+      throw new Error("testnet order cancellation or dead-man switch clearing was not verified");
+    }
     evidence.restingOrder = { resting, cancellation: cancellation.evidence };
 
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
@@ -732,6 +756,7 @@ export async function runHyperliquidTestnetVerificationSuite(input: {
       && checks.closeFillPassed
       && checks.restingOrderPassed
       && checks.cancelPassed
+      && checks.deadManSwitchPassed
       && checks.reconnectPassed
       && checks.reconciliationPassed
       && checks.emergencyCleanupPassed;
@@ -845,11 +870,17 @@ async function executeTrackedTestnetOrder(input: {
         averageFillPrice: response.evidence.averageFillPrice,
         feePaid: response.evidence.feePaid,
         reason: response.evidence.reason ?? input.reason,
-        responseJson: JSON.stringify(response.result ?? null),
+        responseJson: JSON.stringify({
+          result: response.result ?? null,
+          deadManScheduledAt: response.deadManScheduledAt ?? null,
+        }),
         lastReconciledAt: new Date(),
       },
     });
-    return response.evidence;
+    return {
+      ...response.evidence,
+      deadManScheduledAt: response.deadManScheduledAt ?? null,
+    };
   } catch (error) {
     const definitive = error instanceof HyperliquidDefinitiveOrderError;
     await prisma.combinedExecutionOrder.update({
@@ -907,6 +938,7 @@ export function evaluateHyperliquidTestnetVerificationReadiness(input: {
     closeFillPassed: boolean;
     restingOrderPassed: boolean;
     cancelPassed: boolean;
+    deadManSwitchPassed: boolean;
     partialFillObserved: boolean;
     reconnectPassed: boolean;
     reconciliationPassed: boolean;
@@ -946,6 +978,7 @@ export function evaluateHyperliquidTestnetVerificationReadiness(input: {
     closeFill: verification?.closeFillPassed === true,
     restingOrder: verification?.restingOrderPassed === true,
     cancellation: verification?.cancelPassed === true,
+    deadManSwitch: verification?.deadManSwitchPassed === true,
     partialFill: verification?.partialFillObserved === true,
     reconnect: verification?.reconnectPassed === true,
     finalReconciliation: verification?.reconciliationPassed === true,
@@ -959,6 +992,16 @@ export function evaluateHyperliquidTestnetVerificationReadiness(input: {
   };
   const failedChecks = Object.entries(checks).flatMap(([key, passed]) => passed ? [] : [key]);
   return { ready: failedChecks.length === 0, checks, failedChecks };
+}
+
+export function nextHyperliquidDeadManDeadlineMs(
+  now = Date.now(),
+  configuredSeconds = Number(process.env.HYPERLIQUID_TESTNET_DEAD_MAN_SECONDS ?? 60),
+) {
+  const seconds = Number.isFinite(configuredSeconds)
+    ? Math.max(10, Math.min(300, Math.round(configuredSeconds)))
+    : 60;
+  return Math.trunc(now) + seconds * 1_000;
 }
 
 async function assertRecentTestnetReconciliation(now = new Date()) {

@@ -540,6 +540,7 @@ model HyperliquidTestnetVerificationRun {
   closeFillPassed          Boolean   @default(false)
   restingOrderPassed       Boolean   @default(false)
   cancelPassed             Boolean   @default(false)
+  deadManSwitchPassed      Boolean   @default(false)
   partialFillObserved      Boolean   @default(false)
   reconnectPassed          Boolean   @default(false)
   reconciliationPassed     Boolean   @default(false)

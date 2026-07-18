@@ -1005,6 +1005,7 @@ export async function getMonitoringSnapshot() {
           closeFillPassed: latestTestnetVerification.closeFillPassed,
           restingOrderPassed: latestTestnetVerification.restingOrderPassed,
           cancelPassed: latestTestnetVerification.cancelPassed,
+          deadManSwitchPassed: latestTestnetVerification.deadManSwitchPassed,
           partialFillObserved: latestTestnetVerification.partialFillObserved,
           reconnectPassed: latestTestnetVerification.reconnectPassed,
           reconciliationPassed: latestTestnetVerification.reconciliationPassed,

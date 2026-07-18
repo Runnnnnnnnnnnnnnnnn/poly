@@ -721,6 +721,7 @@ type MonitoringSnapshot = {
         closeFillPassed: boolean;
         restingOrderPassed: boolean;
         cancelPassed: boolean;
+        deadManSwitchPassed: boolean;
         partialFillObserved: boolean;
         reconnectPassed: boolean;
         reconciliationPassed: boolean;

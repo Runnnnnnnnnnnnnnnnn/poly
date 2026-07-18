@@ -154,4 +154,4 @@ GitHub Pages は静的ホスティングなので、これらのruntime APIやwo
 - 同一イベントの再取引を禁止
 - `COMBINED_KILL_SWITCH=1`で新規取引停止と保有決済
 
-テストネット連動はHyperliquid公式Python SDKを使う。新規注文には、接続設定に加えて最新の未使用期間テストが`promising`、選定戦略が`no-trade guard`以外、95%信頼区間がプラスという全条件を要求する。1倍の分離証拠金、最大$25、dead-man's switchを使用する。メインネット注文経路は実装しない。
+テストネット連動はHyperliquid公式Python SDKを使う。新規注文には、接続設定に加えて最新の未使用期間テストが`promising`、選定戦略が`no-trade guard`以外、95%信頼区間がプラスという全条件を要求する。1倍の分離証拠金、最大$25とする。認定用の板に残る注文は発注前にdead-man's switchを設定し、通常取消後の解除まで確認する。メインネット注文経路は実装しない。

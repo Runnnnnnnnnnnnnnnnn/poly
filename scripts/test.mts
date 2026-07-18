@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+execFileSync(process.env.PYTHON ?? "python3", [join(import.meta.dirname, "test_hyperliquid_testnet_safety.py")], {
+  cwd: join(import.meta.dirname, ".."),
+  stdio: "inherit",
+});
 
 import { calculateBacktestMetrics } from "../src/lib/backtest/metrics";
 import { calculateCaptureSkewMs } from "../src/lib/backtest/service";
@@ -16,6 +22,7 @@ import {
   normalizeExchangeOrderStatus,
   normalizeHyperliquidFillAgainstRequestedQuantity,
   normalizeTestnetSmokeOrderSize,
+  nextHyperliquidDeadManDeadlineMs,
   parseHyperliquidOrderEvidence,
   planTestnetReconciliationBatches,
   performHyperliquidTestnetEmergencyCleanup,
@@ -2029,6 +2036,7 @@ const completeTestnetVerification = {
   closeFillPassed: true,
   restingOrderPassed: true,
   cancelPassed: true,
+  deadManSwitchPassed: true,
   partialFillObserved: true,
   reconnectPassed: true,
   reconciliationPassed: true,
@@ -2059,6 +2067,14 @@ const partialFillUnverified = evaluateHyperliquidTestnetVerificationReadiness({
 });
 assert.equal(partialFillUnverified.ready, false);
 assert.ok(partialFillUnverified.failedChecks.includes("partialFill"));
+const deadManUnverified = evaluateHyperliquidTestnetVerificationReadiness({
+  executionReady: true,
+  verification: { ...completeTestnetVerification, deadManSwitchPassed: false },
+  account: cleanTestnetAccount,
+  now: testnetVerificationNow,
+});
+assert.equal(deadManUnverified.ready, false);
+assert.ok(deadManUnverified.failedChecks.includes("deadManSwitch"));
 assert.equal(evaluateHyperliquidTestnetVerificationReadiness({
   executionReady: true,
   verification: completeTestnetVerification,
@@ -2066,6 +2082,9 @@ assert.equal(evaluateHyperliquidTestnetVerificationReadiness({
   now: testnetVerificationNow,
 }).failedChecks.includes("zeroExposure"), true);
 assert.equal(new HyperliquidDefinitiveOrderError("blocked").name, "HyperliquidDefinitiveOrderError");
+assert.equal(nextHyperliquidDeadManDeadlineMs(1_000, 60), 61_000);
+assert.equal(nextHyperliquidDeadManDeadlineMs(1_000, 1), 11_000);
+assert.equal(nextHyperliquidDeadManDeadlineMs(1_000, 600), 301_000);
 assert.equal(normalizeTestnetSmokeOrderSize("BTC", 12, 64_000, 25), 0.00019);
 assert.equal(normalizeTestnetSmokeOrderSize("SOL", 12, 75, 25), 0.16);
 assert.throws(() => normalizeTestnetSmokeOrderSize("XRP", 12, 100, 9), /minimum notional/);
@@ -2081,7 +2100,7 @@ const emergencySequence: string[] = [];
 const verifiedEmergencyCleanup = await performHyperliquidTestnetEmergencyCleanup({
   cancelOutstanding: async () => {
     emergencySequence.push("cancel");
-    return { verified: true, attempted: 1, cancelled: 1, failed: 0, remainingOpenOrders: [] };
+    return { verified: true, deadManCleared: true, attempted: 1, cancelled: 1, failed: 0, remainingOpenOrders: [] };
   },
   flattenPositions: async () => {
     emergencySequence.push("flatten");
@@ -2105,7 +2124,7 @@ assert.equal(recoveredEmergencyCleanup.verified, true);
 assert.match(recoveredEmergencyCleanup.issues[0] ?? "", /^cancel-error:/);
 
 const unresolvedEmergencyCleanup = await performHyperliquidTestnetEmergencyCleanup({
-  cancelOutstanding: async () => ({ verified: false, attempted: 1, cancelled: 0, failed: 1, remainingOpenOrders: [{}] }),
+  cancelOutstanding: async () => ({ verified: false, deadManCleared: false, attempted: 1, cancelled: 0, failed: 1, remainingOpenOrders: [{}] }),
   flattenPositions: async () => ({ verified: false, attempted: 1, flattened: 0, failed: 1, remainingPositions: [{ coin: "BTC", size: 0.01 }] }),
   reconcile: async () => ({
     connected: true,

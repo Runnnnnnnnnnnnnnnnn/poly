@@ -47,6 +47,8 @@ const modelRevision = fileFingerprint([
   "scripts/backtest-realtime-short-term.mts",
   "scripts/realtime-short-term-schedule.mjs",
   "scripts/run-realtime-short-term-research.mts",
+  "scripts/hyperliquid-testnet-executor.py",
+  "scripts/hyperliquid_testnet_safety.py",
 ]);
 const runtimeDatabasePath = resolve(deployedRoot, "prisma/dev.db");
 const buildSnapshotDirectory = mkdtempSync(resolve(tmpdir(), "polymarket-watch-build-"));

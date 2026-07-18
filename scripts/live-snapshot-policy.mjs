@@ -61,6 +61,7 @@ export function dashboardStateFingerprint(snapshot) {
       enabled: testnet.enabled ?? null,
       reconciliationStatus: testnet.reconciliation?.status ?? null,
       verificationStatus: testnet.verification?.status ?? null,
+      deadManSwitchPassed: testnet.verification?.deadManSwitchPassed ?? null,
       partialFillObserved: testnet.verification?.partialFillObserved ?? null,
       orphanOrderCount: testnet.verification?.orphanOrderCount ?? null,
       positionMismatchCount: testnet.verification?.positionMismatchCount ?? null,
