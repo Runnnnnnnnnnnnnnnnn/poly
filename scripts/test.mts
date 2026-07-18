@@ -50,6 +50,7 @@ import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
 import { dashboardStateFingerprint, shouldPublishDashboardSnapshot } from "./live-snapshot-policy.mjs";
 import { calculateDirectionalBookReturn, deflatedSharpeProbability, evaluateCombinedTrading, impliedTerminalMedianForCondition } from "../src/lib/model-evaluation/combined-trading";
 import { evaluateChronologicalModel } from "../src/lib/model-evaluation/engine";
+import { modelEvaluationConfigHash, modelEvaluationSummariesCsv, summarizeModelEvaluation } from "../src/lib/model-evaluation/report";
 import { toHorizonStudy } from "../src/lib/model-evaluation/service";
 import { fitMonotonicProbabilityLadder } from "../src/lib/model-evaluation/probability-ladder";
 import { parseTerminalPriceCondition, probabilityForCondition, summarizeFundingAt } from "../src/lib/model-evaluation/price-structure";
@@ -97,6 +98,10 @@ assert.notEqual(
       },
     },
   }),
+);
+assert.notEqual(
+  dashboardStateFingerprint(snapshotState),
+  dashboardStateFingerprint({ ...snapshotState, modelEvaluations: [{ id: "evaluation-2", status: "completed" }] }),
 );
 assert.equal(shouldPublishDashboardSnapshot({
   currentFingerprint: "new",
@@ -1185,6 +1190,35 @@ assert.equal(combinedHorizonStudy.eligibleSignals, combinedChronologicalEvaluati
 assert.equal(combinedHorizonStudy.netReturnPct, combinedChronologicalEvaluation.combinedTrading.netReturnPct);
 assert.equal(combinedHorizonStudy.excessReturnPct, combinedChronologicalEvaluation.combinedTrading.excessReturnPct);
 
+const evaluationRunFixture = {
+  id: "evaluation-run-1",
+  modelVersion: combinedChronologicalEvaluation.modelVersion,
+  status: "completed",
+  datasetHash: combinedChronologicalEvaluation.dataset.hash,
+  configJson: JSON.stringify({ codeRevision: "revision-abc", primaryHorizonHours: 24 }),
+  error: null,
+  startedAt: new Date("2026-07-18T00:00:00Z"),
+  completedAt: new Date("2026-07-18T00:02:00Z"),
+};
+const evaluationSummary = summarizeModelEvaluation(evaluationRunFixture, combinedChronologicalEvaluation);
+assert.equal(evaluationSummary.id, evaluationRunFixture.id);
+assert.equal(evaluationSummary.codeRevision, "revision-abc");
+assert.equal(evaluationSummary.durationMs, 120_000);
+assert.equal(evaluationSummary.result.source, "selected-strategy");
+assert.equal(evaluationSummary.result.trades, combinedChronologicalEvaluation.combinedTrading.trades);
+assert.equal(evaluationSummary.horizons.length, 0);
+assert.equal(
+  modelEvaluationConfigHash(JSON.stringify({ b: 2, a: 1 })),
+  modelEvaluationConfigHash(JSON.stringify({ a: 1, b: 2 })),
+);
+assert.equal(
+  modelEvaluationConfigHash(JSON.stringify({ codeRevision: "revision-a", threshold: 0.5 })),
+  modelEvaluationConfigHash(JSON.stringify({ codeRevision: "revision-b", threshold: 0.5 })),
+);
+const evaluationCsv = modelEvaluationSummariesCsv([{ ...evaluationSummary, modelVersion: 'model,"quoted"' }]);
+assert.ok(evaluationCsv.startsWith("run_id,completed_at,status"));
+assert.ok(evaluationCsv.includes('"model,""quoted"""'));
+
 const concurrentCombined = evaluateCombinedTrading([
   ...combinedSamples,
   ...combinedSamples.map((sample) => ({
@@ -1484,6 +1518,9 @@ assert.deepEqual(compareTestnetPositions(
 ), []);
 
 assert.equal(requiredApiAccess("GET", "/api/public-dashboard"), "public");
+assert.equal(requiredApiAccess("GET", "/api/model-evaluations"), "public");
+assert.equal(requiredApiAccess("GET", "/api/model-evaluations/evaluation-run-1"), "public");
+assert.equal(requiredApiAccess("POST", "/api/model-evaluations"), "admin");
 assert.equal(requiredApiAccess("GET", "/api/markets/123"), "public");
 assert.equal(requiredApiAccess("POST", "/api/markets"), "admin");
 assert.equal(requiredApiAccess("POST", "/api/ai/chat"), "viewer");

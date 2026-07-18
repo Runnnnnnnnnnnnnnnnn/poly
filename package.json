@@ -17,6 +17,7 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy",
     "backtest": "tsx scripts/run-backtest.mts",
+    "backtest:export": "tsx scripts/export-model-evaluations.mts",
     "analyze:short-term": "tsx scripts/analyze-short-term-transfer.mts",
     "backtest:short-term-history": "tsx scripts/backtest-short-term-history.mts",
     "paper:backtest": "tsx scripts/run-paper-backtest.mts",

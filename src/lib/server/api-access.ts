@@ -38,6 +38,8 @@ export async function resolveViewerAccessToken(adminToken: string, explicitViewe
 function isPublicReadPath(pathname: string) {
   return pathname === "/api/health"
     || pathname === "/api/public-dashboard"
+    || pathname === "/api/model-evaluations"
+    || pathname.startsWith("/api/model-evaluations/")
     || pathname === "/api/markets"
     || pathname.startsWith("/api/markets/")
     || pathname === "/api/news"

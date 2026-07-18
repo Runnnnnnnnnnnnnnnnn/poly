@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { createConnection } from "node:net";
 import { basename, dirname, join } from "node:path";
@@ -15,7 +15,8 @@ const moves = [
 function moveExisting(from, to) {
   if (!existsSync(from)) return false;
   mkdirSync(dirname(to), { recursive: true });
-  renameSync(from, to);
+  cpSync(from, to, { recursive: true, preserveTimestamps: true });
+  rmSync(from, { recursive: true, force: true });
   return true;
 }
 
@@ -25,7 +26,8 @@ function restore(moved) {
     if (existsSync(to)) {
       mkdirSync(dirname(from), { recursive: true });
       rmSync(from, { recursive: true, force: true });
-      renameSync(to, from);
+      cpSync(to, from, { recursive: true, preserveTimestamps: true });
+      rmSync(to, { recursive: true, force: true });
     }
   }
   if (existsSync(disabledRoot)) {

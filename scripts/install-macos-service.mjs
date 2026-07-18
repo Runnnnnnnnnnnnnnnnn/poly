@@ -28,7 +28,15 @@ if (process.argv.includes("--uninstall")) {
   process.exit(0);
 }
 
-buildRuntime();
+const modelRevision = fileFingerprint([
+  "src/lib/model-evaluation/engine.ts",
+  "src/lib/model-evaluation/combined-trading.ts",
+  "src/lib/model-evaluation/price-structure.ts",
+  "src/lib/model-evaluation/probability-ladder.ts",
+  "src/lib/model-evaluation/synchronized-execution.ts",
+  "src/lib/model-evaluation/service.ts",
+]);
+buildRuntime(modelRevision);
 stageRuntime();
 const databaseUrl = `file:${resolve(deployedRoot, "prisma/dev.db")}`;
 execFileSync(runtimeNode, [resolve(deployedRoot, "node_modules/prisma/build/index.js"), "db", "push", "--schema", resolve(deployedRoot, "prisma/schema.prisma")], {
@@ -36,7 +44,7 @@ execFileSync(runtimeNode, [resolve(deployedRoot, "node_modules/prisma/build/inde
   env: { ...process.env, DATABASE_URL: databaseUrl },
   stdio: "inherit",
 });
-const command = `set -a; source ${shellQuote(resolve(deployedRoot, ".env"))}; set +a; cd ${shellQuote(homedir())}; PAPER_PRODUCTION=1 APP_PORT=3001 POLYMARKET_PROJECT_ROOT=${shellQuote(deployedRoot)} DATABASE_URL=${shellQuote(databaseUrl)} ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-all.mjs"))}`;
+const command = `set -a; source ${shellQuote(resolve(deployedRoot, ".env"))}; set +a; cd ${shellQuote(homedir())}; PAPER_PRODUCTION=1 APP_PORT=3001 POLYMARKET_PROJECT_ROOT=${shellQuote(deployedRoot)} POLYMARKET_MODEL_REVISION=${shellQuote(modelRevision)} DATABASE_URL=${shellQuote(databaseUrl)} ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-all.mjs"))}`;
 const runtimePlist = makePlist(runtimeLabel, command, "/tmp/polymarket-watch-runtime.log");
 
 mkdirSync(agentsDir, { recursive: true });
@@ -56,6 +64,7 @@ if (cloudflared) {
     "scripts/public-health.mjs",
     "scripts/tunnel-config.mjs",
     "scripts/tunnel-health-policy.mjs",
+    "scripts/live-snapshot-policy.mjs",
   ]);
   const tunnelCommand = `set -a; source ${shellQuote(resolve(deployedRoot, ".env"))}; set +a; cd ${shellQuote(homedir())}; APP_PORT=3001 POLYMARKET_TUNNEL_REVISION=${shellQuote(tunnelRevision)} CLOUDFLARED_BIN=${shellQuote(cloudflared)} ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-tunnel.mjs"))}`;
   installAgent(tunnelLabel, makePlist(tunnelLabel, tunnelCommand, "/tmp/polymarket-watch-tunnel.log"), { preserveIfUnchanged: true });
@@ -94,14 +103,14 @@ function installAgent(label, plist, options = {}) {
   try { execFileSync("launchctl", ["bootout", service], { stdio: "ignore" }); } catch {}
   execFileSync("/bin/sleep", ["1"]);
   let lastError = null;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
-      execFileSync("launchctl", ["bootstrap", domain, plistPath], { stdio: attempt === 3 ? "inherit" : "ignore" });
+      execFileSync("launchctl", ["bootstrap", domain, plistPath], { stdio: attempt === 5 ? "inherit" : "ignore" });
       console.log(`installed ${label}`);
       return;
     } catch (error) {
       lastError = error;
-      if (attempt < 3) execFileSync("/bin/sleep", [String(attempt)]);
+      if (attempt < 5) execFileSync("/bin/sleep", [String(attempt * 2)]);
     }
   }
   throw lastError;
@@ -116,11 +125,12 @@ function agentIsLoaded(service) {
   }
 }
 
-function buildRuntime() {
+function buildRuntime(revision) {
   const buildEnv = {
     ...process.env,
     DATABASE_URL: `file:${resolve(deployedRoot, "prisma/dev.db")}`,
     SKIP_TITLE_AI: "1",
+    POLYMARKET_MODEL_REVISION: revision,
   };
   delete buildEnv.NEXT_PUBLIC_STATIC_EXPORT;
   delete buildEnv.GITHUB_PAGES;

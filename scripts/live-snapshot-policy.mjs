@@ -7,6 +7,7 @@ export function dashboardStateFingerprint(snapshot) {
   const audit = shortTerm.executionAudit ?? {};
   const forward = combined.forwardEvaluation ?? {};
   const testnet = combined.testnet ?? {};
+  const latestEvaluation = snapshot?.modelEvaluations?.[0] ?? {};
 
   const state = {
     status: monitoring.status ?? null,
@@ -59,6 +60,15 @@ export function dashboardStateFingerprint(snapshot) {
       verifiedReady: testnet.verifiedReady ?? null,
       enabled: testnet.enabled ?? null,
       reconciliationStatus: testnet.reconciliation?.status ?? null,
+    },
+    modelEvaluation: {
+      id: latestEvaluation.id ?? null,
+      status: latestEvaluation.status ?? null,
+      qualityStatus: latestEvaluation.qualityStatus ?? null,
+      datasetHash: latestEvaluation.datasetHash ?? null,
+      trades: latestEvaluation.result?.trades ?? null,
+      netReturnPct: latestEvaluation.result?.netReturnPct ?? null,
+      excessReturnPct: latestEvaluation.result?.excessReturnPct ?? null,
     },
   };
 

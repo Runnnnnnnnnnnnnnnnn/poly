@@ -12,7 +12,10 @@ import {
   CircleDot,
   Clock3,
   Database,
+  Download,
+  FileJson,
   Gauge,
+  History,
   Layers3,
   LockKeyhole,
   MinusCircle,
@@ -28,7 +31,8 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { discoverLiveApiBase, fetchLiveDashboardSnapshot, fetchLocalApi, getLocalApiToken, isSnapshotMode } from "@/src/lib/localApiClient";
+import { discoverLiveApiBase, fetchLiveDashboardSnapshot, fetchLocalApi, getLocalApiToken, isSnapshotMode, localApiUrl } from "@/src/lib/localApiClient";
+import type { ModelEvaluationSummary } from "@/src/lib/model-evaluation/types";
 
 type RunMetrics = {
   totalReturnPct?: number;
@@ -659,6 +663,7 @@ type PublicDashboardResponse = {
   monitoring: MonitoringSnapshot;
   runs: Run[];
   backtests: BacktestRun[];
+  modelEvaluations: ModelEvaluationSummary[];
 };
 
 const assets = ["BTC", "ETH", "SOL", "XRP"] as const;
@@ -678,6 +683,7 @@ export function PaperTradingDashboardClient() {
   const [maxMarkets, setMaxMarkets] = useState("20");
   const [runs, setRuns] = useState<Run[]>([]);
   const [backtests, setBacktests] = useState<BacktestRun[]>([]);
+  const [modelEvaluations, setModelEvaluations] = useState<ModelEvaluationSummary[]>([]);
   const [monitoring, setMonitoring] = useState<MonitoringSnapshot | null>(null);
   const [selectedPaperRun, setSelectedPaperRun] = useState<PaperRunDetail | null>(null);
   const [selectedBacktest, setSelectedBacktest] = useState<BacktestRun | null>(null);
@@ -712,20 +718,23 @@ export function PaperTradingDashboardClient() {
         const payload = await fetchLocalApi<PublicDashboardResponse>("/api/public-dashboard");
         setRuns(payload.runs ?? []);
         setBacktests(payload.backtests ?? []);
+        setModelEvaluations(payload.modelEvaluations ?? []);
         setMonitoring(payload.monitoring);
         setUpdatedAt(payload.generatedAt);
         setMessage("30秒ごとに自動更新");
         return;
       }
 
-      const [runsPayload, backtestsPayload, monitoringPayload] = await Promise.all([
+      const [runsPayload, backtestsPayload, monitoringPayload, modelEvaluationsPayload] = await Promise.all([
         fetchLocalApi<{ items: Run[] }>("/api/paper-trading/runs"),
         fetchLocalApi<{ items: BacktestRun[] }>("/api/backtests?limit=20"),
         fetchLocalApi<MonitoringSnapshot>("/api/monitoring"),
+        fetchLocalApi<{ items: ModelEvaluationSummary[] }>("/api/model-evaluations?limit=12"),
       ]);
       setRuns(runsPayload.items ?? []);
       setBacktests(backtestsPayload.items ?? []);
       setMonitoring(monitoringPayload);
+      setModelEvaluations(modelEvaluationsPayload.items ?? []);
       setUpdatedAt(new Date().toISOString());
     } catch (error) {
       let usingFallback = false;
@@ -734,6 +743,7 @@ export function PaperTradingDashboardClient() {
         if (liveFallback?.monitoring) {
           setRuns(liveFallback.runs ?? []);
           setBacktests(liveFallback.backtests ?? []);
+          setModelEvaluations(liveFallback.modelEvaluations ?? []);
           setMonitoring(liveFallback.monitoring);
           setSnapshot(true);
           setReadOnly(true);
@@ -932,6 +942,8 @@ export function PaperTradingDashboardClient() {
 
       <ExecutiveModelOverview snapshot={monitoring} savedSnapshot={snapshot} />
 
+      <BacktestResultsPanel items={modelEvaluations} monitoring={monitoring} downloadsAvailable={!snapshot} />
+
       <details className="group border-y border-border bg-white">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-1 py-4 text-sm font-bold text-slate-800 sm:px-2">
           <span className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-primary" />検証と収集の詳細</span>
@@ -940,7 +952,6 @@ export function PaperTradingDashboardClient() {
         <div className="grid gap-4 pb-4">
           <ShortTermDirectionPanel snapshot={monitoring} />
           <CombinedShadowPanel snapshot={monitoring} />
-          <ModelSummaryPanel monitoring={monitoring} />
           <TradingPurposePanel snapshot={monitoring} />
           <DevelopmentMonitor snapshot={monitoring} readOnly={snapshot} />
           <MonitoringDetails snapshot={monitoring} />
@@ -1751,7 +1762,185 @@ const fallbackReadinessGates: MonitoringSnapshot["tradeReadiness"]["gates"] = [
   { id: "live", label: "実取引", status: "locked" },
 ];
 
-function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | null }) {
+function BacktestResultsPanel({
+  items,
+  monitoring,
+  downloadsAvailable,
+}: {
+  items: ModelEvaluationSummary[];
+  monitoring: MonitoringSnapshot | null;
+  downloadsAvailable: boolean;
+}) {
+  const [requestedId, setRequestedId] = useState<string | null>(null);
+  const [requestedItem, setRequestedItem] = useState<ModelEvaluationSummary | null>(null);
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("backtest");
+    setRequestedId(id);
+    if (!id || items.some((item) => item.id === id) || !downloadsAvailable) return;
+    void fetchLocalApi<{ summary: ModelEvaluationSummary }>(`/api/model-evaluations/${encodeURIComponent(id)}`)
+      .then((report) => setRequestedItem(report.summary))
+      .catch(() => setRequestedItem(null));
+  }, [downloadsAvailable, items]);
+
+  const latest = items.find((item) => item.status === "completed") ?? items[0] ?? null;
+  const selected = requestedItem ?? items.find((item) => item.id === requestedId) ?? latest;
+  const signal = backtestResultSignal(selected);
+  const ResultIcon = signal.icon;
+  const isRejectedAudit = selected?.result.source === "closest-rejected-candidate";
+  const backtestPipeline = monitoring?.pipelines.find((pipeline) => pipeline.id === "backtest");
+  const publicBase = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="バックテスト結果">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2">
+          <BarChart3 className="h-4 w-4 shrink-0 text-primary" />
+          <h2 className="text-sm font-bold text-slate-950">バックテスト結果</h2>
+          {requestedId && selected?.id === requestedId ? <span className="rounded-sm bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700">指定した実行</span> : null}
+        </div>
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500"><Clock3 className="h-3.5 w-3.5" />6時間ごとに自動実行</span>
+      </div>
+
+      {!selected ? (
+        <div className="flex items-center gap-3 px-5 py-8 text-sm font-semibold text-slate-600">
+          <Clock3 className="h-5 w-5 text-amber-500" />最初のバックテストを実行中です
+        </div>
+      ) : (
+        <>
+          <div className={`grid gap-4 border-b p-5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-6 ${toneSoftClass(signal.tone)}`}>
+            <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${toneIconClass(signal.tone)}`}><ResultIcon className="h-6 w-6" /></span>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-slate-500">モデル採用判定</p>
+              <p className="mt-1 text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{signal.label}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-600">{isRejectedAudit ? "最有力候補も採用基準を満たしていません" : signal.description}</p>
+            </div>
+            <div className="text-left text-[11px] font-semibold leading-5 text-slate-600 sm:text-right">
+              <p>{formatJapanDateTime(selected.completedAt ?? selected.startedAt)} 実行</p>
+              <p>未使用テスト {selected.dataset.testEvents}件</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-4 lg:divide-y-0">
+            <BacktestMetric label={isRejectedAudit ? "最有力候補の取引" : "最終テストの取引"} value={`${selected.result.trades}件`} tone={selected.result.trades >= 50 ? "good" : "watch"} />
+            <BacktestMetric label="コスト後損益" value={selected.result.trades ? formatSignedPct(selected.result.netReturnPct) : "見送り"} tone={selected.result.trades ? signedMetricTone(selected.result.netReturnPct, true) : "neutral"} />
+            <BacktestMetric label="最良の単純戦略" value={formatSignedPct(selected.result.benchmarkReturnPct)} tone="neutral" />
+            <BacktestMetric label="単純戦略との差" value={selected.result.trades ? formatSignedPct(selected.result.excessReturnPct) : "未判定"} tone={signedMetricTone(selected.result.excessReturnPct, selected.result.trades > 0)} />
+          </div>
+
+          <div className="border-t px-4 py-4 sm:px-5">
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4" aria-label="時間軸別バックテスト">
+              {normalizedBacktestHorizons(selected).map((horizon) => (
+                <div className="min-w-0 bg-white p-3" key={horizon.horizonHours}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-slate-950">{horizon.horizonHours}時間前</span>
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${horizonStatusClass(horizon.status)}`} />
+                  </div>
+                  <p className={`mt-2 text-xl font-bold leading-none ${horizon.trades > 0 && (horizon.netReturnPct ?? 0) < 0 ? "text-rose-700" : "text-slate-950"}`}>{horizon.trades > 0 ? formatSignedPct(horizon.netReturnPct) : "見送り"}</p>
+                  <p className="mt-2 text-[10px] font-semibold text-slate-500">取引 {horizon.trades}件 / テスト {horizon.testEvents}件</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span>{selected.validation.walkForwardFolds > 0 ? `順次検証 ${selected.validation.profitableValidationFolds}/${selected.validation.walkForwardFolds}期間でプラス` : "順次検証 対象なし"}</span>
+              <span>補正後確信度 {selected.result.deflatedSharpeProbability === null ? "未判定" : formatPct(selected.result.deflatedSharpeProbability)}</span>
+              <span>最大下落 {selected.result.trades > 0 ? formatPct(selected.result.maxDrawdownPct) : "未判定"}</span>
+            </div>
+            <span>{backtestPipeline?.lastSuccessAt ? `最終成功 ${formatJapanDateTime(backtestPipeline.lastSuccessAt)}` : "実行状況を確認中"}</span>
+          </div>
+
+          <details className="border-t" key={requestedId ?? "backtest-history"} open={requestedId ? true : undefined}>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
+              <span className="flex items-center gap-2"><History className="h-4 w-4" />実行履歴と再現情報</span>
+              <span className="text-[10px] font-semibold text-slate-500">{items.length}回分</span>
+            </summary>
+            <div className="border-t">
+              <div className="grid gap-1 border-b bg-slate-50 px-4 py-3 text-[10px] font-semibold text-slate-500 sm:grid-cols-2 sm:px-5">
+                <span>実行ID {shortHash(selected.id, 12)} / データ {shortHash(selected.datasetHash)} / 設定 {shortHash(selected.configHash)}</span>
+                <span className="sm:text-right">実装 {shortHash(selected.codeRevision)} / {formatCompactPeriod(selected.dataset.firstEndAt, selected.dataset.lastEndAt)}</span>
+              </div>
+              <div className="divide-y">
+                {items.map((item) => {
+                  const itemSignal = backtestResultSignal(item);
+                  return (
+                    <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[132px_minmax(0,1fr)_80px_80px_auto] sm:px-5 ${item.id === selected.id ? "bg-sky-50/50" : ""}`} id={`backtest-${item.id}`} key={item.id}>
+                      <a className="text-xs font-bold text-slate-800 hover:text-primary" href={`${publicBase}/paper-trading/?backtest=${encodeURIComponent(item.id)}#backtest-${item.id}`}>{formatJapanDateTime(item.completedAt ?? item.startedAt)}</a>
+                      <div className="min-w-0">
+                        <p className={`text-xs font-bold ${itemSignal.tone === "good" ? "text-emerald-700" : itemSignal.tone === "bad" ? "text-rose-700" : "text-amber-800"}`}>{itemSignal.label}</p>
+                        <p className="truncate text-[10px] font-semibold text-slate-500">{shortHash(item.id, 12)} / data {shortHash(item.datasetHash)}</p>
+                      </div>
+                      <span className="hidden text-right text-xs font-bold tabular-nums text-slate-700 sm:block">{item.result.trades}件</span>
+                      <span className={`hidden text-right text-xs font-bold tabular-nums sm:block ${(item.result.netReturnPct ?? 0) < 0 ? "text-rose-700" : "text-slate-800"}`}>{item.result.trades ? formatSignedPct(item.result.netReturnPct) : "見送り"}</span>
+                      <div className="flex items-center justify-end gap-1">
+                        {downloadsAvailable ? <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl(`/api/model-evaluations/${encodeURIComponent(item.id)}`)} title="JSONレポート" aria-label="JSONレポート"><FileJson className="h-4 w-4" /></a> : null}
+                        {downloadsAvailable ? <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl(`/api/model-evaluations/${encodeURIComponent(item.id)}?format=csv`)} title="CSV結果" aria-label="CSV結果"><Download className="h-4 w-4" /></a> : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {downloadsAvailable ? (
+                <div className="flex justify-end border-t px-4 py-3 sm:px-5">
+                  <a className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-xs font-bold text-slate-700 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/model-evaluations?limit=100&format=csv")}><Download className="h-4 w-4" />履歴をCSVで保存</a>
+                </div>
+              ) : null}
+            </div>
+          </details>
+        </>
+      )}
+    </section>
+  );
+}
+
+function BacktestMetric({ label, value, tone }: { label: string; value: string; tone: Tone }) {
+  return (
+    <div className="min-w-0 p-4 sm:p-5">
+      <p className="text-[10px] font-bold leading-4 text-slate-500 sm:text-xs">{label}</p>
+      <p className={`mt-2 break-words text-xl font-bold leading-tight sm:text-2xl ${tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-700" : tone === "watch" ? "text-amber-800" : "text-slate-950"}`}>{value}</p>
+    </div>
+  );
+}
+
+function backtestResultSignal(item: ModelEvaluationSummary | null): Signal {
+  if (!item || item.status === "running") return { label: "検証中", description: "結果を計算しています", tone: "watch", icon: Clock3 };
+  if (item.status === "failed" || item.qualityStatus === "failed") return { label: "実行エラー", description: "再実行が必要です", tone: "bad", icon: AlertCircle };
+  if (item.qualityStatus === "promising") return { label: "候補あり", description: "採用条件を満たす候補があります", tone: "good", icon: CheckCircle2 };
+  if (item.qualityStatus === "underperforming") return { label: "基準未達", description: "未使用期間で優位性を確認できません", tone: "bad", icon: TrendingDown };
+  return { label: "データ不足", description: "採用判断に必要な取引数が不足しています", tone: "watch", icon: Clock3 };
+}
+
+function normalizedBacktestHorizons(item: ModelEvaluationSummary) {
+  return [6, 12, 24, 48].map((horizonHours) => item.horizons.find((horizon) => horizon.horizonHours === horizonHours) ?? {
+    horizonHours,
+    status: "unavailable" as const,
+    totalEvents: 0,
+    testEvents: 0,
+    eligibleSignals: 0,
+    trades: 0,
+    netReturnPct: null,
+    bestBenchmarkReturnPct: null,
+    excessReturnPct: null,
+    deflatedSharpeProbability: null,
+    testExecutionFeatureCoverage: null,
+    testSynchronizedExecutionCoverage: null,
+    maximumExecutionTimingErrorMinutes: null,
+  });
+}
+
+function horizonStatusClass(status: ModelEvaluationSummary["horizons"][number]["status"]) {
+  if (status === "promising") return "bg-emerald-500";
+  if (status === "underperforming") return "bg-rose-500";
+  return "bg-amber-400";
+}
+
+function shortHash(value: string | null | undefined, length = 8) {
+  return value ? value.slice(0, length) : "-";
+}
+
+export function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | null }) {
   const model = monitoring?.model;
   const decision = getEvaluationSignal(model?.evaluationStatus, model?.combinedStrategy);
   const DecisionIcon = decision.icon;

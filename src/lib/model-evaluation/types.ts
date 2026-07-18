@@ -302,3 +302,69 @@ export type ModelEvaluationResult = {
   metrics: ModelEvaluationMetrics | null;
   error: string | null;
 };
+
+export type ModelEvaluationSummary = {
+  schemaVersion: "model-evaluation-summary-v1";
+  id: string;
+  modelVersion: string;
+  status: string;
+  datasetHash: string | null;
+  configHash: string;
+  codeRevision: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  qualityStatus: "promising" | "inconclusive" | "underperforming" | "failed" | "running";
+  methodology: ModelEvaluationMetrics["methodology"] | null;
+  primaryHorizonHours: number | null;
+  selectedStrategy: string | null;
+  selectedFromValidation: boolean;
+  dataset: {
+    totalEvents: number;
+    testEvents: number;
+    totalMarkets: number;
+    testMarkets: number;
+    firstEndAt: string | null;
+    lastEndAt: string | null;
+    testExecutionFeatureCoverage: number | null;
+    testSynchronizedExecutionCoverage: number | null;
+  };
+  result: {
+    source: "selected-strategy" | "closest-rejected-candidate" | "unavailable";
+    strategy: string | null;
+    trades: number;
+    netReturnPct: number | null;
+    benchmarkReturnPct: number | null;
+    benchmarkLabel: string | null;
+    excessReturnPct: number | null;
+    winRate: number | null;
+    maxDrawdownPct: number | null;
+    confidenceInterval95: [number, number] | null;
+    deflatedSharpeProbability: number | null;
+    statisticallyPositive: boolean;
+  };
+  costs: {
+    initialCapital: number | null;
+    totalFees: number | null;
+    totalSpread: number | null;
+    totalSlippage: number | null;
+    totalFunding: number | null;
+  };
+  validation: {
+    strategyTrials: number;
+    walkForwardFolds: number;
+    profitableValidationFolds: number;
+    passedGates: number;
+    totalGates: number;
+  };
+  horizons: NonNullable<ModelEvaluationMetrics["horizonStudies"]>;
+  error: string | null;
+};
+
+export type ModelEvaluationExport = {
+  schemaVersion: "model-evaluation-report-v1";
+  exportedAt: string;
+  summary: ModelEvaluationSummary;
+  config: Record<string, unknown>;
+  metrics: ModelEvaluationMetrics | null;
+};

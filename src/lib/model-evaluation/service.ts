@@ -5,6 +5,11 @@ import { evaluateChronologicalModel, HORIZON_HOURS, MODEL_VERSION } from "@/src/
 import { addPriceStructureFeatures } from "@/src/lib/model-evaluation/price-structure";
 import { attachProspectiveModelEvaluation, loadProspectiveSynchronizedData, prospectiveMinimumEvaluationEvents } from "@/src/lib/model-evaluation/prospective-synchronized";
 import { overlaySynchronizedExecution } from "@/src/lib/model-evaluation/synchronized-execution";
+import {
+  createModelEvaluationExport,
+  persistModelEvaluationArtifacts,
+  summarizeModelEvaluation,
+} from "@/src/lib/model-evaluation/report";
 import type { EvaluationSample, ModelEvaluationMetrics, ModelEvaluationResult } from "@/src/lib/model-evaluation/types";
 import { prisma } from "@/src/lib/server/prisma";
 
@@ -16,27 +21,13 @@ export const PREDECLARED_HORIZONS = [6, 12, 24, 48] as const;
 export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
   const id = crypto.randomUUID();
   const startedAt = new Date();
+  const config = modelEvaluationConfig();
   await prisma.modelEvaluationRun.create({
     data: {
       id,
       modelVersion: MODEL_VERSION,
       status: "running",
-      configJson: JSON.stringify({
-        predeclaredHorizonHours: PREDECLARED_HORIZONS,
-        primaryHorizonHours: HORIZON_HOURS,
-        priceHistoryFidelityMinutes,
-        maximumObservationAgeMinutes,
-        eventSampling: "up to 300 events: 80% latest asset-balanced terminal-price events and 20% long-history audit events",
-        split: "probability 60/20/20; execution-eligible signals 60/40 chronological with a holding-period embargo; development data uses expanding-history selection followed by four untouched walk-forward folds",
-        eventWeighting: "equal",
-        signal: "Polymarket-implied terminal median with predeclared price-momentum, mean-reversion, funding-carry, and funding-momentum rules, evaluated independently by horizon",
-        execution: "synchronized 1m signal/next-snapshot entry/pre-settlement exit with directional Hyperliquid best bid/ask when available; otherwise Hyperliquid 1h is retained as non-promotable reference data",
-        candidateSelection: "ten predeclared candidates reselected from past-only data in each walk-forward fold, with block-bootstrap interval, deflated Sharpe, temporal stability, and same-period best-of-four benchmark excess",
-        benchmarks: "always long, always short, raw Polymarket direction, and the median of 200 deterministic random-direction trials",
-        costs: "observed Hyperliquid bid/ask spread when synchronized, plus 0.045% taker and 0.02% residual slippage per side, and realized hourly funding with a conservative 0.03% per 24h fallback",
-        maximumPositionPctPerAsset: 0.05,
-        maximumGrossExposurePct: 0.2,
-      }),
+      configJson: JSON.stringify(config),
       startedAt,
     },
   });
@@ -99,14 +90,18 @@ export async function runModelEvaluation(): Promise<ModelEvaluationResult> {
         completedAt: new Date(),
       },
     });
-    return toResult(completed, metrics);
+    const result = toResult(completed, metrics);
+    await persistArtifacts(completed, metrics).catch(logArtifactError);
+    return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "model evaluation failed";
     const failed = await prisma.modelEvaluationRun.update({
       where: { id },
       data: { status: "failed", error: message, completedAt: new Date() },
     });
-    return toResult(failed, null);
+    const result = toResult(failed, null);
+    await persistArtifacts(failed, null).catch(logArtifactError);
+    return result;
   }
 }
 
@@ -118,6 +113,30 @@ export async function getLatestModelEvaluation() {
 export async function listModelEvaluations(limit = 12) {
   const runs = await prisma.modelEvaluationRun.findMany({ orderBy: { startedAt: "desc" }, take: Math.min(50, Math.max(1, limit)) });
   return runs.map((run) => toResult(run, parseMetrics(run.metricsJson)));
+}
+
+export async function listModelEvaluationSummaries(limit = 12) {
+  const runs = await prisma.modelEvaluationRun.findMany({ orderBy: { startedAt: "desc" }, take: Math.min(100, Math.max(1, limit)) });
+  return runs.map((run) => summarizeModelEvaluation(run, parseMetrics(run.metricsJson)));
+}
+
+export async function getModelEvaluationExport(id: string) {
+  const run = await prisma.modelEvaluationRun.findUnique({ where: { id } });
+  if (!run) return null;
+  return createModelEvaluationExport(run, parseMetrics(run.metricsJson));
+}
+
+export async function exportStoredModelEvaluations(limit = 100) {
+  const runs = await prisma.modelEvaluationRun.findMany({ orderBy: { startedAt: "desc" }, take: Math.min(1_000, Math.max(1, limit)) });
+  const summaries = runs.map((run) => summarizeModelEvaluation(run, parseMetrics(run.metricsJson)));
+  const directories: string[] = [];
+  for (const run of [...runs].reverse()) {
+    directories.push(await persistModelEvaluationArtifacts(
+      createModelEvaluationExport(run, parseMetrics(run.metricsJson)),
+      summaries,
+    ));
+  }
+  return { exported: runs.length, directory: directories[0]?.replace(/\/[^/]+$/, "") ?? null };
 }
 
 export async function loadEvaluationSamples(horizonHours = HORIZON_HOURS) {
@@ -235,4 +254,34 @@ function toResult(run: ModelEvaluationRun, metrics: ModelEvaluationMetrics | nul
 function parseMetrics(value: string | null) {
   if (!value) return null;
   try { return JSON.parse(value) as ModelEvaluationMetrics; } catch { return null; }
+}
+
+function modelEvaluationConfig() {
+  return {
+    codeRevision: process.env.POLYMARKET_MODEL_REVISION?.trim() || "development",
+    predeclaredAt: "2026-07-18",
+    predeclaredHorizonHours: PREDECLARED_HORIZONS,
+    primaryHorizonHours: HORIZON_HOURS,
+    priceHistoryFidelityMinutes,
+    maximumObservationAgeMinutes,
+    eventSampling: "up to 300 events: 80% latest asset-balanced terminal-price events and 20% long-history audit events",
+    split: "probability 60/20/20; execution-eligible signals 60/40 chronological with a holding-period embargo; development data uses expanding-history selection followed by four untouched walk-forward folds",
+    eventWeighting: "equal",
+    signal: "Polymarket-implied terminal median with predeclared price-momentum, mean-reversion, funding-carry, and funding-momentum rules, evaluated independently by horizon",
+    execution: "synchronized 1m signal/next-snapshot entry/pre-settlement exit with directional Hyperliquid best bid/ask when available; otherwise Hyperliquid 1h is retained as non-promotable reference data",
+    candidateSelection: "ten predeclared candidates reselected from past-only data in each walk-forward fold, with block-bootstrap interval, deflated Sharpe, temporal stability, and same-period best-of-four benchmark excess",
+    benchmarks: "always long, always short, raw Polymarket direction, and the median of 200 deterministic random-direction trials",
+    costs: "observed Hyperliquid bid/ask spread when synchronized, plus 0.045% taker and 0.02% residual slippage per side, and realized hourly funding with a conservative 0.03% per 24h fallback",
+    maximumPositionPctPerAsset: 0.05,
+    maximumGrossExposurePct: 0.2,
+  };
+}
+
+async function persistArtifacts(run: ModelEvaluationRun, metrics: ModelEvaluationMetrics | null) {
+  const history = await listModelEvaluationSummaries(100);
+  await persistModelEvaluationArtifacts(createModelEvaluationExport(run, metrics), history);
+}
+
+function logArtifactError(error: unknown) {
+  console.error(`model evaluation artifact export failed: ${error instanceof Error ? error.message : String(error)}`);
 }

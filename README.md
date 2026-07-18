@@ -161,6 +161,8 @@ ASSET=BTC npm run paper:trade
 
 15分Up/Downの固定モデルは別の前向き実験として、PolymarketのUp/Down両板、Hyperliquid L2板、Binance・Chainlink参照価格を5秒単位で同期保存します。売買判断も保存済みの同一同期板だけから作り、公式決着と発注後のエントリー・終了用実板が揃った取引だけを完全監査へ含めます。50件到達後に純損益、最良対照との差、95%信頼区間、Deflated Sharpe、最大下落、参照価格整合の9条件を判定します。過去足やシャドー記録だけではテストネット・実取引へ昇格しません。
 
+正式なバックテストは`ModelEvaluationRun`へ保存し、6時間ごとに自動実行します。各実行はID、データ・設定・コードの指紋、未使用期間の成績、6/12/24/48時間別結果を持ち、JSON/CSV/Markdown成果物として`~/.polymarket-watch/artifacts/model-evaluations/`にも保存します。画面は最新結果と履歴の参照に絞り、詳しい比較は任意のローカルMLflowへ取り込めます。運用手順は [docs/backtest-management.md](./docs/backtest-management.md) を参照してください。
+
 Hyperliquid公式Python SDKをテストネット専用環境へ導入する場合:
 
 ```sh
