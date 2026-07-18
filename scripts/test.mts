@@ -33,6 +33,7 @@ import {
   type ForwardEvaluationPosition,
 } from "../src/lib/combined-trading/forward-evaluation";
 import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
+import { evaluateBackupStatus } from "../src/lib/monitoring/backup-status";
 import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts } from "../src/lib/monitoring/operational-alerts";
 import { evaluateSynchronizedPriceQuality } from "../src/lib/monitoring/synchronized-quality";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
@@ -1187,6 +1188,21 @@ assert.equal(evaluateSettlementBasisAlerts(basisAlertRows.slice(0, 9)).length, 0
 assert.equal(evaluateSettlementBasisAlerts(basisAlertRows)[0]?.severity, "warning");
 assert.equal(evaluateSettlementBasisAlerts(basisAlertRows.map((row) => ({ ...row, exitPriceBasisPct: 0.004 })))[0]?.severity, "critical");
 assert.equal(evaluateSettlementBasisAlerts(basisAlertRows.map((row) => ({ ...row, exitReferenceCapturedAt: null })))[0]?.severity, "warning");
+
+const verifiedBackupRecord = {
+  status: "healthy" as const,
+  fileName: "polymarket-2026.db.enc",
+  createdAt: "2026-01-01T00:55:00Z",
+  verifiedAt: "2026-01-01T00:56:00Z",
+  sizeBytes: 1_024,
+  message: "verified",
+};
+const backupFiles = [{ name: "polymarket-2026.db.enc", modifiedAt: new Date("2026-01-01T00:55:00Z"), sizeBytes: 1_024 }];
+assert.equal(evaluateBackupStatus({ files: backupFiles, record: verifiedBackupRecord, now: alertNow, maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "healthy");
+assert.equal(evaluateBackupStatus({ files: backupFiles, record: { ...verifiedBackupRecord, sizeBytes: 512 }, now: alertNow, maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "error");
+assert.equal(evaluateBackupStatus({ files: backupFiles, record: verifiedBackupRecord, now: new Date("2026-01-01T04:00:00Z"), maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "error");
+assert.equal(evaluateBackupStatus({ files: backupFiles, record: null, now: alertNow, maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "waiting");
+assert.equal(evaluateBackupStatus({ files: [], record: null, now: alertNow, maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "waiting");
 
 console.log("operational alert tests passed");
 

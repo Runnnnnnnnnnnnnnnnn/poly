@@ -622,7 +622,7 @@ type MonitoringSnapshot = {
   operations?: {
     alerts: { status: "healthy" | "waiting" | "error"; message: string; lastSuccessAt: string | null; webhookConfigured: boolean };
     tunnel: { mode: string; status: "healthy" | "waiting" | "starting"; publicUrl: string | null; fixedUrl: boolean; fallback: boolean; publishedAt: string | null; updatedAt: string | null };
-    backup: { status: "healthy" | "waiting"; encrypted: boolean; copies: number; latestAt: string | null };
+    backup: { status: "healthy" | "waiting" | "error"; encrypted: boolean; copies: number; latestAt: string | null; verifiedAt: string | null; message: string };
   };
   pipelines: Array<{ id: string; label: string; cadence: string; status: "healthy" | "waiting" | "error"; lastSuccessAt: string | null; records: number }>;
 };
@@ -1460,7 +1460,7 @@ function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapsh
     },
     {
       label: "暗号化保管",
-      value: snapshot?.operations?.backup.status === "healthy" ? `${snapshot.operations.backup.copies}世代` : "確認中",
+      value: snapshot?.operations?.backup.status === "healthy" ? `復元確認 ${snapshot.operations.backup.copies}世代` : snapshot?.operations?.backup.status === "error" ? "要確認" : "確認中",
       status: snapshot?.operations?.backup.status ?? "waiting",
     },
   ] as const;

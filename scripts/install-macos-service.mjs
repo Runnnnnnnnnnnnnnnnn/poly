@@ -79,12 +79,20 @@ function installAgent(label, plist) {
   const plistPath = resolve(agentsDir, `${label}.plist`);
   const service = `${domain}/${label}`;
   writeFileSync(plistPath, plist, "utf8");
-  try {
-    execFileSync("launchctl", ["bootout", service], { stdio: "ignore" });
-    execFileSync("/bin/sleep", ["1"]);
-  } catch {}
-  execFileSync("launchctl", ["bootstrap", domain, plistPath]);
-  console.log(`installed ${label}`);
+  try { execFileSync("launchctl", ["bootout", service], { stdio: "ignore" }); } catch {}
+  execFileSync("/bin/sleep", ["1"]);
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      execFileSync("launchctl", ["bootstrap", domain, plistPath], { stdio: attempt === 3 ? "inherit" : "ignore" });
+      console.log(`installed ${label}`);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) execFileSync("/bin/sleep", [String(attempt)]);
+    }
+  }
+  throw lastError;
 }
 
 function buildRuntime() {

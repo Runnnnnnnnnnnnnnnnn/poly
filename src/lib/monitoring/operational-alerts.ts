@@ -2,6 +2,7 @@ import { prisma } from "@/src/lib/server/prisma";
 import { isForwardStrategyExperimentKey } from "@/src/lib/combined-trading/forward-evaluation";
 import { isShortTermDirectionStrategyKey } from "@/src/lib/combined-trading/short-term-direction";
 import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
+import { readBackupStatus } from "@/src/lib/monitoring/backup-status";
 
 export type OperationalAlertCandidate = {
   key: string;
@@ -53,6 +54,16 @@ export async function collectOperationalAlertCandidates(now = new Date()) {
     : [null, []];
   const alerts = evaluatePipelineAlerts(heartbeats, now);
   alerts.push(...evaluateSettlementBasisAlerts(settlementBasisRows));
+
+  const backup = readBackupStatus(now);
+  if (backup.status !== "healthy") {
+    alerts.push({
+      key: "backup-integrity",
+      severity: backup.status === "error" ? "critical" : "warning",
+      title: backup.status === "error" ? "バックアップ復元確認エラー" : "バックアップ復元確認待ち",
+      message: backup.message,
+    });
+  }
 
   const reconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
   if (reconciliation?.status === "error") {

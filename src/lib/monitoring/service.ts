@@ -1,5 +1,5 @@
 import type { BacktestRun, HyperliquidSnapshot, PipelineHeartbeat } from "@prisma/client";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -20,6 +20,7 @@ import {
 import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { loadProspectiveSynchronizedData } from "@/src/lib/model-evaluation/prospective-synchronized";
 import { prisma } from "@/src/lib/server/prisma";
+import { readBackupStatus } from "@/src/lib/monitoring/backup-status";
 import { evaluateSynchronizedPriceQuality } from "@/src/lib/monitoring/synchronized-quality";
 import { realtimeSynchronizationVersion } from "@/src/lib/realtime-market-data/collector";
 import { evaluateExactExecutionAudit } from "@/src/lib/realtime-market-data/execution-audit";
@@ -870,24 +871,6 @@ function readTunnelStatus() {
     };
   } catch {
     return fallback;
-  }
-}
-
-function readBackupStatus() {
-  try {
-    const directory = resolve(homedir(), ".polymarket-watch/backups");
-    const files = readdirSync(directory)
-      .filter((name) => name.endsWith(".db.enc"))
-      .map((name) => ({ modifiedAt: statSync(resolve(directory, name)).mtime }))
-      .sort((left, right) => right.modifiedAt.getTime() - left.modifiedAt.getTime());
-    return {
-      status: files.length ? "healthy" as const : "waiting" as const,
-      encrypted: true,
-      copies: files.length,
-      latestAt: files[0]?.modifiedAt.toISOString() ?? null,
-    };
-  } catch {
-    return { status: "waiting" as const, encrypted: true, copies: 0, latestAt: null };
   }
 }
 
