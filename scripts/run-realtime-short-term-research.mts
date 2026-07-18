@@ -46,7 +46,7 @@ async function recordSuccess(report: ReplayReport) {
   await markPipelineSuccess(
     "realtime-short-term-backtest",
     report.coverage.replayableMarkets,
-    `独立${report.coverage.independentWindows}枠 / 検証${holdoutWindows}枠 / ${statusLabel(report.selection.status)}`,
+    `独立${report.coverage.independentWindows}枠 / 直近診断${holdoutWindows}枠 / ${statusLabel(report.selection.status)}`,
   );
 }
 

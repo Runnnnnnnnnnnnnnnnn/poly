@@ -160,9 +160,11 @@ baseline. Even then, it must start a new frozen forward cohort and cannot modify
 Each walk-forward fold expands the calibration window, reselects one of the nine fixed candidates using
 only earlier windows, and evaluates that selection on the next non-overlapping block. The earlier
 per-candidate four-block output remains a stability diagnostic and is not used for the promotion gate.
-The untouched holdout must also contain at least five independent long windows and five independent short
-windows. A profitable result from only one market direction remains `insufficient`, because it has not
-demonstrated robustness across rising and falling regimes.
+The rolling chronological 40% diagnostic must also contain at least five independent long windows and
+five independent short windows. Its split boundary moves as new observations arrive, so it is not an
+untouched promotion holdout. A profitable result from only one market direction remains `insufficient`,
+because it has not demonstrated robustness across rising and falling regimes. Passing this diagnostic
+still requires a new frozen 50-window forward cohort before promotion.
 
 The frozen 6/12/24/48-hour forward experiments also gate on 50 distinct event-and-horizon outcomes, not
 raw position count. Their best baseline is selected from Polymarket-only, always long, always short, and

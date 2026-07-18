@@ -371,9 +371,9 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       status: "exploratory_replay_only" as const,
       warning: "This replay selects a candidate on calibration data. It cannot modify or authorize the active 50-window forward cohort.",
       independentSampleUnit: "15-minute-window" as const,
-      split: "chronological 60% calibration / 40% holdout" as const,
+      split: "rolling chronological 60% calibration / 40% diagnostic" as const,
       walkForwardSelection: "expanding calibration; each next block uses a candidate selected only from earlier windows" as const,
-      directionCoverage: `holdout requires at least ${realtimeShortTermReplaySpecification.minimumHoldoutWindowsPerSide} independent long and short windows` as const,
+      directionCoverage: `rolling diagnostic requires at least ${realtimeShortTermReplaySpecification.minimumHoldoutWindowsPerSide} independent long and short windows` as const,
       execution: "first complete synchronized 5-second executable book after each fixed entry offset" as const,
       settlement: "official Polymarket result with Chainlink boundary audit" as const,
       costs: {
