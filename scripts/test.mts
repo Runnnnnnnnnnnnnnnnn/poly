@@ -11,6 +11,7 @@ import {
   HyperliquidDefinitiveOrderError,
   normalizeExchangeOrderStatus,
   normalizeHyperliquidFillAgainstRequestedQuantity,
+  normalizeTestnetSmokeOrderSize,
   parseHyperliquidOrderEvidence,
 } from "../src/lib/combined-trading/hyperliquid-execution";
 import { calculatePriceBasisPct } from "../src/lib/combined-trading/polymarket-reference";
@@ -1193,6 +1194,9 @@ assert.deepEqual(evaluateTestnetAccountSafety({
   positionMismatchCount: 0,
 }).issues, ["account-value-unavailable"]);
 assert.equal(new HyperliquidDefinitiveOrderError("blocked").name, "HyperliquidDefinitiveOrderError");
+assert.equal(normalizeTestnetSmokeOrderSize("BTC", 12, 64_000, 25), 0.00019);
+assert.equal(normalizeTestnetSmokeOrderSize("SOL", 12, 75, 25), 0.16);
+assert.throws(() => normalizeTestnetSmokeOrderSize("XRP", 12, 100, 9), /minimum notional/);
 
 console.log("testnet reconciliation status tests passed");
 

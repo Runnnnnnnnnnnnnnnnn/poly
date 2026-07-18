@@ -226,6 +226,8 @@ export async function reconcileHyperliquidTestnetOrders() {
     return {
       ...readiness,
       connected: false,
+      accountValue: null,
+      capturedAt: null,
       checkedOrders: 0,
       updatedOrders: 0,
       positions: [],
@@ -336,6 +338,167 @@ export async function reconcileHyperliquidTestnetOrders() {
     positionMismatches,
     safety,
   };
+}
+
+export async function runHyperliquidTestnetSmokeTest(input: {
+  asset: "BTC" | "ETH" | "SOL" | "XRP";
+  notionalUsd: number;
+  referencePrice: number;
+}) {
+  const readiness = getHyperliquidExecutionReadiness();
+  if (!readiness.ready) throw new HyperliquidDefinitiveOrderError("Hyperliquid testnet execution is not armed");
+  if (!readiness.supportedAssets.includes(input.asset)) {
+    throw new HyperliquidDefinitiveOrderError(`${input.asset} is not available on the configured Hyperliquid testnet universe`);
+  }
+  const before = await reconcileHyperliquidTestnetOrders();
+  const hasExistingExposure = before.openOrders.length > 0
+    || before.positions.some((position) => Math.abs(position.size ?? 0) > 1e-8)
+    || before.orderMismatches.length > 0
+    || before.positionMismatches.length > 0;
+  if (!before.safety.healthy || hasExistingExposure) {
+    throw new HyperliquidDefinitiveOrderError("testnet smoke test requires a reconciled account with no orders or positions");
+  }
+  const run = await prisma.combinedShadowRun.findFirst({ where: { status: "running" }, orderBy: { startedAt: "desc" } });
+  if (!run) throw new HyperliquidDefinitiveOrderError("testnet smoke test requires an active shadow run");
+  const quantity = normalizeTestnetSmokeOrderSize(
+    input.asset,
+    input.notionalUsd,
+    input.referencePrice,
+    readiness.maximumNotionalUsd,
+  );
+  let openEvidence: HyperliquidOrderEvidence | null = null;
+  let closeEvidence: HyperliquidOrderEvidence | null = null;
+  try {
+    openEvidence = await executeTrackedTestnetOrder({
+      runId: run.id,
+      asset: input.asset,
+      side: "LONG",
+      action: "OPEN",
+      isBuy: true,
+      quantity,
+      referencePrice: input.referencePrice,
+      reason: "manual testnet smoke open",
+    });
+    if (openEvidence.filledQuantity <= 0) {
+      throw new Error("testnet smoke open did not produce a verified fill");
+    }
+    closeEvidence = await executeTrackedTestnetOrder({
+      runId: run.id,
+      asset: input.asset,
+      side: "LONG",
+      action: "CLOSE",
+      isBuy: false,
+      quantity: openEvidence.filledQuantity,
+      referencePrice: input.referencePrice,
+      reason: "manual testnet smoke close",
+    });
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
+    const after = await reconcileHyperliquidTestnetOrders();
+    const verified = after.safety.healthy
+      && after.openOrders.length === 0
+      && after.positions.every((position) => Math.abs(position.size ?? 0) <= 1e-8)
+      && after.orderMismatches.length === 0
+      && after.positionMismatches.length === 0;
+    if (!verified) throw new Error("testnet smoke test ended with unresolved exchange exposure");
+    return {
+      verified,
+      asset: input.asset,
+      requestedNotionalUsd: input.notionalUsd,
+      quantity,
+      openEvidence,
+      closeEvidence,
+      accountValue: after.accountValue,
+      reconciledAt: after.capturedAt,
+    };
+  } catch (error) {
+    await cancelOutstandingHyperliquidTestnetOrders().catch(() => null);
+    await flattenHyperliquidTestnetPositions().catch(() => null);
+    throw error;
+  }
+}
+
+export function normalizeTestnetSmokeOrderSize(
+  asset: "BTC" | "ETH" | "SOL" | "XRP",
+  notionalUsd: number,
+  referencePrice: number,
+  maximumNotionalUsd: number,
+) {
+  if (!Number.isFinite(notionalUsd) || notionalUsd < 10 || !Number.isFinite(referencePrice) || referencePrice <= 0) {
+    throw new HyperliquidDefinitiveOrderError("invalid testnet smoke order notional or reference price");
+  }
+  const decimals = { BTC: 5, ETH: 4, SOL: 2, XRP: 1 }[asset];
+  const factor = 10 ** decimals;
+  const requested = Math.ceil((notionalUsd / referencePrice) * factor) / factor;
+  const maximum = Math.floor((maximumNotionalUsd / referencePrice) * factor) / factor;
+  const quantity = Math.min(requested, maximum);
+  if (quantity <= 0 || quantity * referencePrice < 10) {
+    throw new HyperliquidDefinitiveOrderError("testnet smoke order cannot satisfy the minimum notional within the safety limit");
+  }
+  return quantity;
+}
+
+async function executeTrackedTestnetOrder(input: {
+  runId: string;
+  asset: "BTC" | "ETH" | "SOL" | "XRP";
+  side: "LONG" | "SHORT";
+  action: "OPEN" | "CLOSE";
+  isBuy: boolean;
+  quantity: number;
+  referencePrice: number;
+  reason: string;
+}) {
+  const clientOrderId = crypto.randomUUID();
+  const order = await prisma.combinedExecutionOrder.create({
+    data: {
+      id: crypto.randomUUID(),
+      runId: input.runId,
+      environment: "TESTNET",
+      clientOrderId,
+      asset: input.asset,
+      side: input.side,
+      action: input.action,
+      quantity: input.quantity,
+      referencePrice: input.referencePrice,
+      status: "SUBMITTED",
+      reason: input.reason,
+    },
+  });
+  try {
+    const response = await executeHyperliquidTestnetOrder({
+      action: input.action === "OPEN" ? "open" : "close",
+      asset: input.asset,
+      isBuy: input.isBuy,
+      size: input.quantity,
+      referencePrice: input.referencePrice,
+      clientOrderId,
+    });
+    await prisma.combinedExecutionOrder.update({
+      where: { id: order.id },
+      data: {
+        status: response.evidence.status,
+        exchangeOrderId: response.evidence.exchangeOrderId,
+        exchangeStatus: response.evidence.exchangeStatus,
+        filledQuantity: response.evidence.filledQuantity,
+        averageFillPrice: response.evidence.averageFillPrice,
+        feePaid: response.evidence.feePaid,
+        reason: response.evidence.reason ?? input.reason,
+        responseJson: JSON.stringify(response.result ?? null),
+        lastReconciledAt: new Date(),
+      },
+    });
+    return response.evidence;
+  } catch (error) {
+    const definitive = error instanceof HyperliquidDefinitiveOrderError;
+    await prisma.combinedExecutionOrder.update({
+      where: { id: order.id },
+      data: {
+        status: definitive ? "REJECTED" : "UNKNOWN",
+        reason: error instanceof Error ? error.message : "testnet smoke order result is unknown",
+        lastReconciledAt: definitive ? new Date() : null,
+      },
+    });
+    throw error;
+  }
 }
 
 export function evaluateTestnetAccountSafety(input: {
