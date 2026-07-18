@@ -122,6 +122,8 @@ npm run dev:paper
 - 完全監査50取引、コスト控除後プラス、対照超過リターンの95%信頼区間下限プラス、最大下落5%以内をすべて満たした場合だけ昇格候補とする
 - 候補モデルは研究用であり、昇格条件を満たすまでは常駐workerやテストネット注文へ接続しない
 
+`npm run backtest:short-term-history` は、Polymarket価格履歴とHyperliquid足を使う時系列60/40の事前スクリーニングである。既定は直近48時間の15分市場と1分足で、`SHORT_TERM_MARKET_DURATION=4h SHORT_TERM_HISTORY_HOURS=720` なら直近30日の4時間市場を15分足で確認できる。`SHORT_TERM_EXECUTION_MODE=maker-entry` は、次の足で指値価格に到達した注文だけをmaker約定として数え、終了時はtaker決済する。過去の板、実スプレッド、秒単位の到達順序は復元できないため、この結果は候補の棄却または継続判断にだけ使い、昇格条件の完全監査件数には含めない。
+
 ## 公開運用
 
 1. SQLiteからPostgreSQLへ移行する
