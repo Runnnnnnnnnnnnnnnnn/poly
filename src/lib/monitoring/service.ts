@@ -25,7 +25,7 @@ import type { ModelEvaluationMetrics } from "@/src/lib/model-evaluation/types";
 import { loadProspectiveSynchronizedData } from "@/src/lib/model-evaluation/prospective-synchronized";
 import { prisma } from "@/src/lib/server/prisma";
 import { readBackupStatus } from "@/src/lib/monitoring/backup-status";
-import { evaluateSynchronizedPriceQuality } from "@/src/lib/monitoring/synchronized-quality";
+import { evaluateSynchronizedPriceQuality, synchronizedDataReadinessStatus } from "@/src/lib/monitoring/synchronized-quality";
 import { realtimeAssetSynchronizationVersion, realtimeSynchronizationVersion } from "@/src/lib/realtime-market-data/collector";
 import { evaluateExactExecutionAudit } from "@/src/lib/realtime-market-data/execution-audit";
 import { loadReferenceSettlementAudit } from "@/src/lib/realtime-market-data/settlement-audit";
@@ -783,11 +783,11 @@ export async function getMonitoringSnapshot() {
         {
           id: "data",
           label: "同期データ品質",
-          status: status !== "live" || realtimePriceStatus === "error"
-            ? "attention" as const
-            : realtimePriceStatus === "healthy"
-              ? "ready" as const
-              : "running" as const,
+          status: synchronizedDataReadinessStatus({
+            monitoringStatus: status,
+            realtimePriceStatus,
+            synchronizedQualityStatus: synchronizedQuality.status,
+          }),
         },
         { id: "edge", label: "優位性確認", status: combinedEdgeConfirmed ? "ready" : "blocked" },
         { id: "shadow", label: "シャドー検証", status: combinedShadowRunning ? "running" : "not_started" },

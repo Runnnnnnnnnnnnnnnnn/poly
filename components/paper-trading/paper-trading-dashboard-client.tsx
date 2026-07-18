@@ -1234,7 +1234,9 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
   const netPositive = sampleReady && (auditedNetReturn ?? 0) > 0;
   const edgePositive = sampleReady && (auditedConfidenceLower ?? Number.NEGATIVE_INFINITY) > 0;
   const drawdownReady = sampleReady && (auditedDrawdown ?? Number.POSITIVE_INFINITY) <= 0.05;
-  const dataReady = snapshot?.collection.realtimePrices?.status === "healthy";
+  const collectorHealthy = snapshot?.collection.realtimePrices?.status === "healthy";
+  const synchronizedQuality = snapshot?.collection.synchronizedPrices?.quality;
+  const dataReady = snapshot?.tradeReadiness.gates.find((gate) => gate.id === "data")?.status === "ready";
   const settlementReady = settlementResolution?.status === "healthy";
   const testnet = snapshot?.combinedShadow.testnet;
   const testnetReady = testnet?.verifiedReady === true;
@@ -1293,7 +1295,11 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
       </div>
 
       <div className="grid grid-cols-2 border-t sm:grid-cols-6">
-        <ExecutiveGate label="入口・決済板" value={dataReady ? "正常" : "確認中"} tone={dataReady ? "good" : "watch"} />
+        <ExecutiveGate
+          label="同期データ"
+          value={dataReady ? "合格" : synchronizedQuality ? `${synchronizedQuality.passedGates}/${synchronizedQuality.totalGates}` : "収集中"}
+          tone={dataReady ? "good" : synchronizedQuality?.status === "attention" ? "bad" : "watch"}
+        />
         <ExecutiveGate
           label="公式決着"
           value={settlementResolution?.completeMarkets
@@ -1308,7 +1314,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
       </div>
 
       <div className="grid grid-cols-3 items-stretch border-t md:grid-cols-[minmax(0,1fr)_28px_minmax(0,1fr)_28px_minmax(0,1fr)]">
-        <ExecutiveFlowStep icon={Database} title="Polymarket" value="15分市場の5秒板" state={dataReady ? "収集中" : "確認中"} tone={dataReady ? "good" : "watch"} />
+        <ExecutiveFlowStep icon={Database} title="Polymarket" value="15分市場の5秒板" state={collectorHealthy ? "収集中" : "確認中"} tone={collectorHealthy ? "good" : "watch"} />
         <ArrowRight className="hidden h-4 w-4 self-center justify-self-center text-slate-300 md:block" />
         <ExecutiveFlowStep icon={BrainCircuit} title="固定モデル" value="買い・売り・見送り" state="検証中" tone="watch" />
         <ArrowRight className="hidden h-4 w-4 self-center justify-self-center text-slate-300 md:block" />
@@ -1316,7 +1322,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${dataReady ? "text-emerald-600" : "text-amber-600"}`} />市場板 {formatCompact(snapshot?.collection.realtimePrices?.records)}・決済板 {formatCompact(snapshot?.collection.realtimePrices?.executionRecords)}・独立枠 {verifiedTrades}/{minimumTrades}{research ? `・採用 ${research.acceptedCandidates}/${research.totalCandidates}・順次 ${research.walkForwardFolds}期間` : ""}</span>
+        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${collectorHealthy ? "text-emerald-600" : "text-amber-600"}`} />市場板 {formatCompact(snapshot?.collection.realtimePrices?.records)}・決済板 {formatCompact(snapshot?.collection.realtimePrices?.executionRecords)}・同期品質 {synchronizedQuality?.passedGates ?? 0}/{synchronizedQuality?.totalGates ?? 6}・独立枠 {verifiedTrades}/{minimumTrades}{research ? `・採用 ${research.acceptedCandidates}/${research.totalCandidates}・順次 ${research.walkForwardFolds}期間` : ""}</span>
         <span>{savedSnapshot ? "公開保存値" : "自動更新"}・{latestAt ? `${relativeTime(latestAt)}に更新` : "更新待ち"}</span>
       </div>
     </section>

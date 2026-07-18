@@ -27,6 +27,18 @@ export type SynchronizedQualityInput = {
   assets: Array<{ asset: string; records: number }>;
 };
 
+export function synchronizedDataReadinessStatus(input: {
+  monitoringStatus: "live" | "delayed" | "offline";
+  realtimePriceStatus: "healthy" | "waiting" | "error";
+  synchronizedQualityStatus: "healthy" | "collecting" | "attention";
+}) {
+  if (input.monitoringStatus !== "live"
+    || input.realtimePriceStatus === "error"
+    || input.synchronizedQualityStatus === "attention") return "attention" as const;
+  if (input.realtimePriceStatus === "healthy" && input.synchronizedQualityStatus === "healthy") return "ready" as const;
+  return "running" as const;
+}
+
 export function evaluateSynchronizedPriceQuality(input: SynchronizedQualityInput) {
   const durationHours = input.startedAt && input.latestAt
     ? Math.max(0, input.latestAt.getTime() - input.startedAt.getTime()) / (60 * 60 * 1_000)
