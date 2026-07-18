@@ -1163,6 +1163,37 @@ assert.equal(parseHyperliquidOrderEvidence({
   response: { data: { statuses: ["success"] } },
 }, "cancel").status, "CANCELLED");
 assert.equal(normalizeExchangeOrderStatus({ status: "order", order: { status: "marginCanceled" } }), "CANCELLED");
+for (const status of [
+  "vaultWithdrawalCanceled",
+  "openInterestCapCanceled",
+  "selfTradeCanceled",
+  "reduceOnlyCanceled",
+  "siblingFilledCanceled",
+  "delistedCanceled",
+  "liquidatedCanceled",
+  "scheduledCancel",
+]) {
+  assert.equal(normalizeExchangeOrderStatus({ status: "order", order: { status } }), "CANCELLED", status);
+}
+for (const status of [
+  "tickRejected",
+  "minTradeNtlRejected",
+  "perpMarginRejected",
+  "reduceOnlyRejected",
+  "badAloPxRejected",
+  "iocCancelRejected",
+  "badTriggerPxRejected",
+  "marketOrderNoLiquidityRejected",
+  "positionIncreaseAtOpenInterestCapRejected",
+  "positionFlipAtOpenInterestCapRejected",
+  "tooAggressiveAtOpenInterestCapRejected",
+  "openInterestIncreaseRejected",
+  "insufficientSpotBalanceRejected",
+  "oracleRejected",
+  "perpMaxPositionRejected",
+]) {
+  assert.equal(normalizeExchangeOrderStatus({ status: "order", order: { status } }), "REJECTED", status);
+}
 const aggregatedTestnetFill = aggregateHyperliquidFills([
   { oid: 42, sz: "0.2", px: "100", fee: "0.01" },
   { oid: 42, sz: "0.3", px: "102", fee: "0.02" },
