@@ -1346,9 +1346,9 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
         </div>
         <div className="grid min-w-0">
           <div className="grid grid-cols-3 divide-x divide-border">
-            <CompactMetric label="実板純損益" value={hasTrades ? formatSignedPct(audit?.portfolioNetReturnPct) : "未判定"} />
-            <CompactMetric label="最良比較との差" value={hasTrades ? formatSignedPct(audit?.excessReturnPct) : "未判定"} />
-            <CompactMetric label="最大下落" value={hasTrades ? formatPct(audit?.maxDrawdownPct) : "未判定"} />
+            <CompactMetric label="方向的中率" value={hasTrades ? formatPct(audit?.predictionAccuracy) : "未判定"} tone={hasTrades ? "good" : "neutral"} />
+            <CompactMetric label="Poly側リターン" value={hasTrades ? formatSignedPct(audit?.polymarketNetReturnPct) : "未判定"} tone={signedMetricTone(audit?.polymarketNetReturnPct, hasTrades)} />
+            <CompactMetric label="HL側リターン" value={hasTrades ? formatSignedPct(audit?.hyperliquidNetReturnPct) : "未判定"} tone={signedMetricTone(audit?.hyperliquidNetReturnPct, hasTrades)} />
           </div>
           <div className="grid grid-cols-4 border-t bg-slate-50">
             {steps.map((step, index) => (
@@ -1719,13 +1719,19 @@ function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }
   );
 }
 
-function CompactMetric({ label, value }: { label: string; value: string }) {
+function CompactMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: Tone }) {
+  const valueClass = tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-700" : tone === "watch" ? "text-amber-800" : "text-slate-950";
   return (
     <div className="min-w-0 px-3 first:pl-0 last:pr-0 sm:px-4">
       <p className="text-[10px] font-bold text-muted-foreground sm:text-xs">{label}</p>
-      <p className="mt-2 break-words text-xl font-bold text-slate-950 sm:text-2xl">{value}</p>
+      <p className={`mt-2 break-words text-xl font-bold sm:text-2xl ${valueClass}`}>{value}</p>
     </div>
   );
+}
+
+function signedMetricTone(value: number | null | undefined, ready: boolean): Tone {
+  if (!ready || value === null || value === undefined) return "neutral";
+  return value > 0 ? "good" : value < 0 ? "bad" : "neutral";
 }
 
 const fallbackPipelines = [
