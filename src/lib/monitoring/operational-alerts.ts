@@ -1,4 +1,5 @@
 import { prisma } from "@/src/lib/server/prisma";
+import { getHyperliquidExecutionReadiness } from "@/src/lib/combined-trading/hyperliquid-execution";
 import { isForwardStrategyExperimentKey } from "@/src/lib/combined-trading/forward-evaluation";
 import { isShortTermDirectionStrategyKey } from "@/src/lib/combined-trading/short-term-direction";
 import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
@@ -66,14 +67,11 @@ export async function collectOperationalAlertCandidates(now = new Date()) {
   }
 
   const reconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
-  if (reconciliation?.status === "error") {
-    alerts.push({
-      key: "testnet-reconciliation",
-      severity: "critical",
-      title: "テストネット照合エラー",
-      message: reconciliation.message ?? "HyperliquidとDBの照合に失敗しました",
-    });
-  }
+  alerts.push(...evaluateTestnetReconciliationAlerts(
+    reconciliation,
+    now,
+    getHyperliquidExecutionReadiness().accountConfigured,
+  ));
 
   if (activeRuns.some((run) => run.emergencyStopped || run.riskStatus === "EMERGENCY_STOP")) {
     alerts.push({
@@ -172,6 +170,45 @@ export function evaluatePipelineAlerts(heartbeats: HeartbeatLike[], now: Date) {
     }
   }
   return alerts;
+}
+
+export function evaluateTestnetReconciliationAlerts(
+  heartbeat: HeartbeatLike | undefined,
+  now: Date,
+  required: boolean,
+) {
+  if (!required) return [];
+  if (!heartbeat) {
+    return [{
+      key: "testnet-reconciliation",
+      severity: "critical" as const,
+      title: "テストネット照合が未起動",
+      message: "口座設定後の照合記録がありません",
+    }];
+  }
+  if (heartbeat.status === "error") {
+    return [{
+      key: "testnet-reconciliation",
+      severity: "critical" as const,
+      title: "テストネット照合エラー",
+      message: heartbeat.message ?? "HyperliquidとDBの照合に失敗しました",
+    }];
+  }
+  const latestActivityAt = Math.max(
+    heartbeat.lastSuccessAt?.getTime() ?? 0,
+    heartbeat.lastAttemptAt?.getTime() ?? 0,
+  );
+  if (!latestActivityAt || now.getTime() - latestActivityAt > 5 * 60 * 1_000) {
+    return [{
+      key: "testnet-reconciliation",
+      severity: "critical" as const,
+      title: "テストネット照合が停止",
+      message: heartbeat.lastSuccessAt
+        ? `${formatDuration(now.getTime() - heartbeat.lastSuccessAt.getTime())}正常照合されていません`
+        : "正常照合の記録がありません",
+    }];
+  }
+  return [];
 }
 
 function boundedNumber(value: string | undefined, fallback: number, minimum: number, maximum: number) {

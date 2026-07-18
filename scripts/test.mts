@@ -41,7 +41,7 @@ import {
 } from "../src/lib/combined-trading/forward-evaluation";
 import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
 import { evaluateBackupStatus } from "../src/lib/monitoring/backup-status";
-import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts } from "../src/lib/monitoring/operational-alerts";
+import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts, evaluateTestnetReconciliationAlerts } from "../src/lib/monitoring/operational-alerts";
 import { evaluateSynchronizedPriceQuality } from "../src/lib/monitoring/synchronized-quality";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
@@ -1300,6 +1300,31 @@ assert.deepEqual(unresolvedEmergencyCleanup.final, {
   positionMismatches: 1,
 });
 assert.ok(unresolvedEmergencyCleanup.issues.includes("final-reconciliation-unverified"));
+
+const reconciliationNow = new Date("2026-01-01T00:10:00Z");
+assert.deepEqual(evaluateTestnetReconciliationAlerts(undefined, reconciliationNow, false), []);
+assert.equal(evaluateTestnetReconciliationAlerts(undefined, reconciliationNow, true)[0]?.title, "テストネット照合が未起動");
+assert.equal(evaluateTestnetReconciliationAlerts({
+  id: "testnet-reconcile",
+  status: "healthy",
+  message: null,
+  lastSuccessAt: new Date("2026-01-01T00:09:00Z"),
+  lastAttemptAt: new Date("2026-01-01T00:09:00Z"),
+}, reconciliationNow, true).length, 0);
+assert.equal(evaluateTestnetReconciliationAlerts({
+  id: "testnet-reconcile",
+  status: "healthy",
+  message: null,
+  lastSuccessAt: new Date("2026-01-01T00:00:00Z"),
+  lastAttemptAt: new Date("2026-01-01T00:00:00Z"),
+}, reconciliationNow, true)[0]?.title, "テストネット照合が停止");
+assert.equal(evaluateTestnetReconciliationAlerts({
+  id: "testnet-reconcile",
+  status: "error",
+  message: "order mismatch",
+  lastSuccessAt: null,
+  lastAttemptAt: reconciliationNow,
+}, reconciliationNow, true)[0]?.message, "order mismatch");
 
 console.log("testnet reconciliation status tests passed");
 
