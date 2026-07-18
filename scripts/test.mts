@@ -82,6 +82,7 @@ import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/s
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
 import { annualizeRealizedVolatility } from "../src/lib/model-evaluation/volatility";
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
+import { isTemporaryBackupArtifact, nextBackupDelayMs } from "./backup-policy.mjs";
 import { buildRealtimeAssetTick, buildRealtimeMarketTick, isRealtimeCaptureWindow, selectRealtimeMarketsForCollection, shouldReconnectManagedSocket, shouldReportRealtimeCoverageFailure } from "../src/lib/realtime-market-data/collector";
 import { calculatePolymarketTakerFee, evaluateExactExecutionAudit, selectCausalExecutionTick, summarizeExactAuditDirectionCoverage } from "../src/lib/realtime-market-data/execution-audit";
 import { minimumAdditionalPerfectPositionsForCoverage, persistForwardExecutionAuditReport, type ForwardExecutionAuditReportInput } from "../src/lib/realtime-market-data/execution-audit-report";
@@ -2154,6 +2155,33 @@ assert.equal(evaluateBackupStatus({ files: backupFiles, record: { ...verifiedBac
 assert.equal(evaluateBackupStatus({ files: backupFiles, record: verifiedBackupRecord, now: new Date("2026-01-01T04:00:00Z"), maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "error");
 assert.equal(evaluateBackupStatus({ files: backupFiles, record: null, now: alertNow, maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "waiting");
 assert.equal(evaluateBackupStatus({ files: [], record: null, now: alertNow, maximumAgeMs: 2 * 60 * 60 * 1_000 }).status, "waiting");
+assert.equal(nextBackupDelayMs({
+  record: verifiedBackupRecord,
+  latestFile: { name: "polymarket-2026.db.enc", sizeBytes: 1_024 },
+  nowMs: new Date("2026-01-01T01:56:00Z").getTime(),
+  intervalMs: 24 * 60 * 60 * 1_000,
+}), 23 * 60 * 60 * 1_000);
+assert.equal(nextBackupDelayMs({
+  record: verifiedBackupRecord,
+  latestFile: { name: "polymarket-newer.db.enc", sizeBytes: 1_024 },
+  nowMs: alertNow.getTime(),
+  intervalMs: 24 * 60 * 60 * 1_000,
+}), 0);
+assert.equal(nextBackupDelayMs({
+  record: { ...verifiedBackupRecord, status: "error" },
+  latestFile: { name: "polymarket-2026.db.enc", sizeBytes: 1_024 },
+  nowMs: alertNow.getTime(),
+  intervalMs: 24 * 60 * 60 * 1_000,
+}), 0);
+for (const name of [
+  ".polymarket-2026.db",
+  ".polymarket-2026.db-shm",
+  ".polymarket-2026.db-wal",
+  ".polymarket-2026.db-journal",
+  ".polymarket-2026.db.enc.tmp",
+  ".verify-2026.db-shm",
+]) assert.equal(isTemporaryBackupArtifact(name), true, name);
+assert.equal(isTemporaryBackupArtifact("polymarket-2026.db.enc"), false);
 
 console.log("operational alert tests passed");
 

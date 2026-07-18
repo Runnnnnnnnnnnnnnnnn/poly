@@ -8,6 +8,7 @@ export type BackupVerificationRecord = {
   createdAt: string;
   verifiedAt: string | null;
   sizeBytes: number | null;
+  sha256?: string | null;
   message: string;
 };
 
@@ -113,6 +114,7 @@ function parseBackupVerificationRecord(value: string) {
       createdAt: parsed.createdAt,
       verifiedAt: typeof parsed.verifiedAt === "string" ? parsed.verifiedAt : null,
       sizeBytes: typeof parsed.sizeBytes === "number" && Number.isFinite(parsed.sizeBytes) ? parsed.sizeBytes : null,
+      sha256: typeof parsed.sha256 === "string" && /^[a-f0-9]{64}$/.test(parsed.sha256) ? parsed.sha256 : null,
       message: typeof parsed.message === "string" ? parsed.message : "",
     } satisfies BackupVerificationRecord;
   } catch {

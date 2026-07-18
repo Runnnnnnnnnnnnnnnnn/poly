@@ -1,11 +1,14 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, resolve } from "node:path";
 
-const backupIntervalMs = Math.max(60 * 60 * 1_000, Number(process.env.BACKUP_INTERVAL_MS ?? 24 * 60 * 60 * 1_000));
-const retentionCount = Math.max(3, Math.min(60, Number(process.env.BACKUP_RETENTION_COUNT ?? 14)));
+import { isTemporaryBackupArtifact, nextBackupDelayMs } from "./backup-policy.mjs";
+
+const backupIntervalMs = numericSetting(process.env.BACKUP_INTERVAL_MS, 24 * 60 * 60 * 1_000, 60 * 60 * 1_000);
+const retryIntervalMs = numericSetting(process.env.BACKUP_RETRY_INTERVAL_MS, 5 * 60 * 1_000, 60 * 1_000, backupIntervalMs);
+const retentionCount = Math.round(numericSetting(process.env.BACKUP_RETENTION_COUNT, 14, 3, 60));
 const stateDir = resolve(process.env.POLYMARKET_STATE_DIR ?? resolve(homedir(), ".polymarket-watch"));
 const backupDir = resolve(stateDir, "backups");
 const keyPath = resolve(stateDir, "backup.key");
@@ -19,6 +22,7 @@ if (!databasePath) {
 }
 
 mkdirSync(backupDir, { recursive: true });
+cleanupTemporaryArtifacts();
 ensureKey();
 
 async function backup() {
@@ -38,6 +42,7 @@ async function backup() {
   const timestamp = new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-");
   const temporaryPath = resolve(backupDir, `.polymarket-${timestamp}.db`);
   const encryptedPath = resolve(backupDir, `polymarket-${timestamp}.db.enc`);
+  const encryptedTemporaryPath = resolve(backupDir, `.polymarket-${timestamp}.db.enc.tmp`);
   const verificationPath = resolve(backupDir, `.verify-${timestamp}.db`);
   try {
     execFileSync("/usr/bin/sqlite3", [databasePath, `.backup '${temporaryPath.replaceAll("'", "''")}'`], { stdio: "ignore" });
@@ -45,17 +50,20 @@ async function backup() {
     execFileSync("/usr/bin/openssl", [
       "enc", "-aes-256-cbc", "-salt", "-pbkdf2",
       "-in", temporaryPath,
-      "-out", encryptedPath,
+      "-out", encryptedTemporaryPath,
       "-pass", `file:${keyPath}`,
     ], { stdio: "ignore" });
-    chmodSync(encryptedPath, 0o600);
+    chmodSync(encryptedTemporaryPath, 0o600);
     execFileSync("/usr/bin/openssl", [
       "enc", "-d", "-aes-256-cbc", "-pbkdf2",
-      "-in", encryptedPath,
+      "-in", encryptedTemporaryPath,
       "-out", verificationPath,
       "-pass", `file:${keyPath}`,
     ], { stdio: "ignore" });
     verifySqliteDatabase(verificationPath);
+    const sha256 = await fileSha256(encryptedTemporaryPath);
+    renameSync(encryptedTemporaryPath, encryptedPath);
+    chmodSync(encryptedPath, 0o600);
     pruneBackups();
     writeBackupStatus({
       status: "healthy",
@@ -63,6 +71,7 @@ async function backup() {
       createdAt: new Date().toISOString(),
       verifiedAt: new Date().toISOString(),
       sizeBytes: statSync(encryptedPath).size,
+      sha256,
       message: "encrypted backup restored and SQLite integrity verified",
     });
     console.log(`encrypted database backup created: ${encryptedPath}`);
@@ -80,8 +89,9 @@ async function backup() {
     console.error(`encrypted database backup failed: ${error instanceof Error ? error.message : error}`);
     return false;
   } finally {
-    rmSync(temporaryPath, { force: true });
-    rmSync(verificationPath, { force: true });
+    removeSqliteArtifactSet(temporaryPath);
+    removeSqliteArtifactSet(verificationPath);
+    rmSync(encryptedTemporaryPath, { force: true });
     running = false;
   }
 }
@@ -103,6 +113,26 @@ function ensureKey() {
   chmodSync(keyPath, 0o600);
 }
 
+function cleanupTemporaryArtifacts() {
+  for (const name of readdirSync(backupDir)) {
+    if (isTemporaryBackupArtifact(name)) rmSync(resolve(backupDir, name), { force: true });
+  }
+}
+
+function removeSqliteArtifactSet(path) {
+  for (const suffix of ["", "-shm", "-wal", "-journal"]) rmSync(`${path}${suffix}`, { force: true });
+}
+
+function fileSha256(path) {
+  return new Promise((resolveDigest, reject) => {
+    const hash = createHash("sha256");
+    const stream = createReadStream(path);
+    stream.on("error", reject);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolveDigest(hash.digest("hex")));
+  });
+}
+
 function pruneBackups() {
   const backups = readdirSync(backupDir)
     .filter((name) => name.startsWith("polymarket-") && name.endsWith(".db.enc"))
@@ -117,9 +147,44 @@ function databaseFilePath(value) {
   return resolve(process.env.POLYMARKET_PROJECT_ROOT ?? process.cwd(), path);
 }
 
-const initialBackupSucceeded = await backup();
-if (process.env.BACKUP_ONCE === "1") {
-  process.exit(initialBackupSucceeded ? 0 : 1);
+function numericSetting(value, fallback, minimum, maximum = Number.POSITIVE_INFINITY) {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, parsed)) : fallback;
 }
-setInterval(() => void backup(), backupIntervalMs);
-console.log(`encrypted database backup worker: every ${backupIntervalMs}ms / keep ${retentionCount}`);
+
+function readLatestBackupEvidence() {
+  try {
+    const files = readdirSync(backupDir)
+      .filter((name) => name.startsWith("polymarket-") && name.endsWith(".db.enc"))
+      .map((name) => ({ name, sizeBytes: statSync(resolve(backupDir, name)).size }))
+      .sort((left, right) => right.name.localeCompare(left.name));
+    const record = existsSync(statusPath) ? JSON.parse(readFileSync(statusPath, "utf8")) : null;
+    return { record, latestFile: files[0] ?? null };
+  } catch {
+    return { record: null, latestFile: null };
+  }
+}
+
+function scheduleBackup(delayMs) {
+  const scheduledFor = new Date(Date.now() + delayMs).toISOString();
+  console.log(`next encrypted database backup scheduled for ${scheduledFor}`);
+  setTimeout(async () => {
+    const succeeded = await backup();
+    scheduleBackup(succeeded ? backupIntervalMs : retryIntervalMs);
+  }, delayMs);
+}
+
+if (process.env.BACKUP_ONCE === "1") {
+  process.exit(await backup() ? 0 : 1);
+}
+
+const latestEvidence = readLatestBackupEvidence();
+const initialDelayMs = process.env.BACKUP_FORCE_ON_START === "1"
+  ? 0
+  : nextBackupDelayMs({
+      ...latestEvidence,
+      nowMs: Date.now(),
+      intervalMs: backupIntervalMs,
+    });
+scheduleBackup(initialDelayMs);
+console.log(`encrypted database backup worker: every ${backupIntervalMs}ms / retry ${retryIntervalMs}ms / keep ${retentionCount}`);

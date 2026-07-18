@@ -1,67 +1,12 @@
-import { spawn, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { createConnection } from "node:net";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const disabledRoot = join(root, ".pages-build-disabled");
-const moves = [
-  [join(root, "app", "api"), join(disabledRoot, "app-api")],
-  [join(root, "middleware.ts"), join(disabledRoot, "middleware.ts")],
-];
-
-function moveExisting(from, to) {
-  if (!existsSync(from)) return false;
-  mkdirSync(dirname(to), { recursive: true });
-  cpSync(from, to, { recursive: true, preserveTimestamps: true });
-  rmSync(from, { recursive: true, force: true });
-  return true;
-}
-
-function restore(moved) {
-  const pending = [...moved].reverse();
-  for (const [from, to] of pending) {
-    if (existsSync(to)) {
-      mkdirSync(dirname(from), { recursive: true });
-      rmSync(from, { recursive: true, force: true });
-      cpSync(to, from, { recursive: true, preserveTimestamps: true });
-      rmSync(to, { recursive: true, force: true });
-    }
-  }
-  if (existsSync(disabledRoot)) {
-    rmSync(disabledRoot, { recursive: true, force: true });
-  }
-  moved.length = 0;
-}
-
-function clearBuildOutput(path) {
-  if (!existsSync(path)) return;
-  const trashRoot = join(homedir(), ".polymarket-watch", "build-trash");
-  const stalePath = join(trashRoot, `${basename(path)}-${Date.now()}-${process.pid}`);
-  mkdirSync(trashRoot, { recursive: true });
-  try {
-    renameSync(path, stalePath);
-    const cleanup = spawn("/bin/rm", ["-rf", stalePath], { detached: true, stdio: "ignore" });
-    cleanup.unref();
-  } catch {
-    rmSync(path, { recursive: true, force: true });
-  }
-}
-
-const moved = [];
 let exitCode = 0;
-
-process.once("exit", () => restore(moved));
-process.once("SIGINT", () => {
-  restore(moved);
-  process.exit(130);
-});
-process.once("SIGTERM", () => {
-  restore(moved);
-  process.exit(143);
-});
 
 function isPortOpen(port) {
   return new Promise((resolve) => {
@@ -101,12 +46,9 @@ if (!process.env.CI && process.env.ALLOW_PAGES_BUILD_WITH_DEV_SERVER !== "1") {
   }
 }
 
-try {
-  clearBuildOutput(disabledRoot);
-  for (const [from, to] of moves) {
-    if (moveExisting(from, to)) moved.push([from, to]);
-  }
+const buildRoot = mkdtempSync(join(tmpdir(), "polymarket-watch-pages-"));
 
+try {
   const repo = process.env.GITHUB_PAGES_REPO || "poly";
   const runtimeDatabasePath = join(homedir(), ".polymarket-watch", "runtime", "prisma", "dev.db");
   const pagesDatabaseUrl = process.env.PAGES_DATABASE_URL
@@ -140,19 +82,49 @@ try {
     }
   }
 
-  clearBuildOutput(join(root, ".next"));
-  clearBuildOutput(join(root, "out"));
+  prepareBuildSource(buildRoot);
 
-  const next = spawnSync(process.execPath, ["node_modules/next/dist/bin/next", "build"], { cwd: root, env, stdio: "inherit" });
+  const next = spawnSync(process.execPath, [join(root, "node_modules/next/dist/bin/next"), "build"], { cwd: buildRoot, env, stdio: "inherit" });
   if (next.status !== 0) {
     exitCode = next.status ?? 1;
     throw new Error("next build failed");
+  }
+  if (process.env.PAGES_SKIP_OUTPUT_SYNC === "1") {
+    console.log("Pages build verified in the isolated workspace; output sync skipped");
+  } else {
+    publishBuildOutput(join(buildRoot, "out"));
   }
 } catch (error) {
   if (exitCode === 0) exitCode = 1;
   console.error(error instanceof Error ? error.message : error);
 } finally {
-  restore(moved);
+  rmSync(buildRoot, { recursive: true, force: true });
 }
 
 process.exit(exitCode);
+
+function prepareBuildSource(target) {
+  execFileSync("/usr/bin/rsync", [
+    "-a",
+    "--delete",
+    "--exclude=.git/",
+    "--exclude=.next/",
+    "--exclude=node_modules/",
+    "--exclude=out/",
+    "--exclude=.pages-build-disabled/",
+    "--exclude=.run-all.lock",
+    "--exclude=.paper-run-id",
+    "--exclude=prisma/dev.db*",
+    `${root}/`,
+    `${target}/`,
+  ], { stdio: "inherit" });
+  rmSync(join(target, "app", "api"), { recursive: true, force: true });
+  rmSync(join(target, "middleware.ts"), { force: true });
+  symlinkSync(join(root, "node_modules"), join(target, "node_modules"), "dir");
+}
+
+function publishBuildOutput(source) {
+  const target = join(root, "out");
+  mkdirSync(target, { recursive: true });
+  execFileSync("/usr/bin/rsync", ["-a", "--delete", `${source}/`, `${target}/`], { stdio: "inherit" });
+}
