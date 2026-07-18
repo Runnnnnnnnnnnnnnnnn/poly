@@ -43,11 +43,39 @@ const researchFoldStabilitySchema = z.object({
   profitableFolds: z.number(),
   requiredProfitableFolds: z.number(),
 });
+const researchScreeningSchema = z.object({
+  status: z.enum(["insufficient", "promising", "rejected"]),
+  passedGates: z.number(),
+  totalGates: z.number(),
+});
+const researchHistoryItemSchema = z.object({
+  generatedAt: z.string(),
+  marketDuration: z.string(),
+  lookbackHours: z.number(),
+  executionMode: z.string(),
+  completeMarkets: z.number(),
+  status: z.enum(["insufficient", "promising", "rejected"]),
+  trades: z.number(),
+  netReturnPct: z.number(),
+  averageReturnPct: z.number().nullable(),
+  confidenceLowerPct: z.number().nullable(),
+  excessReturnPct: z.number().nullable(),
+  maxDrawdownPct: z.number(),
+  profitableFolds: z.number(),
+  totalFolds: z.number(),
+  passedGates: z.number(),
+  totalGates: z.number(),
+});
 const shortTermResearchSchema = z.object({
   generatedAt: z.string(),
-  methodology: z.object({ marketDuration: z.string(), executionMode: z.string() }),
+  methodology: z.object({
+    marketDuration: z.string(),
+    executionMode: z.string(),
+    period: z.object({ lookbackHours: z.number() }),
+  }),
   coverage: z.object({ completeMarkets: z.number() }),
   holdout: z.object({
+    baseline: researchMetricSchema,
     implied: researchMetricSchema,
     leadLag: researchMetricSchema,
     crossSectional: researchMetricSchema,
@@ -56,15 +84,17 @@ const shortTermResearchSchema = z.object({
     folds: z.array(z.object({ fold: z.number() })),
     minimumProfitableFolds: z.number(),
     stability: z.object({
+      baseline: researchFoldStabilitySchema,
       implied: researchFoldStabilitySchema,
       leadLag: researchFoldStabilitySchema,
       crossSectional: researchFoldStabilitySchema,
     }),
   }),
   screening: z.object({
-    implied: z.object({ status: z.enum(["insufficient", "promising", "rejected"]), passedGates: z.number(), totalGates: z.number() }),
-    leadLag: z.object({ status: z.enum(["insufficient", "promising", "rejected"]), passedGates: z.number(), totalGates: z.number() }),
-    crossSectional: z.object({ status: z.enum(["insufficient", "promising", "rejected"]), passedGates: z.number(), totalGates: z.number() }),
+    baseline: researchScreeningSchema,
+    implied: researchScreeningSchema,
+    leadLag: researchScreeningSchema,
+    crossSectional: researchScreeningSchema,
   }),
 });
 
@@ -913,6 +943,7 @@ function pipelineStatuses(input: {
     pipeline("hyperliquid", "相場データ収集", "1分ごと", input.hyperliquidAt, heartbeatMap.get("hyperliquid"), input.now),
     pipeline("realtime-market-data", "秒単位の板収集", "5秒ごと", null, heartbeatMap.get("realtime-market-data"), input.now, 30_000),
     pipeline("backtest", "モデル再検証", "6時間ごと", input.evaluationAt ?? input.backtestAt, heartbeatMap.get("backtest"), input.now, 30 * 60 * 60 * 1_000),
+    pipeline("short-term-backtest", "15分モデル過去検証", "6時間ごと", null, heartbeatMap.get("short-term-backtest"), input.now, 30 * 60 * 60 * 1_000),
     pipeline("forward-experiment", "固定フォワード検証", "5分ごと", input.combinedAt, heartbeatMap.get("forward-experiment"), input.now),
     pipeline("short-term-direction", "15分モデル検証", "1分ごと", null, heartbeatMap.get("short-term-direction"), input.now, 5 * 60 * 1_000),
   ];
@@ -947,6 +978,7 @@ function loadShortTermResearchSummary() {
   try {
     const parsed = shortTermResearchSchema.parse(JSON.parse(readFileSync(path, "utf8")));
     const definitions = [
+      { id: "baseline", label: "現行15分モデル", metrics: parsed.holdout.baseline, screening: parsed.screening.baseline, stability: parsed.walkForward.stability.baseline },
       { id: "implied", label: "暗黙終値", metrics: parsed.holdout.implied, screening: parsed.screening.implied, stability: parsed.walkForward.stability.implied },
       { id: "leadLag", label: "確率変化", metrics: parsed.holdout.leadLag, screening: parsed.screening.leadLag, stability: parsed.walkForward.stability.leadLag },
       { id: "crossSectional", label: "資産間比較", metrics: parsed.holdout.crossSectional, screening: parsed.screening.crossSectional, stability: parsed.walkForward.stability.crossSectional },
@@ -955,11 +987,14 @@ function loadShortTermResearchSummary() {
       generatedAt: parsed.generatedAt,
       marketDuration: parsed.methodology.marketDuration,
       executionMode: parsed.methodology.executionMode,
+      lookbackHours: parsed.methodology.period.lookbackHours,
       completeMarkets: parsed.coverage.completeMarkets,
       walkForwardFolds: parsed.walkForward.folds.length,
       minimumProfitableFolds: parsed.walkForward.minimumProfitableFolds,
       acceptedCandidates: definitions.filter((item) => item.screening.status === "promising").length,
       totalCandidates: definitions.length,
+      currentCandidateId: "baseline",
+      history: loadShortTermResearchHistory(root),
       candidates: definitions.map((item) => ({
         id: item.id,
         label: item.label,
@@ -978,6 +1013,17 @@ function loadShortTermResearchSummary() {
     };
   } catch {
     return null;
+  }
+}
+
+function loadShortTermResearchHistory(root: string) {
+  const path = resolve(root, "public/short-term-research-history.json");
+  if (!existsSync(path)) return [];
+  try {
+    return z.object({ items: z.array(researchHistoryItemSchema) })
+      .parse(JSON.parse(readFileSync(path, "utf8"))).items;
+  } catch {
+    return [];
   }
 }
 

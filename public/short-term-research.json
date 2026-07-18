@@ -1,256 +1,282 @@
 {
-  "generatedAt": "2026-07-18T00:56:15.035Z",
+  "generatedAt": "2026-07-18T07:29:06.652Z",
   "methodology": {
     "status": "screening_only",
     "warning": "Aggregated price history has no executable order book and cannot authorize testnet or real trading.",
     "period": {
-      "startAt": "2026-06-18T00:51:15.035Z",
-      "endAt": "2026-07-18T00:51:15.035Z",
-      "lookbackHours": 720
+      "startAt": "2026-07-15T07:24:06.652Z",
+      "endAt": "2026-07-18T07:24:06.652Z",
+      "lookbackHours": 72
     },
     "split": "chronological 60% calibration / 40% holdout",
     "walkForward": "anchored expanding window / 4 non-overlapping validation folds",
-    "marketDuration": "4h",
-    "hyperliquidCandleInterval": "15m",
-    "entry": "first actionable one-minute observation in [15m, 30m)",
-    "exit": "final 15m Hyperliquid candle close",
+    "marketDuration": "15m",
+    "hyperliquidCandleInterval": "1m",
+    "entry": "first actionable one-minute observation in [2m, 4m)",
+    "exit": "final 1m Hyperliquid candle close",
     "executionMode": "taker",
     "roundTripCost": 0.0013,
     "fundingPer24h": 0.0003,
+    "positionPct": 0.05,
+    "maximumConcurrentPositions": 3,
+    "fixedRule": "Polymarket probability at least 58% in either direction, confirmed by same-side Hyperliquid trend",
+    "controlRule": "same Polymarket probability threshold without the Hyperliquid trend filter",
     "impliedRule": {
       "minimumSignalZ": 0,
       "minimumExpectedReturnPct": 0.0013,
       "minimumTrendZ": 0.15,
       "requireTrend": false,
-      "strategyTrials": 8,
+      "strategyTrials": 11,
       "randomBenchmarkTrials": 200
     },
     "leadLagRule": {
       "minimumOneMinuteProbabilityChange": 0.1,
       "requireTrend": false,
-      "strategyTrials": 8,
+      "strategyTrials": 11,
       "randomBenchmarkTrials": 200
     },
     "crossSectionalRule": {
       "construction": "50% long highest implied residual / 50% short lowest implied residual",
       "minimumExpectedPairReturnPct": 0.0013,
-      "strategyTrials": 8,
+      "strategyTrials": 11,
       "randomBenchmarkTrials": 200
     }
   },
   "coverage": {
-    "discoveredMarkets": 716,
-    "completeMarkets": 704,
-    "skipped": {
-      "decision-window sample missing": 12
-    }
+    "discoveredMarkets": 1147,
+    "completeMarkets": 1147,
+    "skipped": {}
   },
   "diagnostics": {
-    "samples": 10560,
+    "samples": 2290,
     "absoluteExpectedReturnPct": {
-      "median": 0.0010393393671487283,
-      "p90": 0.0034025979976471943,
-      "p95": 0.004485099916099244,
-      "p99": 0.008283947722912072,
-      "maximum": 0.014448754885501458
+      "median": 0.0001485597273206407,
+      "p90": 0.0004664994826292344,
+      "p95": 0.0006042247640563372,
+      "p99": 0.0009262127688377858,
+      "maximum": 0.002000087023652841
     },
     "absoluteSignalZ": {
-      "median": 0.10834302029397541,
-      "p90": 0.3181323873420619,
-      "p95": 0.4028896224084529,
-      "p99": 0.6316808010918781,
-      "maximum": 1.4161487501110852
+      "median": 0.09748288725608581,
+      "p90": 0.25003703177266534,
+      "p95": 0.3089693163880972,
+      "p99": 0.46513441933494754,
+      "maximum": 0.7974074115488425
     },
     "absoluteTrendZ": {
-      "median": 0.4642499731973878,
-      "p90": 1.4495982086534516,
-      "p95": 2.1759632969147806,
-      "p99": 4.226814057900231,
-      "maximum": 7.10812121776946
+      "median": 0.6864021947210894,
+      "p90": 1.7939145304265163,
+      "p95": 2.169179984289798,
+      "p99": 2.815218852165631,
+      "maximum": 3.670452855603636
     },
     "absoluteOneMinuteProbabilityChange": {
-      "median": 0.014999999999999902,
-      "p90": 0.040000000000000036,
-      "p95": 0.050000000000000044,
-      "p99": 0.08000000000000002,
-      "maximum": 0.25499999999999995
+      "median": 0.07,
+      "p90": 0.18999999999999995,
+      "p95": 0.21999999999999997,
+      "p99": 0.30000000000000004,
+      "maximum": 0.42999999999999994
     },
     "crossSectionalExpectedPairReturnPct": {
-      "median": 0.00043901639858487385,
-      "p90": 0.0010243545287215994,
-      "p95": 0.0012631919592313162,
-      "p99": 0.002059057487267313,
-      "maximum": 0.004378311685868774
+      "median": 0.0001768367989675168,
+      "p90": 0.0003843668298850856,
+      "p95": 0.00047355735149678935,
+      "p99": 0.0005746185499260498,
+      "maximum": 0.0012875238030974345
     }
   },
   "calibration": {
-    "markets": 420,
+    "markets": 687,
     "baseline": {
-      "trades": 284,
-      "profitableTrades": 128,
-      "afterCostWinRate": 0.4507042253521127,
-      "binaryOutcomeAccuracy": 0.6654929577464789,
-      "netReturnPct": 0.019221256217540252,
-      "averageReturnPct": 0.00006768047963922623,
+      "trades": 479,
+      "profitableTrades": 111,
+      "afterCostWinRate": 0.23173277661795408,
+      "binaryOutcomeAccuracy": 0.732776617954071,
+      "netReturnPct": -0.022740965115436444,
+      "averageReturnPct": -0.0009495183764274089,
       "meanConfidenceInterval95": [
-        -0.0018649544962961498,
-        0.002114878022126675
+        -0.00016657451354043802,
+        -0.00009239015174355995
       ],
-      "deflatedSharpeProbability": 0.08595942592990347,
-      "maxDrawdownPct": 0.25138514436157317,
+      "deflatedSharpeProbability": 0.45424289024882303,
+      "maxDrawdownPct": 0.022491778462527257,
+      "benchmarkLabel": "Polymarket direction",
+      "benchmarkReturnPct": -0.023513485390400768,
+      "excessReturnPct": 0.000772520274964324,
+      "excessConfidenceInterval95": [
+        5.160643477662031e-8,
+        0.000010206453524452268
+      ]
+    },
+    "control": {
+      "trades": 487,
+      "profitableTrades": 111,
+      "afterCostWinRate": 0.22792607802874743,
+      "binaryOutcomeAccuracy": 0.7248459958932238,
+      "netReturnPct": -0.023513485390400796,
+      "averageReturnPct": -0.0009656462172649185,
+      "meanConfidenceInterval95": [
+        -0.00017208349035384015,
+        -0.00009557088365486514
+      ],
+      "deflatedSharpeProbability": 6.779846684068502e-9,
+      "maxDrawdownPct": 0.023246666861504117,
       "benchmarkLabel": null,
       "benchmarkReturnPct": null,
       "excessReturnPct": null,
       "excessConfidenceInterval95": null
     },
     "implied": {
-      "trades": 364,
-      "profitableTrades": 191,
-      "afterCostWinRate": 0.5247252747252747,
-      "binaryOutcomeAccuracy": 0.6098901098901099,
-      "netReturnPct": 0.42526202092386894,
-      "averageReturnPct": 0.0011683022552853542,
+      "trades": 4,
+      "profitableTrades": 3,
+      "afterCostWinRate": 0.75,
+      "binaryOutcomeAccuracy": 1,
+      "netReturnPct": 0.0004638122740952371,
+      "averageReturnPct": 0.002319061370476185,
       "meanConfidenceInterval95": [
-        -0.0009943178622832207,
-        0.0030458796183098903
+        -0.00043189908887723925,
+        0.0007411072716073973
       ],
-      "deflatedSharpeProbability": 0.65429248983198,
-      "maxDrawdownPct": 0.29056157569677166,
-      "benchmarkLabel": "Polymarket direction",
-      "benchmarkReturnPct": 0.024283487598425597,
-      "excessReturnPct": 0.4009785333254438,
+      "deflatedSharpeProbability": null,
+      "maxDrawdownPct": 0.0001235426488113145,
+      "benchmarkLabel": "Always long",
+      "benchmarkReturnPct": 0.0004140229581289422,
+      "excessReturnPct": 0.00004978931596629498,
       "excessConfidenceInterval95": [
-        -0.0001736336144273368,
-        0.0025945033977026145
+        -0.00014929741952896065,
+        0.00017419207751210813
       ]
     },
     "leadLag": {
-      "trades": 25,
-      "profitableTrades": 18,
-      "afterCostWinRate": 0.72,
-      "binaryOutcomeAccuracy": 0.8,
-      "netReturnPct": 0.08912871042236421,
-      "averageReturnPct": 0.0035651484168945685,
+      "trades": 414,
+      "profitableTrades": 83,
+      "afterCostWinRate": 0.20048309178743962,
+      "binaryOutcomeAccuracy": 0.6570048309178744,
+      "netReturnPct": -0.020734775362044315,
+      "averageReturnPct": -0.0010016799691808837,
       "meanConfidenceInterval95": [
-        0.0011166272543934722,
-        0.007243070520772959
+        -0.00017831463177675328,
+        -0.00009658803071794314
       ],
-      "deflatedSharpeProbability": 0.684002573066982,
-      "maxDrawdownPct": 0.013536887377367565,
+      "deflatedSharpeProbability": 2.6055252605461376e-7,
+      "maxDrawdownPct": 0.020529064951475995,
       "benchmarkLabel": "Polymarket direction",
-      "benchmarkReturnPct": 0.0215767750563031,
-      "excessReturnPct": 0.06755193536606113,
+      "benchmarkReturnPct": -0.02054673933406563,
+      "excessReturnPct": -0.00018803602797865077,
       "excessConfidenceInterval95": [
-        0,
-        0.008106232243927336
+        -0.000009014553698453009,
+        0.000008230737195586772
       ]
     },
     "crossSectional": {
-      "intervals": 105,
-      "trades": 6,
-      "profitableTrades": 5,
-      "afterCostWinRate": 0.8333333333333334,
+      "intervals": 172,
+      "trades": 0,
+      "profitableTrades": 0,
+      "afterCostWinRate": null,
       "binaryOutcomeAccuracy": null,
-      "netReturnPct": 0.017199737691725295,
-      "averageReturnPct": 0.0028666229486208825,
-      "meanConfidenceInterval95": [
-        0.00002961851904846385,
-        0.006067830248546196
-      ],
+      "netReturnPct": 0,
+      "averageReturnPct": null,
+      "meanConfidenceInterval95": null,
       "deflatedSharpeProbability": null,
-      "maxDrawdownPct": 0.006197379572609617,
-      "benchmarkLabel": "Hyperliquid momentum rank",
-      "benchmarkReturnPct": 0.007512148886345052,
-      "excessReturnPct": 0.009687588805380246,
-      "excessConfidenceInterval95": [
-        0.00021503448837244225,
-        0.003121617314203823
-      ]
+      "maxDrawdownPct": 0,
+      "benchmarkLabel": "Polymarket probability rank",
+      "benchmarkReturnPct": 0,
+      "excessReturnPct": 0,
+      "excessConfidenceInterval95": null
     }
   },
   "holdout": {
-    "markets": 284,
+    "markets": 460,
     "baseline": {
-      "trades": 165,
-      "profitableTrades": 72,
-      "afterCostWinRate": 0.43636363636363634,
-      "binaryOutcomeAccuracy": 0.6727272727272727,
-      "netReturnPct": -0.4242856497125402,
-      "averageReturnPct": -0.002571428180076001,
+      "trades": 310,
+      "profitableTrades": 41,
+      "afterCostWinRate": 0.13225806451612904,
+      "binaryOutcomeAccuracy": 0.6870967741935484,
+      "netReturnPct": -0.02076176148026456,
+      "averageReturnPct": -0.0013394684825977124,
       "meanConfidenceInterval95": [
-        -0.004199956756636338,
-        -0.0010252606540660466
+        -0.000216712741518968,
+        -0.0001482835521245547
       ],
-      "deflatedSharpeProbability": 5.315680118300747e-10,
-      "maxDrawdownPct": 0.3940442501831157,
+      "deflatedSharpeProbability": 0.024631952311549465,
+      "maxDrawdownPct": 0.020552486550122984,
+      "benchmarkLabel": "Always long",
+      "benchmarkReturnPct": -0.01968022155676996,
+      "excessReturnPct": -0.0010815399234946038,
+      "excessConfidenceInterval95": [
+        -0.000056982531019722976,
+        0.00003267201218205625
+      ]
+    },
+    "control": {
+      "trades": 318,
+      "profitableTrades": 43,
+      "afterCostWinRate": 0.13522012578616352,
+      "binaryOutcomeAccuracy": 0.6886792452830188,
+      "netReturnPct": -0.021047546679897826,
+      "averageReturnPct": -0.0013237450742074094,
+      "meanConfidenceInterval95": [
+        -0.00021888719664561786,
+        -0.00015138597488312236
+      ],
+      "deflatedSharpeProbability": 8.53118892196747e-9,
+      "maxDrawdownPct": 0.020832433681906126,
       "benchmarkLabel": null,
       "benchmarkReturnPct": null,
       "excessReturnPct": null,
       "excessConfidenceInterval95": null
     },
     "implied": {
-      "trades": 217,
-      "profitableTrades": 114,
-      "afterCostWinRate": 0.5253456221198156,
-      "binaryOutcomeAccuracy": 0.6221198156682027,
-      "netReturnPct": 0.21714710764712883,
-      "averageReturnPct": 0.0010006779154245569,
-      "meanConfidenceInterval95": [
-        -0.0012889926430911494,
-        0.0034623624190838966
-      ],
-      "deflatedSharpeProbability": 0.5713727798701995,
-      "maxDrawdownPct": 0.12626423723613425,
-      "benchmarkLabel": "Always long",
-      "benchmarkReturnPct": -0.25571412663088383,
-      "excessReturnPct": 0.4728612342780127,
-      "excessConfidenceInterval95": [
-        -0.000720201841061956,
-        0.005525483608860969
-      ]
+      "trades": 0,
+      "profitableTrades": 0,
+      "afterCostWinRate": null,
+      "binaryOutcomeAccuracy": null,
+      "netReturnPct": 0,
+      "averageReturnPct": null,
+      "meanConfidenceInterval95": null,
+      "deflatedSharpeProbability": null,
+      "maxDrawdownPct": 0,
+      "benchmarkLabel": "Polymarket direction",
+      "benchmarkReturnPct": 0,
+      "excessReturnPct": 0,
+      "excessConfidenceInterval95": null
     },
     "leadLag": {
-      "trades": 19,
-      "profitableTrades": 11,
-      "afterCostWinRate": 0.5789473684210527,
-      "binaryOutcomeAccuracy": 0.631578947368421,
-      "netReturnPct": -0.028514338485719985,
-      "averageReturnPct": -0.0015007546571431571,
+      "trades": 249,
+      "profitableTrades": 32,
+      "afterCostWinRate": 0.1285140562248996,
+      "binaryOutcomeAccuracy": 0.7108433734939759,
+      "netReturnPct": -0.01453223241677366,
+      "averageReturnPct": -0.0011672475836765994,
       "meanConfidenceInterval95": [
-        -0.009979308040633461,
-        0.004958356828159832
+        -0.00019667182081262272,
+        -0.00010442513527629962
       ],
-      "deflatedSharpeProbability": 0.020983309507958847,
-      "maxDrawdownPct": 0.08505784632653456,
-      "benchmarkLabel": "Always long",
-      "benchmarkReturnPct": 0.07572291582273302,
-      "excessReturnPct": -0.10423725430845299,
+      "deflatedSharpeProbability": 0.0001377931816439193,
+      "maxDrawdownPct": 0.014430998812736129,
+      "benchmarkLabel": "Polymarket direction",
+      "benchmarkReturnPct": -0.01457464335227223,
+      "excessReturnPct": 0.00004241093549857075,
       "excessConfidenceInterval95": [
-        -0.021174236794053378,
-        0.006242118448278034
+        -0.000004426950732817131,
+        0.000004578381279104337
       ]
     },
     "crossSectional": {
-      "intervals": 71,
-      "trades": 3,
-      "profitableTrades": 2,
-      "afterCostWinRate": 0.6666666666666666,
+      "intervals": 115,
+      "trades": 0,
+      "profitableTrades": 0,
+      "afterCostWinRate": null,
       "binaryOutcomeAccuracy": null,
-      "netReturnPct": -0.0021132901402277004,
-      "averageReturnPct": -0.0007044300467425668,
-      "meanConfidenceInterval95": [
-        -0.009044900201836828,
-        0.007636040108351694
-      ],
+      "netReturnPct": 0,
+      "averageReturnPct": null,
+      "meanConfidenceInterval95": null,
       "deflatedSharpeProbability": null,
-      "maxDrawdownPct": 0.006567105681624418,
-      "benchmarkLabel": "Hyperliquid momentum rank",
-      "benchmarkReturnPct": -0.0028099674780246832,
-      "excessReturnPct": 0.0006966773377969828,
-      "excessConfidenceInterval95": [
-        -0.01584825387229507,
-        0.016312705430826392
-      ]
+      "maxDrawdownPct": 0,
+      "benchmarkLabel": "Polymarket probability rank",
+      "benchmarkReturnPct": 0,
+      "excessReturnPct": 0,
+      "excessConfidenceInterval95": null
     }
   },
   "walkForward": {
@@ -258,173 +284,200 @@
       {
         "fold": 1,
         "calibration": {
-          "startAt": "2026-06-18T04:00:00.000Z",
-          "endAt": "2026-06-24T00:00:00.000Z",
-          "intervals": 35
+          "startAt": "2026-07-15T07:30:00.000Z",
+          "endAt": "2026-07-15T21:30:00.000Z",
+          "intervals": 57
         },
         "validation": {
-          "startAt": "2026-06-24T08:00:00.000Z",
-          "endAt": "2026-06-30T00:00:00.000Z",
-          "intervals": 35,
-          "markets": 140,
+          "startAt": "2026-07-15T21:45:00.000Z",
+          "endAt": "2026-07-16T11:45:00.000Z",
+          "intervals": 57,
+          "markets": 228,
           "baseline": {
-            "trades": 101,
-            "profitableTrades": 46,
-            "afterCostWinRate": 0.45544554455445546,
-            "binaryOutcomeAccuracy": 0.6633663366336634,
-            "netReturnPct": 0.10600160800640482,
-            "averageReturnPct": 0.0010495208713505427,
+            "trades": 165,
+            "profitableTrades": 27,
+            "afterCostWinRate": 0.16363636363636364,
+            "binaryOutcomeAccuracy": 0.6848484848484848,
+            "netReturnPct": -0.00986830687844903,
+            "averageReturnPct": -0.0011961584095089733,
             "meanConfidenceInterval95": [
-              -0.003192466218107824,
-              0.005298324492384983
+              -0.00021590745431500157,
+              -0.00012924673845557814
             ],
-            "deflatedSharpeProbability": 0.23236850375614126,
-            "maxDrawdownPct": 0.17863798896516264,
+            "deflatedSharpeProbability": 0.03869990045279581,
+            "maxDrawdownPct": 0.009822005318307458,
+            "benchmarkLabel": "Always short",
+            "benchmarkReturnPct": -0.00948247165744316,
+            "excessReturnPct": -0.0003858352210058718,
+            "excessConfidenceInterval95": [
+              -0.00007077442097542971,
+              0.00005054109541785453
+            ]
+          },
+          "control": {
+            "trades": 168,
+            "profitableTrades": 26,
+            "afterCostWinRate": 0.15476190476190477,
+            "binaryOutcomeAccuracy": 0.6666666666666666,
+            "netReturnPct": -0.010466318281757332,
+            "averageReturnPct": -0.0012459902716377776,
+            "meanConfidenceInterval95": [
+              -0.00022709882209497964,
+              -0.00014118507620684284
+            ],
+            "deflatedSharpeProbability": 2.2074361966106792e-7,
+            "maxDrawdownPct": 0.010413968298686682,
             "benchmarkLabel": null,
             "benchmarkReturnPct": null,
             "excessReturnPct": null,
             "excessConfidenceInterval95": null
           },
           "implied": {
-            "trades": 123,
-            "profitableTrades": 68,
-            "afterCostWinRate": 0.5528455284552846,
-            "binaryOutcomeAccuracy": 0.6585365853658537,
-            "netReturnPct": 0.36434681741930874,
-            "averageReturnPct": 0.002962169247311453,
-            "meanConfidenceInterval95": [
-              -0.0003539094451264054,
-              0.00655004263032979
-            ],
-            "deflatedSharpeProbability": 0.8087395027083119,
-            "maxDrawdownPct": 0.09993950672515407,
-            "benchmarkLabel": "Polymarket direction",
-            "benchmarkReturnPct": 0.18196154692234115,
-            "excessReturnPct": 0.18238527049696734,
-            "excessConfidenceInterval95": [
-              -0.0007996326011120449,
-              0.004290353581592429
-            ]
-          },
-          "leadLag": {
-            "trades": 6,
-            "profitableTrades": 6,
+            "trades": 2,
+            "profitableTrades": 2,
             "afterCostWinRate": 1,
             "binaryOutcomeAccuracy": 1,
-            "netReturnPct": 0.05620341179481313,
-            "averageReturnPct": 0.009367235299135522,
-            "meanConfidenceInterval95": [
-              0.003602337825663691,
-              0.015507903556503022
-            ],
+            "netReturnPct": 0.0005691568550764554,
+            "averageReturnPct": 0.005691568550764554,
+            "meanConfidenceInterval95": null,
             "deflatedSharpeProbability": null,
             "maxDrawdownPct": 0,
             "benchmarkLabel": "Always long",
-            "benchmarkReturnPct": 0.030145435002743397,
-            "excessReturnPct": 0.026057976792069733,
-            "excessConfidenceInterval95": [
-              0,
-              0.006560106618461107
-            ]
-          },
-          "crossSectional": {
-            "intervals": 35,
-            "trades": 5,
-            "profitableTrades": 4,
-            "afterCostWinRate": 0.8,
-            "binaryOutcomeAccuracy": null,
-            "netReturnPct": 0.012126034248126846,
-            "averageReturnPct": 0.0024252068496253693,
-            "meanConfidenceInterval95": [
-              -0.0009791984658615335,
-              0.005829612165112272
-            ],
-            "deflatedSharpeProbability": null,
-            "maxDrawdownPct": 0.006197379572609574,
-            "benchmarkLabel": "Hyperliquid momentum rank",
-            "benchmarkReturnPct": 0.01180329738535807,
-            "excessReturnPct": 0.00032273686276877624,
-            "excessConfidenceInterval95": [
-              -0.0032209625461792645,
-              0.0033500572912867747
-            ]
-          }
-        }
-      },
-      {
-        "fold": 2,
-        "calibration": {
-          "startAt": "2026-06-18T04:00:00.000Z",
-          "endAt": "2026-06-30T00:00:00.000Z",
-          "intervals": 70
-        },
-        "validation": {
-          "startAt": "2026-06-30T04:00:00.000Z",
-          "endAt": "2026-07-06T00:00:00.000Z",
-          "intervals": 35,
-          "markets": 140,
-          "baseline": {
-            "trades": 83,
-            "profitableTrades": 43,
-            "afterCostWinRate": 0.5180722891566265,
-            "binaryOutcomeAccuracy": 0.6867469879518072,
-            "netReturnPct": 0.04996986930169246,
-            "averageReturnPct": 0.0006020466180926803,
-            "meanConfidenceInterval95": [
-              -0.003915717968957952,
-              0.005225709699491936
-            ],
-            "deflatedSharpeProbability": 0.14902017557834868,
-            "maxDrawdownPct": 0.16542783227237168,
-            "benchmarkLabel": null,
-            "benchmarkReturnPct": null,
-            "excessReturnPct": null,
-            "excessConfidenceInterval95": null
-          },
-          "implied": {
-            "trades": 130,
-            "profitableTrades": 74,
-            "afterCostWinRate": 0.5692307692307692,
-            "binaryOutcomeAccuracy": 0.6538461538461539,
-            "netReturnPct": 0.18849337961293594,
-            "averageReturnPct": 0.001449949073945661,
-            "meanConfidenceInterval95": [
-              -0.0009190500901405127,
-              0.0038241485703883835
-            ],
-            "deflatedSharpeProbability": 0.5074716811933797,
-            "maxDrawdownPct": 0.0848081302277626,
-            "benchmarkLabel": "Always long",
-            "benchmarkReturnPct": 0.2299274874317627,
-            "excessReturnPct": -0.041434107818826796,
-            "excessConfidenceInterval95": [
-              -0.0029406076021645487,
-              0.002356649637838919
-            ]
-          },
-          "leadLag": {
-            "trades": 14,
-            "profitableTrades": 9,
-            "afterCostWinRate": 0.6428571428571429,
-            "binaryOutcomeAccuracy": 0.7142857142857143,
-            "netReturnPct": 0.024927658506585994,
-            "averageReturnPct": 0.0017805470361847138,
-            "meanConfidenceInterval95": [
-              -0.0001974679072247512,
-              0.00415755101989087
-            ],
-            "deflatedSharpeProbability": 0.2530095573581111,
-            "maxDrawdownPct": 0.013536887377367982,
-            "benchmarkLabel": "Polymarket direction",
-            "benchmarkReturnPct": 0.024927658506585994,
+            "benchmarkReturnPct": 0.0005691568550764554,
             "excessReturnPct": 0,
             "excessConfidenceInterval95": [
               0,
               0
             ]
           },
+          "leadLag": {
+            "trades": 146,
+            "profitableTrades": 25,
+            "afterCostWinRate": 0.17123287671232876,
+            "binaryOutcomeAccuracy": 0.6712328767123288,
+            "netReturnPct": -0.007556453801760639,
+            "averageReturnPct": -0.0010351306577754298,
+            "meanConfidenceInterval95": [
+              -0.0002158894012227549,
+              -0.00007261269241359718
+            ],
+            "deflatedSharpeProbability": 0.000048903360456098444,
+            "maxDrawdownPct": 0.007530135160057294,
+            "benchmarkLabel": "Always short",
+            "benchmarkReturnPct": -0.008047035358003156,
+            "excessReturnPct": 0.0004905815562425192,
+            "excessConfidenceInterval95": [
+              -0.000012195206910600181,
+              0.000020225963123970073
+            ]
+          },
           "crossSectional": {
-            "intervals": 35,
+            "intervals": 57,
+            "trades": 0,
+            "profitableTrades": 0,
+            "afterCostWinRate": null,
+            "binaryOutcomeAccuracy": null,
+            "netReturnPct": 0,
+            "averageReturnPct": null,
+            "meanConfidenceInterval95": null,
+            "deflatedSharpeProbability": null,
+            "maxDrawdownPct": 0,
+            "benchmarkLabel": "Polymarket probability rank",
+            "benchmarkReturnPct": 0,
+            "excessReturnPct": 0,
+            "excessConfidenceInterval95": null
+          }
+        }
+      },
+      {
+        "fold": 2,
+        "calibration": {
+          "startAt": "2026-07-15T07:30:00.000Z",
+          "endAt": "2026-07-16T11:45:00.000Z",
+          "intervals": 114
+        },
+        "validation": {
+          "startAt": "2026-07-16T12:00:00.000Z",
+          "endAt": "2026-07-17T02:00:00.000Z",
+          "intervals": 57,
+          "markets": 228,
+          "baseline": {
+            "trades": 157,
+            "profitableTrades": 51,
+            "afterCostWinRate": 0.3248407643312102,
+            "binaryOutcomeAccuracy": 0.7707006369426752,
+            "netReturnPct": -0.004520126824884804,
+            "averageReturnPct": -0.0005758123343802297,
+            "meanConfidenceInterval95": [
+              -0.00013901436212965826,
+              -0.000010774998034182825
+            ],
+            "deflatedSharpeProbability": 0.45250556785295354,
+            "maxDrawdownPct": 0.00545279662951916,
+            "benchmarkLabel": "Polymarket direction",
+            "benchmarkReturnPct": -0.004671574544007153,
+            "excessReturnPct": 0.00015144771912234915,
+            "excessConfidenceInterval95": [
+              0,
+              0.000007121418627672189
+            ]
+          },
+          "control": {
+            "trades": 159,
+            "profitableTrades": 50,
+            "afterCostWinRate": 0.31446540880503143,
+            "binaryOutcomeAccuracy": 0.7672955974842768,
+            "netReturnPct": -0.004671574544007154,
+            "averageReturnPct": -0.0005876194394977551,
+            "meanConfidenceInterval95": [
+              -0.00014124658267926325,
+              -0.000013431975562645092
+            ],
+            "deflatedSharpeProbability": 0.0006352694737579156,
+            "maxDrawdownPct": 0.00560341425099913,
+            "benchmarkLabel": null,
+            "benchmarkReturnPct": null,
+            "excessReturnPct": null,
+            "excessConfidenceInterval95": null
+          },
+          "implied": {
+            "trades": 0,
+            "profitableTrades": 0,
+            "afterCostWinRate": null,
+            "binaryOutcomeAccuracy": null,
+            "netReturnPct": 0,
+            "averageReturnPct": null,
+            "meanConfidenceInterval95": null,
+            "deflatedSharpeProbability": null,
+            "maxDrawdownPct": 0,
+            "benchmarkLabel": "Polymarket direction",
+            "benchmarkReturnPct": 0,
+            "excessReturnPct": 0,
+            "excessConfidenceInterval95": null
+          },
+          "leadLag": {
+            "trades": 134,
+            "profitableTrades": 28,
+            "afterCostWinRate": 0.208955223880597,
+            "binaryOutcomeAccuracy": 0.5970149253731343,
+            "netReturnPct": -0.00739055504697949,
+            "averageReturnPct": -0.0011030679174596264,
+            "meanConfidenceInterval95": [
+              -0.0002060926035359909,
+              -0.00007363010759640715
+            ],
+            "deflatedSharpeProbability": 0.0001329128453945172,
+            "maxDrawdownPct": 0.008140568454159013,
+            "benchmarkLabel": "Polymarket direction",
+            "benchmarkReturnPct": -0.006082370689660537,
+            "excessReturnPct": -0.0013081843573189552,
+            "excessConfidenceInterval95": [
+              -0.000024006687838274135,
+              0.0000024749089706143385
+            ]
+          },
+          "crossSectional": {
+            "intervals": 57,
             "trades": 0,
             "profitableTrades": 0,
             "afterCostWinRate": null,
@@ -444,89 +497,104 @@
       {
         "fold": 3,
         "calibration": {
-          "startAt": "2026-06-18T04:00:00.000Z",
-          "endAt": "2026-07-06T00:00:00.000Z",
-          "intervals": 105
+          "startAt": "2026-07-15T07:30:00.000Z",
+          "endAt": "2026-07-17T02:00:00.000Z",
+          "intervals": 171
         },
         "validation": {
-          "startAt": "2026-07-06T04:00:00.000Z",
-          "endAt": "2026-07-11T20:00:00.000Z",
-          "intervals": 35,
-          "markets": 140,
+          "startAt": "2026-07-17T02:15:00.000Z",
+          "endAt": "2026-07-17T16:15:00.000Z",
+          "intervals": 57,
+          "markets": 227,
           "baseline": {
-            "trades": 74,
-            "profitableTrades": 28,
-            "afterCostWinRate": 0.3783783783783784,
-            "binaryOutcomeAccuracy": 0.6081081081081081,
-            "netReturnPct": -0.23800879507311318,
-            "averageReturnPct": -0.0032163350685555834,
+            "trades": 156,
+            "profitableTrades": 27,
+            "afterCostWinRate": 0.17307692307692307,
+            "binaryOutcomeAccuracy": 0.6282051282051282,
+            "netReturnPct": -0.011562480295370438,
+            "averageReturnPct": -0.001482369268637236,
             "meanConfidenceInterval95": [
-              -0.0055518816709427725,
-              -0.0008817403226177034
+              -0.000256556952467429,
+              -0.00015324395995626672
             ],
-            "deflatedSharpeProbability": 2.9039084398219117e-7,
-            "maxDrawdownPct": 0.21835831142056572,
+            "deflatedSharpeProbability": 0.014113854926407488,
+            "maxDrawdownPct": 0.011499381102253903,
+            "benchmarkLabel": "Always long",
+            "benchmarkReturnPct": -0.009836604674899186,
+            "excessReturnPct": -0.0017258756204712605,
+            "excessConfidenceInterval95": [
+              -0.00010235002940230886,
+              0.0000510291355721258
+            ]
+          },
+          "control": {
+            "trades": 157,
+            "profitableTrades": 28,
+            "afterCostWinRate": 0.17834394904458598,
+            "binaryOutcomeAccuracy": 0.6305732484076433,
+            "netReturnPct": -0.011437681614576003,
+            "averageReturnPct": -0.0014570295050415297,
+            "meanConfidenceInterval95": [
+              -0.00025618600682968145,
+              -0.000149128197417187
+            ],
+            "deflatedSharpeProbability": 0.000009778491741774253,
+            "maxDrawdownPct": 0.011376002699176824,
             "benchmarkLabel": null,
             "benchmarkReturnPct": null,
             "excessReturnPct": null,
             "excessConfidenceInterval95": null
           },
           "implied": {
-            "trades": 108,
-            "profitableTrades": 52,
-            "afterCostWinRate": 0.48148148148148145,
-            "binaryOutcomeAccuracy": 0.5462962962962963,
-            "netReturnPct": -0.013730569217630903,
-            "averageReturnPct": -0.0001271349001632491,
-            "meanConfidenceInterval95": [
-              -0.0028804778055525034,
-              0.002511821222428342
-            ],
-            "deflatedSharpeProbability": 0.05330372912823278,
-            "maxDrawdownPct": 0.12626423723613425,
-            "benchmarkLabel": "Always short",
-            "benchmarkReturnPct": -0.09448216182288896,
-            "excessReturnPct": 0.08075159260525804,
-            "excessConfidenceInterval95": [
-              -0.00284149072489901,
-              0.00416342309937105
-            ]
-          },
-          "leadLag": {
-            "trades": 13,
-            "profitableTrades": 9,
-            "afterCostWinRate": 0.6923076923076923,
-            "binaryOutcomeAccuracy": 0.7692307692307693,
-            "netReturnPct": 0.05220526482330077,
-            "averageReturnPct": 0.0040157896017923665,
-            "meanConfidenceInterval95": [
-              0.0007053103772311933,
-              0.007284258790456216
-            ],
-            "deflatedSharpeProbability": 0.6566821734529051,
-            "maxDrawdownPct": 0.013381533441864305,
-            "benchmarkLabel": "Polymarket direction",
-            "benchmarkReturnPct": 0.021520638486801243,
-            "excessReturnPct": 0.030684626336499526,
-            "excessConfidenceInterval95": [
-              0,
-              0.007081067616115275
-            ]
-          },
-          "crossSectional": {
-            "intervals": 35,
-            "trades": 1,
-            "profitableTrades": 1,
-            "afterCostWinRate": 1,
+            "trades": 0,
+            "profitableTrades": 0,
+            "afterCostWinRate": null,
             "binaryOutcomeAccuracy": null,
-            "netReturnPct": 0.003368264284762397,
-            "averageReturnPct": 0.003368264284762397,
+            "netReturnPct": 0,
+            "averageReturnPct": null,
             "meanConfidenceInterval95": null,
             "deflatedSharpeProbability": null,
             "maxDrawdownPct": 0,
-            "benchmarkLabel": "Random pair median (200 trials)",
-            "benchmarkReturnPct": -0.0006900060371712539,
-            "excessReturnPct": 0.004058270321933651,
+            "benchmarkLabel": "Polymarket direction",
+            "benchmarkReturnPct": 0,
+            "excessReturnPct": 0,
+            "excessConfidenceInterval95": null
+          },
+          "leadLag": {
+            "trades": 127,
+            "profitableTrades": 23,
+            "afterCostWinRate": 0.18110236220472442,
+            "binaryOutcomeAccuracy": 0.6771653543307087,
+            "netReturnPct": -0.006881096137700574,
+            "averageReturnPct": -0.0010836371870394609,
+            "meanConfidenceInterval95": [
+              -0.0002482060327130633,
+              -0.00004044055462406174
+            ],
+            "deflatedSharpeProbability": 0.0021768845645588897,
+            "maxDrawdownPct": 0.007465913780745126,
+            "benchmarkLabel": "Polymarket direction",
+            "benchmarkReturnPct": -0.006723167587083394,
+            "excessReturnPct": -0.0001579285506171793,
+            "excessConfidenceInterval95": [
+              -0.000008113494828750063,
+              0.000004694855975591476
+            ]
+          },
+          "crossSectional": {
+            "intervals": 57,
+            "trades": 0,
+            "profitableTrades": 0,
+            "afterCostWinRate": null,
+            "binaryOutcomeAccuracy": null,
+            "netReturnPct": 0,
+            "averageReturnPct": null,
+            "meanConfidenceInterval95": null,
+            "deflatedSharpeProbability": null,
+            "maxDrawdownPct": 0,
+            "benchmarkLabel": "Polymarket probability rank",
+            "benchmarkReturnPct": 0,
+            "excessReturnPct": 0,
             "excessConfidenceInterval95": null
           }
         }
@@ -534,126 +602,141 @@
       {
         "fold": 4,
         "calibration": {
-          "startAt": "2026-06-18T04:00:00.000Z",
-          "endAt": "2026-07-11T20:00:00.000Z",
-          "intervals": 140
+          "startAt": "2026-07-15T07:30:00.000Z",
+          "endAt": "2026-07-17T16:15:00.000Z",
+          "intervals": 228
         },
         "validation": {
-          "startAt": "2026-07-12T00:00:00.000Z",
-          "endAt": "2026-07-17T20:00:00.000Z",
-          "intervals": 36,
-          "markets": 144,
+          "startAt": "2026-07-17T16:30:00.000Z",
+          "endAt": "2026-07-18T07:00:00.000Z",
+          "intervals": 59,
+          "markets": 236,
           "baseline": {
-            "trades": 91,
-            "profitableTrades": 44,
-            "afterCostWinRate": 0.4835164835164835,
-            "binaryOutcomeAccuracy": 0.7252747252747253,
-            "netReturnPct": -0.18627685463942698,
-            "averageReturnPct": -0.0020469984026310656,
+            "trades": 155,
+            "profitableTrades": 14,
+            "afterCostWinRate": 0.09032258064516129,
+            "binaryOutcomeAccuracy": 0.7419354838709677,
+            "netReturnPct": -0.009351534693701334,
+            "averageReturnPct": -0.0012066496378969477,
             "meanConfidenceInterval95": [
-              -0.004299787677809459,
-              0.0003975525062539216
+              -0.0001931504404314128,
+              -0.00012195378244637773
             ],
-            "deflatedSharpeProbability": 0.000005773155757893278,
-            "maxDrawdownPct": 0.22476531296820168,
+            "deflatedSharpeProbability": 0.6768295729843581,
+            "maxDrawdownPct": 0.009309280735448677,
+            "benchmarkLabel": "Polymarket direction",
+            "benchmarkReturnPct": -0.009762118574129034,
+            "excessReturnPct": 0.0004105838804276987,
+            "excessConfidenceInterval95": [
+              0.0000011865905262371766,
+              0.000014034822367745234
+            ]
+          },
+          "control": {
+            "trades": 162,
+            "profitableTrades": 15,
+            "afterCostWinRate": 0.09259259259259259,
+            "binaryOutcomeAccuracy": 0.7407407407407407,
+            "netReturnPct": -0.009762118574129036,
+            "averageReturnPct": -0.0012051998239665483,
+            "meanConfidenceInterval95": [
+              -0.00020472063034997977,
+              -0.00012540067860181798
+            ],
+            "deflatedSharpeProbability": 5.811111536413449e-8,
+            "maxDrawdownPct": 0.009716042405036429,
             "benchmarkLabel": null,
             "benchmarkReturnPct": null,
             "excessReturnPct": null,
             "excessConfidenceInterval95": null
           },
           "implied": {
-            "trades": 109,
-            "profitableTrades": 62,
-            "afterCostWinRate": 0.5688073394495413,
-            "binaryOutcomeAccuracy": 0.6972477064220184,
-            "netReturnPct": 0.23087767686475977,
-            "averageReturnPct": 0.0021181438244473375,
-            "meanConfidenceInterval95": [
-              -0.0012485034357267327,
-              0.0055748985543084195
-            ],
-            "deflatedSharpeProbability": 0.8316784201026863,
-            "maxDrawdownPct": 0.0968216715932117,
-            "benchmarkLabel": "Always long",
-            "benchmarkReturnPct": -0.05935791862980853,
-            "excessReturnPct": 0.2902355954945683,
-            "excessConfidenceInterval95": [
-              -0.001790061108982978,
-              0.007367929836659548
-            ]
+            "trades": 0,
+            "profitableTrades": 0,
+            "afterCostWinRate": null,
+            "binaryOutcomeAccuracy": null,
+            "netReturnPct": 0,
+            "averageReturnPct": null,
+            "meanConfidenceInterval95": null,
+            "deflatedSharpeProbability": null,
+            "maxDrawdownPct": 0,
+            "benchmarkLabel": "Polymarket direction",
+            "benchmarkReturnPct": 0,
+            "excessReturnPct": 0,
+            "excessConfidenceInterval95": null
           },
           "leadLag": {
-            "trades": 6,
-            "profitableTrades": 2,
-            "afterCostWinRate": 0.3333333333333333,
-            "binaryOutcomeAccuracy": 0.3333333333333333,
-            "netReturnPct": -0.08071960330902077,
-            "averageReturnPct": -0.013453267218170127,
+            "trades": 122,
+            "profitableTrades": 9,
+            "afterCostWinRate": 0.07377049180327869,
+            "binaryOutcomeAccuracy": 0.7459016393442623,
+            "netReturnPct": -0.007651136279073082,
+            "averageReturnPct": -0.001254284635913621,
             "meanConfidenceInterval95": [
-              -0.029003204251446413,
-              -0.00043697002863138926
+              -0.00018547325757904134,
+              -0.00012414685641924653
             ],
-            "deflatedSharpeProbability": null,
-            "maxDrawdownPct": 0.07906610581739049,
+            "deflatedSharpeProbability": 0,
+            "maxDrawdownPct": 0.0076229420429110295,
             "benchmarkLabel": "Always long",
-            "benchmarkReturnPct": 0.06443372507409306,
-            "excessReturnPct": -0.14515332838311384,
+            "benchmarkReturnPct": -0.007613030817247345,
+            "excessReturnPct": -0.000038105461825740426,
             "excessConfidenceInterval95": [
-              -0.055265683026604645,
-              0.0018182640736374193
+              -0.000015345618350813156,
+              0.000014643549999303363
             ]
           },
           "crossSectional": {
-            "intervals": 36,
-            "trades": 2,
-            "profitableTrades": 1,
-            "afterCostWinRate": 0.5,
+            "intervals": 59,
+            "trades": 0,
+            "profitableTrades": 0,
+            "afterCostWinRate": null,
             "binaryOutcomeAccuracy": null,
-            "netReturnPct": -0.005481554424990097,
-            "averageReturnPct": -0.0027407772124950487,
-            "meanConfidenceInterval95": [
-              -0.013362665042798365,
-              0.007881110617808267
-            ],
+            "netReturnPct": 0,
+            "averageReturnPct": null,
+            "meanConfidenceInterval95": null,
             "deflatedSharpeProbability": null,
-            "maxDrawdownPct": 0.0065671056816244315,
-            "benchmarkLabel": "Hyperliquid momentum rank",
-            "benchmarkReturnPct": 0.0032861731315544573,
-            "excessReturnPct": -0.008767727556544555,
-            "excessConfidenceInterval95": [
-              -0.02121031155713603,
-              0.012442584000591474
-            ]
+            "maxDrawdownPct": 0,
+            "benchmarkLabel": "Polymarket probability rank",
+            "benchmarkReturnPct": 0,
+            "excessReturnPct": 0,
+            "excessConfidenceInterval95": null
           }
         }
       }
     ],
     "minimumProfitableFolds": 3,
     "stability": {
-      "implied": {
+      "baseline": {
         "folds": 4,
         "tradedFolds": 4,
-        "profitableFolds": 3,
+        "profitableFolds": 0,
+        "requiredProfitableFolds": 3
+      },
+      "implied": {
+        "folds": 4,
+        "tradedFolds": 1,
+        "profitableFolds": 1,
         "requiredProfitableFolds": 3
       },
       "leadLag": {
         "folds": 4,
         "tradedFolds": 4,
-        "profitableFolds": 3,
+        "profitableFolds": 0,
         "requiredProfitableFolds": 3
       },
       "crossSectional": {
         "folds": 4,
-        "tradedFolds": 3,
-        "profitableFolds": 2,
+        "tradedFolds": 0,
+        "profitableFolds": 0,
         "requiredProfitableFolds": 3
       }
     }
   },
   "screening": {
-    "implied": {
+    "baseline": {
       "status": "rejected",
-      "passedGates": 3,
+      "passedGates": 2,
       "totalGates": 7,
       "gates": [
         {
@@ -664,7 +747,49 @@
         {
           "id": "net",
           "label": "positive after costs",
+          "passed": false
+        },
+        {
+          "id": "confidence",
+          "label": "95% mean-return lower bound above zero",
+          "passed": false
+        },
+        {
+          "id": "benchmark",
+          "label": "95% benchmark-excess lower bound above zero",
+          "passed": false
+        },
+        {
+          "id": "selection",
+          "label": "deflated Sharpe probability at least 95%",
+          "passed": false
+        },
+        {
+          "id": "drawdown",
+          "label": "maximum drawdown at or below 5%",
           "passed": true
+        },
+        {
+          "id": "walk-forward",
+          "label": "3/4 sequential validation periods positive",
+          "passed": false
+        }
+      ]
+    },
+    "implied": {
+      "status": "insufficient",
+      "passedGates": 0,
+      "totalGates": 7,
+      "gates": [
+        {
+          "id": "trades",
+          "label": "50 holdout trades",
+          "passed": false
+        },
+        {
+          "id": "net",
+          "label": "positive after costs",
+          "passed": false
         },
         {
           "id": "confidence",
@@ -689,19 +814,19 @@
         {
           "id": "walk-forward",
           "label": "3/4 sequential validation periods positive",
-          "passed": true
+          "passed": false
         }
       ]
     },
     "leadLag": {
-      "status": "insufficient",
-      "passedGates": 1,
+      "status": "rejected",
+      "passedGates": 2,
       "totalGates": 7,
       "gates": [
         {
           "id": "trades",
           "label": "50 holdout trades",
-          "passed": false
+          "passed": true
         },
         {
           "id": "net",
@@ -726,12 +851,12 @@
         {
           "id": "drawdown",
           "label": "maximum drawdown at or below 5%",
-          "passed": false
+          "passed": true
         },
         {
           "id": "walk-forward",
           "label": "3/4 sequential validation periods positive",
-          "passed": true
+          "passed": false
         }
       ]
     },

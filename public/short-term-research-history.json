@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "generatedAt": "2026-07-18T07:29:06.652Z",
+      "marketDuration": "15m",
+      "lookbackHours": 72,
+      "executionMode": "taker",
+      "completeMarkets": 1147,
+      "status": "rejected",
+      "trades": 310,
+      "netReturnPct": -0.02076176148026456,
+      "averageReturnPct": -0.0013394684825977124,
+      "confidenceLowerPct": -0.000216712741518968,
+      "excessReturnPct": -0.0010815399234946038,
+      "maxDrawdownPct": 0.020552486550122984,
+      "profitableFolds": 0,
+      "totalFolds": 4,
+      "passedGates": 2,
+      "totalGates": 7
+    }
+  ]
+}

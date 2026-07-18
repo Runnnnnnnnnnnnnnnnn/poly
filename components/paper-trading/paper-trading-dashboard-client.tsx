@@ -427,14 +427,34 @@ type MonitoringSnapshot = {
         generatedAt: string;
         marketDuration: string;
         executionMode: string;
+        lookbackHours: number;
         completeMarkets: number;
         walkForwardFolds: number;
         minimumProfitableFolds: number;
         acceptedCandidates: number;
         totalCandidates: number;
+        currentCandidateId: string;
         candidates: Array<{
           id: string;
           label: string;
+          status: "insufficient" | "promising" | "rejected";
+          trades: number;
+          netReturnPct: number;
+          averageReturnPct: number | null;
+          confidenceLowerPct: number | null;
+          excessReturnPct: number | null;
+          maxDrawdownPct: number;
+          profitableFolds: number;
+          totalFolds: number;
+          passedGates: number;
+          totalGates: number;
+        }>;
+        history: Array<{
+          generatedAt: string;
+          marketDuration: string;
+          lookbackHours: number;
+          executionMode: string;
+          completeMarkets: number;
           status: "insufficient" | "promising" | "rejected";
           trades: number;
           netReturnPct: number;
@@ -1796,6 +1816,7 @@ const fallbackPipelines = [
   { id: "hyperliquid", label: "相場データ収集", cadence: "1分ごと", status: "waiting" as const },
   { id: "realtime-market-data", label: "秒単位の板収集", cadence: "5秒ごと", status: "waiting" as const },
   { id: "backtest", label: "モデル再検証", cadence: "6時間ごと", status: "waiting" as const },
+  { id: "short-term-backtest", label: "15分モデル過去検証", cadence: "6時間ごと", status: "waiting" as const },
   { id: "forward-experiment", label: "固定フォワード検証", cadence: "5分ごと", status: "waiting" as const },
   { id: "short-term-direction", label: "15分モデル検証", cadence: "1分ごと", status: "waiting" as const },
 ];
@@ -1835,6 +1856,7 @@ function BacktestResultsPanel({
   const ResultIcon = signal.icon;
   const isRejectedAudit = selected?.result.source === "closest-rejected-candidate";
   const backtestPipeline = monitoring?.pipelines.find((pipeline) => pipeline.id === "backtest");
+  const research = monitoring?.combinedShadow.shortTermDirection?.research ?? null;
   const publicBase = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
   return (
@@ -1842,12 +1864,20 @@ function BacktestResultsPanel({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2">
           <BarChart3 className="h-4 w-4 shrink-0 text-primary" />
-          <h2 className="text-sm font-bold text-slate-950">バックテスト結果</h2>
+          <h2 className="text-sm font-bold text-slate-950">現行モデルのバックテスト</h2>
           {requestedId && selected?.id === requestedId ? <span className="rounded-sm bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700">指定した実行</span> : null}
         </div>
         <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500"><Clock3 className="h-3.5 w-3.5" />6時間ごとに自動実行</span>
       </div>
 
+      {research ? <ShortTermHistoricalBacktest research={research} /> : null}
+
+      <details className={research ? "border-t" : ""} open={requestedId || !research ? true : undefined}>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
+          <span className="flex items-center gap-2"><Layers3 className="h-4 w-4" />6・12・24・48時間モデル</span>
+          <span className="text-[10px] font-semibold text-slate-500">比較研究と全実行履歴</span>
+        </summary>
+        <div className="border-t">
       {!selected ? (
         <div className="flex items-center gap-3 px-5 py-8 text-sm font-semibold text-slate-600">
           <Clock3 className="h-5 w-5 text-amber-500" />最初のバックテストを実行中です
@@ -1937,7 +1967,74 @@ function BacktestResultsPanel({
           </details>
         </>
       )}
+        </div>
+      </details>
     </section>
+  );
+}
+
+function ShortTermHistoricalBacktest({
+  research,
+}: {
+  research: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["shortTermDirection"]>["research"]>;
+}) {
+  const current = research.candidates.find((candidate) => candidate.id === research.currentCandidateId)
+    ?? research.candidates[0];
+  if (!current) return null;
+  const tone: Tone = current.status === "promising" ? "good" : current.status === "rejected" ? "bad" : "watch";
+  const label = current.status === "promising" ? "採用候補" : current.status === "rejected" ? "基準未達" : "データ不足";
+  const Icon = current.status === "promising" ? CheckCircle2 : current.status === "rejected" ? TrendingDown : Clock3;
+
+  return (
+    <div>
+      <div className={`grid gap-4 border-b p-5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-6 ${toneSoftClass(tone)}`}>
+        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-md ${toneIconClass(tone)}`}><Icon className="h-6 w-6" /></span>
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold text-slate-500">15分固定モデル</p>
+          <p className="mt-1 text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{label}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-600">Polymarket方向 + Hyperliquidトレンド一致 / 1取引5% / 同時3件まで</p>
+        </div>
+        <div className="text-left text-[11px] font-semibold leading-5 text-slate-600 sm:text-right">
+          <p>過去 {research.lookbackHours}時間・{formatCompact(research.completeMarkets)}市場</p>
+          <p>{formatJapanDateTime(research.generatedAt)} 実行</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
+        <BacktestMetric label="未使用期間の取引" value={`${current.trades}件`} tone={current.trades >= 50 ? "good" : "watch"} />
+        <BacktestMetric label="資金配分後の損益" value={current.trades ? formatSignedPct(current.netReturnPct) : "見送り"} tone={signedMetricTone(current.netReturnPct, current.trades > 0)} />
+        <BacktestMetric label="1取引の平均" value={current.averageReturnPct === null ? "未判定" : formatSignedPct(current.averageReturnPct)} tone={signedMetricTone(current.averageReturnPct, current.averageReturnPct !== null)} />
+        <BacktestMetric label="単純戦略との差" value={current.excessReturnPct === null ? "未判定" : formatSignedPct(current.excessReturnPct)} tone={signedMetricTone(current.excessReturnPct, current.excessReturnPct !== null)} />
+        <BacktestMetric label="最大下落" value={current.trades ? formatPct(current.maxDrawdownPct) : "未判定"} tone={current.maxDrawdownPct <= 0.05 ? "good" : "bad"} />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <span>順次検証 {current.profitableFolds}/{current.totalFolds}期間でプラス</span>
+          <span>15分枠の95%下限 {formatSignedPct(current.confidenceLowerPct)}</span>
+          <span>採用条件 {current.passedGates}/{current.totalGates}</span>
+        </div>
+        <span>集約履歴足による一次判定</span>
+      </div>
+      {research.history.length ? (
+        <details className="border-t">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
+            <span className="flex items-center gap-2"><History className="h-4 w-4" />15分モデルの実行履歴</span>
+            <span className="text-[10px] font-semibold text-slate-500">{research.history.length}回分</span>
+          </summary>
+          <div className="divide-y border-t">
+            {research.history.slice(0, 12).map((item) => (
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 text-xs sm:px-5" key={item.generatedAt}>
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-800">{formatJapanDateTime(item.generatedAt)}</p>
+                  <p className="truncate text-[10px] font-semibold text-slate-500">{formatCompact(item.completeMarkets)}市場・{item.trades}取引・{item.profitableFolds}/{item.totalFolds}期間</p>
+                </div>
+                <span className={`font-bold ${item.netReturnPct >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.netReturnPct)}</span>
+                <span className={`rounded-sm px-2 py-1 text-[10px] font-bold ${tonePillClass(item.status === "promising" ? "good" : item.status === "rejected" ? "bad" : "watch")}`}>{item.status === "promising" ? "候補" : item.status === "rejected" ? "未達" : "不足"}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
   );
 }
 

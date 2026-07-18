@@ -20,6 +20,7 @@
     "backtest:export": "tsx scripts/export-model-evaluations.mts",
     "analyze:short-term": "tsx scripts/analyze-short-term-transfer.mts",
     "backtest:short-term-history": "tsx scripts/backtest-short-term-history.mts",
+    "backtest:short-term-worker": "tsx scripts/run-short-term-research.mts",
     "paper:backtest": "tsx scripts/run-paper-backtest.mts",
     "collect:crypto": "tsx scripts/collect-crypto-snapshots.mts",
     "collect:realtime": "tsx scripts/run-realtime-market-data.mts",

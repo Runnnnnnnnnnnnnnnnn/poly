@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
 
 import { calculateShortTermImpliedSignal } from "../src/lib/combined-trading/short-term-implied-signal";
 import {
@@ -22,6 +23,8 @@ const takerFeePerSide = 0.00045;
 const makerFeePerSide = 0.00015;
 const slippagePerSide = 0.0002;
 const fundingPer24h = 0.0003;
+const positionPct = 0.05;
+const maximumConcurrentPositions = 3;
 const executionMode = process.env.SHORT_TERM_EXECUTION_MODE === "maker-entry" ? "maker-entry" as const : "taker" as const;
 const makerLimitOffset = 0.0001;
 const roundTripCost = executionMode === "maker-entry"
@@ -33,7 +36,7 @@ const impliedMinimumTrendZ = boundedNumber(process.env.SHORT_TERM_IMPLIED_MIN_TR
 const impliedRequireTrend = process.env.SHORT_TERM_IMPLIED_REQUIRE_TREND === "1";
 const leadLagMinimumProbabilityChange = boundedNumber(process.env.SHORT_TERM_LEAD_LAG_MIN_CHANGE, 0.1, 0.01, 0.5);
 const leadLagRequireTrend = process.env.SHORT_TERM_LEAD_LAG_REQUIRE_TREND === "1";
-const strategyTrials = Math.round(boundedNumber(process.env.SHORT_TERM_STRATEGY_TRIALS, 8, 1, 100));
+const strategyTrials = Math.round(boundedNumber(process.env.SHORT_TERM_STRATEGY_TRIALS, 11, 1, 100));
 const randomBenchmarkTrials = Math.round(boundedNumber(process.env.SHORT_TERM_RANDOM_TRIALS, 200, 20, 1_000));
 const walkForwardFolds = Math.round(boundedNumber(process.env.SHORT_TERM_WALK_FORWARD_FOLDS, 4, 3, 8));
 const minimumProfitableFolds = Math.ceil(walkForwardFolds * 0.75);
@@ -110,6 +113,8 @@ const observations = markets.flatMap((market) => {
         / Math.max(0.0003, volatility24h * Math.sqrt(elapsedHours / 24));
       const baselineSide = point.p >= 0.5 ? "LONG" as const : "SHORT" as const;
       const baselineSignalZ = (point.p - 0.5) / 0.08;
+      const controlSelected = Math.abs(baselineSignalZ) >= 1
+        && hasEntryExecution(baselineSide, entryCandle, candles);
       const previousPoint = [...history].reverse().find((candidate) => candidate.t < point.t);
       const probabilityChange = previousPoint ? point.p - previousPoint.p : 0;
       const leadLagSide = probabilityChange >= 0 ? "LONG" as const : "SHORT" as const;
@@ -128,6 +133,7 @@ const observations = markets.flatMap((market) => {
         trendZ,
         baselineSide,
         baselineSignalZ,
+        controlSelected,
         baselineSelected: Math.abs(baselineSignalZ) >= 1
           && sideMultiplier(baselineSide) * trendZ >= 0.15
           && hasEntryExecution(baselineSide, entryCandle, candles),
@@ -152,10 +158,14 @@ const observations = markets.flatMap((market) => {
   })));
   const representative = samples[0];
   const baseline = samples.find((sample) => sample.baselineSelected);
+  const control = samples.find((sample) => sample.controlSelected);
   const implied = samples.find((sample) => sample.impliedSelected);
   const leadLag = samples.find((sample) => sample.leadLagSelected);
   const baselineReturn = baseline
     ? calculateCandleReturn(baseline.baselineSide, baseline.entryCandle, exitCandle, candles) ?? 0
+    : 0;
+  const controlReturn = control
+    ? calculateCandleReturn(control.baselineSide, control.entryCandle, exitCandle, candles) ?? 0
     : 0;
   const impliedReturn = implied
     ? calculateCandleReturn(implied.implied.side, implied.entryCandle, exitCandle, candles) ?? 0
@@ -179,6 +189,19 @@ const observations = markets.flatMap((market) => {
       selected: Boolean(baseline),
       side: (baseline ?? representative).baselineSide,
       returnPct: baselineReturn,
+      signalStrength: Math.abs((baseline ?? representative).baselineSignalZ),
+    },
+    control: {
+      selected: Boolean(control),
+      side: (control ?? representative).baselineSide,
+      returnPct: controlReturn,
+      signalStrength: Math.abs((control ?? representative).baselineSignalZ),
+      alwaysLongReturnPct: control
+        ? calculateCandleReturn("LONG", control.entryCandle, exitCandle, candles) ?? 0
+        : 0,
+      alwaysShortReturnPct: control
+        ? calculateCandleReturn("SHORT", control.entryCandle, exitCandle, candles) ?? 0
+        : 0,
     },
     implied: {
       selected: Boolean(implied),
@@ -202,6 +225,9 @@ const observations = markets.flatMap((market) => {
     },
   }];
 }).sort((left, right) => left.startAt.localeCompare(right.startAt));
+
+applyConcurrentPositionLimit(observations, "baseline");
+applyConcurrentPositionLimit(observations, "control");
 
 const observationTimes = Array.from(new Set(observations.map((row) => row.startAt))).sort();
 const splitIndex = Math.floor(observationTimes.length * calibrationFraction);
@@ -231,6 +257,10 @@ const report = {
     executionMode,
     roundTripCost,
     fundingPer24h,
+    positionPct,
+    maximumConcurrentPositions,
+    fixedRule: "Polymarket probability at least 58% in either direction, confirmed by same-side Hyperliquid trend",
+    controlRule: "same Polymarket probability threshold without the Hyperliquid trend filter",
     impliedRule: {
       minimumSignalZ: impliedMinimumSignalZ,
       minimumExpectedReturnPct: roundTripCost * impliedCostMultiplier,
@@ -269,6 +299,7 @@ const report = {
   holdout: { ...holdoutSummary, crossSectional: holdoutCrossSectional },
   walkForward,
   screening: {
+    baseline: screeningVerdict(holdoutSummary.baseline, walkForward.stability.baseline),
     implied: screeningVerdict(holdoutSummary.implied, walkForward.stability.implied),
     leadLag: screeningVerdict(holdoutSummary.leadLag, walkForward.stability.leadLag),
     crossSectional: screeningVerdict(holdoutCrossSectional, walkForward.stability.crossSectional),
@@ -276,9 +307,10 @@ const report = {
 };
 const serializedReport = `${JSON.stringify(report, null, 2)}\n`;
 if (process.env.SHORT_TERM_HISTORY_OUTPUT) {
-  await writeFile(resolve(process.env.SHORT_TERM_HISTORY_OUTPUT), serializedReport, "utf8");
+  await writeAtomic(resolve(process.env.SHORT_TERM_HISTORY_OUTPUT), serializedReport);
 }
-console.log(serializedReport.trimEnd());
+await persistResearchArtifacts(report, serializedReport);
+if (process.env.SHORT_TERM_HISTORY_QUIET !== "1") console.log(serializedReport.trimEnd());
 
 function buildCrossSectionalTrades(rows: typeof observations) {
   const groups = new Map<string, typeof observations>();
@@ -331,6 +363,7 @@ function pairReturn(long: (typeof observations)[number], short: (typeof observat
 function summarizeCrossSectional(rows: ReturnType<typeof buildCrossSectionalTrades>) {
   const selected = rows.filter((row) => row.selected);
   const returns = selected.map((row) => row.returnPct);
+  const portfolioReturns = returns.map((value) => value * positionPct);
   const randomBenchmark = medianTrial(Array.from({ length: randomBenchmarkTrials }, (_, trial) => (
     selected.map((row) => row.benchmarks.randomPairReturns[trial])
   )));
@@ -338,20 +371,20 @@ function summarizeCrossSectional(rows: ReturnType<typeof buildCrossSectionalTrad
     { label: "Polymarket probability rank", returns: selected.map((row) => row.benchmarks.polymarketProbabilityRank) },
     { label: "Hyperliquid momentum rank", returns: selected.map((row) => row.benchmarks.hyperliquidMomentumRank) },
     { label: `Random pair median (${randomBenchmarkTrials} trials)`, returns: randomBenchmark },
-  ].map((candidate) => ({ ...candidate, returnPct: sum(candidate.returns) }));
+  ].map((candidate) => ({ ...candidate, returnPct: sum(candidate.returns) * positionPct }));
   const best = [...benchmarkCandidates].sort((left, right) => right.returnPct - left.returnPct)[0];
-  const excess = selected.map((row, index) => row.returnPct - best.returns[index]);
+  const excess = selected.map((row, index) => (row.returnPct - best.returns[index]) * positionPct);
   return {
     intervals: rows.length,
     trades: selected.length,
     profitableTrades: returns.filter((value) => value > 0).length,
     afterCostWinRate: returns.length ? returns.filter((value) => value > 0).length / returns.length : null,
     binaryOutcomeAccuracy: null,
-    netReturnPct: sum(returns),
+    netReturnPct: sum(portfolioReturns),
     averageReturnPct: average(returns),
-    meanConfidenceInterval95: blockBootstrapMeanConfidenceInterval(returns),
-    deflatedSharpeProbability: deflatedSharpeProbability(returns, strategyTrials),
-    maxDrawdownPct: maximumDrawdown(returns),
+    meanConfidenceInterval95: blockBootstrapMeanConfidenceInterval(portfolioReturns),
+    deflatedSharpeProbability: deflatedSharpeProbability(excess, strategyTrials),
+    maxDrawdownPct: maximumDrawdown(portfolioReturns),
     benchmarkLabel: best.label,
     benchmarkReturnPct: best.returnPct,
     excessReturnPct: sum(excess),
@@ -394,6 +427,7 @@ function buildWalkForwardValidation(
     folds,
     minimumProfitableFolds,
     stability: {
+      baseline: summarizeFoldStability(folds.map((fold) => fold.validation.baseline)),
       implied: summarizeFoldStability(folds.map((fold) => fold.validation.implied)),
       leadLag: summarizeFoldStability(folds.map((fold) => fold.validation.leadLag)),
       crossSectional: summarizeFoldStability(folds.map((fold) => fold.validation.crossSectional)),
@@ -413,34 +447,79 @@ function summarizeFoldStability(folds: Array<{ trades: number; netReturnPct: num
 function summarizePeriod(rows: typeof observations) {
   return {
     markets: rows.length,
-    baseline: summarizeModel(rows, "baseline"),
+    baseline: summarizeBaseline(rows),
+    control: summarizeModel(rows, "control"),
     implied: summarizeModel(rows, "implied"),
     leadLag: summarizeModel(rows, "leadLag"),
   };
 }
 
-function summarizeModel(rows: typeof observations, key: "baseline" | "implied" | "leadLag") {
+function summarizeModel(rows: typeof observations, key: "control" | "implied" | "leadLag") {
   const selected = rows.filter((row) => row[key].selected);
   const returns = selected.map((row) => row[key].returnPct);
+  const portfolioReturns = groupWindowReturns(selected, (row) => row[key].returnPct * positionPct);
   const correct = selected.filter((row) => (
     (row[key].side === "LONG" && row.officialResult === 1)
     || (row[key].side === "SHORT" && row.officialResult === 0)
   ));
-  const benchmark = key === "baseline" ? null : summarizeBenchmarks(selected, key);
+  const benchmark = key === "control" ? null : summarizeBenchmarks(selected, key);
   return {
     trades: selected.length,
     profitableTrades: returns.filter((value) => value > 0).length,
     afterCostWinRate: returns.length ? returns.filter((value) => value > 0).length / returns.length : null,
     binaryOutcomeAccuracy: selected.length ? correct.length / selected.length : null,
-    netReturnPct: sum(returns),
+    netReturnPct: sum(portfolioReturns),
     averageReturnPct: average(returns),
-    meanConfidenceInterval95: blockBootstrapMeanConfidenceInterval(returns),
-    deflatedSharpeProbability: deflatedSharpeProbability(returns, strategyTrials),
-    maxDrawdownPct: maximumDrawdown(returns),
+    meanConfidenceInterval95: blockBootstrapMeanConfidenceInterval(portfolioReturns),
+    deflatedSharpeProbability: deflatedSharpeProbability(portfolioReturns, strategyTrials),
+    maxDrawdownPct: maximumDrawdown(portfolioReturns),
     benchmarkLabel: benchmark?.label ?? null,
     benchmarkReturnPct: benchmark?.returnPct ?? null,
     excessReturnPct: benchmark?.excessReturnPct ?? null,
     excessConfidenceInterval95: benchmark?.confidenceInterval95 ?? null,
+  };
+}
+
+function summarizeBaseline(rows: typeof observations) {
+  const selected = rows.filter((row) => row.baseline.selected);
+  const comparable = rows.filter((row) => row.baseline.selected || row.control.selected);
+  const returns = selected.map((row) => row.baseline.returnPct);
+  const strategyContributions = comparable.map((row) => row.baseline.selected ? row.baseline.returnPct * positionPct : 0);
+  const controlContributions = comparable.map((row) => row.control.selected ? row.control.returnPct * positionPct : 0);
+  const longContributions = comparable.map((row) => row.control.selected ? row.control.alwaysLongReturnPct * positionPct : 0);
+  const shortContributions = comparable.map((row) => row.control.selected ? row.control.alwaysShortReturnPct * positionPct : 0);
+  const randomMedian = medianTrial(Array.from({ length: randomBenchmarkTrials }, (_, trial) => {
+    const random = createSeededRandom(trial + 1);
+    return comparable.map((_, index) => random() < 0.5 ? longContributions[index] : shortContributions[index]);
+  }));
+  const candidates = [
+    { label: "Polymarket direction", returns: controlContributions },
+    { label: "Always long", returns: longContributions },
+    { label: "Always short", returns: shortContributions },
+    { label: `Random median (${randomBenchmarkTrials} trials)`, returns: randomMedian },
+  ].map((candidate) => ({ ...candidate, returnPct: sum(candidate.returns) }));
+  const best = [...candidates].sort((left, right) => right.returnPct - left.returnPct)[0];
+  const excessContributions = comparable.map((_, index) => strategyContributions[index] - best.returns[index]);
+  const strategyWindowReturns = groupWindowReturns(comparable, (_, index) => strategyContributions[index]);
+  const excessWindowReturns = groupWindowReturns(comparable, (_, index) => excessContributions[index]);
+  const correct = selected.filter((row) => (
+    (row.baseline.side === "LONG" && row.officialResult === 1)
+    || (row.baseline.side === "SHORT" && row.officialResult === 0)
+  ));
+  return {
+    trades: selected.length,
+    profitableTrades: returns.filter((value) => value > 0).length,
+    afterCostWinRate: returns.length ? returns.filter((value) => value > 0).length / returns.length : null,
+    binaryOutcomeAccuracy: selected.length ? correct.length / selected.length : null,
+    netReturnPct: sum(strategyContributions),
+    averageReturnPct: average(returns),
+    meanConfidenceInterval95: blockBootstrapMeanConfidenceInterval(strategyWindowReturns),
+    deflatedSharpeProbability: deflatedSharpeProbability(excessWindowReturns, strategyTrials),
+    maxDrawdownPct: maximumDrawdown(strategyWindowReturns),
+    benchmarkLabel: best.label,
+    benchmarkReturnPct: best.returnPct,
+    excessReturnPct: sum(excessContributions),
+    excessConfidenceInterval95: blockBootstrapMeanConfidenceInterval(excessWindowReturns),
   };
 }
 
@@ -483,9 +562,9 @@ function summarizeBenchmarks(rows: typeof observations, key: "implied" | "leadLa
     { label: "Always long", returns: comparable.map((row) => row.alwaysLong) },
     { label: "Always short", returns: comparable.map((row) => row.alwaysShort) },
     { label: `Random median (${randomBenchmarkTrials} trials)`, returns: randomBenchmark },
-  ].map((candidate) => ({ ...candidate, returnPct: sum(candidate.returns) }));
+  ].map((candidate) => ({ ...candidate, returnPct: sum(candidate.returns) * positionPct }));
   const best = [...candidates].sort((left, right) => right.returnPct - left.returnPct)[0];
-  const excess = comparable.map((row, index) => row.model - best.returns[index]);
+  const excess = comparable.map((row, index) => (row.model - best.returns[index]) * positionPct);
   return {
     label: best.label,
     returnPct: best.returnPct,
@@ -535,6 +614,17 @@ function normalizeDirectionMarket(market: z.infer<typeof marketSchema>): Directi
   const officialResult = outcomes[0] >= 0.99 ? 1 : outcomes[1] >= 0.99 ? 0 : null;
   if (officialResult === null) return null;
   return { id: String(market.id), asset, tokenId: tokens[0], startAt, endAt, officialResult };
+}
+
+function applyConcurrentPositionLimit(rows: typeof observations, key: "baseline" | "control") {
+  const groups = new Map<string, typeof observations>();
+  for (const row of rows) groups.set(row.startAt, [...(groups.get(row.startAt) ?? []), row]);
+  for (const group of groups.values()) {
+    const ranked = group
+      .filter((row) => row[key].selected)
+      .sort((left, right) => right[key].signalStrength - left[key].signalStrength);
+    for (const row of ranked.slice(maximumConcurrentPositions)) row[key].selected = false;
+  }
 }
 
 async function fetchPolymarketHistory(markets: DirectionMarket[], _windowStart: Date, _windowEnd: Date) {
@@ -678,6 +768,17 @@ function maximumDrawdown(returns: number[]) {
   return maximum;
 }
 
+function groupWindowReturns<T extends { startAt: string }>(
+  rows: T[],
+  valueFor: (row: T, index: number) => number,
+) {
+  const grouped = new Map<string, number>();
+  rows.forEach((row, index) => grouped.set(row.startAt, (grouped.get(row.startAt) ?? 0) + valueFor(row, index)));
+  return Array.from(grouped.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, value]) => value);
+}
+
 function sum(values: number[]) {
   return values.reduce((total, value) => total + value, 0);
 }
@@ -730,6 +831,92 @@ function stableHash(value: string) {
     hash = Math.imul(hash, 16_777_619);
   }
   return hash >>> 0;
+}
+
+async function persistResearchArtifacts(value: typeof report, serialized: string) {
+  const historyPath = process.env.SHORT_TERM_HISTORY_INDEX_OUTPUT
+    ? resolve(process.env.SHORT_TERM_HISTORY_INDEX_OUTPUT)
+    : null;
+  const historyItem = researchHistoryItem(value);
+  let history = historyPath
+    ? await readJson<{ items?: ReturnType<typeof researchHistoryItem>[] }>(historyPath).catch(() => null)
+    : null;
+  const items = [historyItem, ...(history?.items ?? [])]
+    .filter((item, index, all) => all.findIndex((candidate) => candidate.generatedAt === item.generatedAt) === index)
+    .slice(0, 24);
+  if (historyPath) await writeAtomic(historyPath, `${JSON.stringify({ items }, null, 2)}\n`);
+
+  const artifactRoot = process.env.SHORT_TERM_ARTIFACT_ROOT
+    ? resolve(process.env.SHORT_TERM_ARTIFACT_ROOT.replace(/^~(?=\/)/, homedir()))
+    : null;
+  if (!artifactRoot) return;
+  const runId = value.generatedAt.replaceAll(":", "-");
+  const runDirectory = resolve(artifactRoot, runId);
+  await mkdir(runDirectory, { recursive: true });
+  await writeAtomic(resolve(runDirectory, "report.json"), serialized);
+  await writeAtomic(resolve(runDirectory, "metrics.csv"), researchMetricsCsv(value));
+  await writeAtomic(resolve(artifactRoot, "latest.json"), serialized);
+  await writeAtomic(resolve(artifactRoot, "history.json"), `${JSON.stringify({ items }, null, 2)}\n`);
+}
+
+function researchHistoryItem(value: typeof report) {
+  const baseline = value.holdout.baseline;
+  const screening = value.screening.baseline;
+  const stability = value.walkForward.stability.baseline;
+  return {
+    generatedAt: value.generatedAt,
+    marketDuration: value.methodology.marketDuration,
+    lookbackHours: value.methodology.period.lookbackHours,
+    executionMode: value.methodology.executionMode,
+    completeMarkets: value.coverage.completeMarkets,
+    status: screening.status,
+    trades: baseline.trades,
+    netReturnPct: baseline.netReturnPct,
+    averageReturnPct: baseline.averageReturnPct,
+    confidenceLowerPct: baseline.meanConfidenceInterval95?.[0] ?? null,
+    excessReturnPct: baseline.excessReturnPct,
+    maxDrawdownPct: baseline.maxDrawdownPct,
+    profitableFolds: stability.profitableFolds,
+    totalFolds: stability.folds,
+    passedGates: screening.passedGates,
+    totalGates: screening.totalGates,
+  };
+}
+
+function researchMetricsCsv(value: typeof report) {
+  const definitions = [
+    ["baseline", value.holdout.baseline, value.screening.baseline, value.walkForward.stability.baseline],
+    ["implied", value.holdout.implied, value.screening.implied, value.walkForward.stability.implied],
+    ["leadLag", value.holdout.leadLag, value.screening.leadLag, value.walkForward.stability.leadLag],
+    ["crossSectional", value.holdout.crossSectional, value.screening.crossSectional, value.walkForward.stability.crossSectional],
+  ] as const;
+  const header = "candidate,status,trades,net_return_pct,average_return_pct,confidence_lower_pct,excess_return_pct,max_drawdown_pct,profitable_folds,total_folds,passed_gates,total_gates";
+  const rows = definitions.map(([id, metrics, screening, stability]) => [
+    id,
+    screening.status,
+    metrics.trades,
+    metrics.netReturnPct,
+    metrics.averageReturnPct ?? "",
+    metrics.meanConfidenceInterval95?.[0] ?? "",
+    metrics.excessReturnPct ?? "",
+    metrics.maxDrawdownPct,
+    stability.profitableFolds,
+    stability.folds,
+    screening.passedGates,
+    screening.totalGates,
+  ].join(","));
+  return `${header}\n${rows.join("\n")}\n`;
+}
+
+async function readJson<T>(path: string) {
+  return JSON.parse(await readFile(path, "utf8")) as T;
+}
+
+async function writeAtomic(path: string, content: string) {
+  await mkdir(dirname(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, content, "utf8");
+  await rename(temporary, path);
 }
 
 function boundedNumber(value: string | undefined, fallback: number, minimum: number, maximum: number) {

@@ -15,6 +15,11 @@ def parse_args():
         default=os.path.expanduser("~/.polymarket-watch/artifacts/model-evaluations"),
     )
     parser.add_argument("--experiment", default="polymarket-hyperliquid-backtests")
+    parser.add_argument(
+        "--short-term-artifact-dir",
+        default=os.path.expanduser("~/.polymarket-watch/artifacts/short-term-backtests"),
+    )
+    parser.add_argument("--short-term-experiment", default="polymarket-hyperliquid-15m-backtests")
     parser.add_argument("--tracking-uri", default=os.environ.get("MLFLOW_TRACKING_URI", ""))
     return parser.parse_args()
 
@@ -89,7 +94,73 @@ def main():
             mlflow.log_artifacts(str(report_path.parent), artifact_path="backtest-report")
         imported += 1
 
-    print(json.dumps({"imported": imported, "skipped": skipped, "artifactDir": str(artifact_dir)}))
+    short_term = import_short_term_runs(args)
+    print(json.dumps({
+        "canonical": {"imported": imported, "skipped": skipped, "artifactDir": str(artifact_dir)},
+        "shortTerm": short_term,
+    }))
+
+
+def import_short_term_runs(args):
+    artifact_dir = Path(args.short_term_artifact_dir).expanduser().resolve()
+    mlflow.set_experiment(args.short_term_experiment)
+    experiment = mlflow.get_experiment_by_name(args.short_term_experiment)
+    if experiment is None:
+        raise RuntimeError("Short-term MLflow experiment could not be created")
+    client = MlflowClient()
+    imported = 0
+    skipped = 0
+    for report_path in sorted(artifact_dir.glob("*/report.json")):
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        generated_at = report["generatedAt"]
+        existing = client.search_runs(
+            [experiment.experiment_id],
+            filter_string=f'tags."polymarket.short_term_generated_at" = "{generated_at}"',
+            max_results=1,
+        )
+        if existing:
+            skipped += 1
+            continue
+        methodology = report["methodology"]
+        params = {
+            "market_duration": methodology["marketDuration"],
+            "lookback_hours": methodology["period"]["lookbackHours"],
+            "execution_mode": methodology["executionMode"],
+            "position_pct": methodology["positionPct"],
+            "maximum_concurrent_positions": methodology["maximumConcurrentPositions"],
+            "strategy_trials": methodology["impliedRule"]["strategyTrials"],
+        }
+        metrics = {"complete_markets": float(report["coverage"]["completeMarkets"])}
+        for candidate in ("baseline", "implied", "leadLag", "crossSectional"):
+            result = report["holdout"][candidate]
+            screening = report["screening"][candidate]
+            stability = report["walkForward"]["stability"][candidate]
+            prefix = candidate.replace("Sectional", "_sectional").replace("Lag", "_lag").lower()
+            values = {
+                "trades": result["trades"],
+                "net_return_pct": result["netReturnPct"],
+                "average_return_pct": result["averageReturnPct"],
+                "confidence_lower_pct": result["meanConfidenceInterval95"][0] if result["meanConfidenceInterval95"] else None,
+                "excess_return_pct": result["excessReturnPct"],
+                "max_drawdown_pct": result["maxDrawdownPct"],
+                "deflated_sharpe_probability": result["deflatedSharpeProbability"],
+                "profitable_folds": stability["profitableFolds"],
+                "passed_gates": screening["passedGates"],
+            }
+            metrics.update({f"{prefix}_{key}": float(value) for key, value in values.items() if value is not None})
+        with mlflow.start_run(
+            run_name=f"15m-{generated_at}",
+            tags={
+                "polymarket.short_term_generated_at": generated_at,
+                "quality_status": report["screening"]["baseline"]["status"],
+                "source": "polymarket-watch-15m",
+            },
+        ):
+            mlflow.log_params(params)
+            mlflow.log_metrics(metrics)
+            mlflow.log_artifacts(str(report_path.parent), artifact_path="short-term-backtest-report")
+        imported += 1
+    return {"imported": imported, "skipped": skipped, "artifactDir": str(artifact_dir)}
 
 
 if __name__ == "__main__":
