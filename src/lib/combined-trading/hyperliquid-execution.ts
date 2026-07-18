@@ -28,6 +28,13 @@ export type HyperliquidOrderEvidence = {
   reason: string | null;
 };
 
+export class HyperliquidDefinitiveOrderError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HyperliquidDefinitiveOrderError";
+  }
+}
+
 export type TestnetOrderMismatch = {
   kind: "missing" | "orphan";
   asset: string | null;
@@ -48,6 +55,8 @@ type ExecutorResponse = {
   flattenResults?: Array<{ asset?: string; size?: number; clientOrderId?: string; result?: unknown }>;
   error?: string;
 };
+
+export type TestnetAccountSafety = ReturnType<typeof evaluateTestnetAccountSafety>;
 
 export function getHyperliquidExecutionReadiness() {
   const python = executorPython();
@@ -80,24 +89,27 @@ export async function checkHyperliquidTestnetConnection() {
 
 export async function executeHyperliquidTestnetOrder(request: TestnetOrderRequest) {
   const readiness = getHyperliquidExecutionReadiness();
-  if (!readiness.ready) throw new Error("Hyperliquid testnet execution is not armed");
+  if (!readiness.ready) throw new HyperliquidDefinitiveOrderError("Hyperliquid testnet execution is not armed");
   if (!readiness.supportedAssets.includes(request.asset)) {
-    throw new Error(`${request.asset} is not available on the configured Hyperliquid testnet universe`);
+    throw new HyperliquidDefinitiveOrderError(`${request.asset} is not available on the configured Hyperliquid testnet universe`);
   }
   if (!Number.isFinite(request.size) || request.size <= 0 || !Number.isFinite(request.referencePrice) || request.referencePrice <= 0) {
-    throw new Error("invalid Hyperliquid testnet order size or price");
+    throw new HyperliquidDefinitiveOrderError("invalid Hyperliquid testnet order size or price");
   }
   const notional = request.size * request.referencePrice;
   if (request.action === "open" && notional > readiness.maximumNotionalUsd + 0.0001) {
-    throw new Error(`Hyperliquid testnet order exceeds $${readiness.maximumNotionalUsd} limit`);
+    throw new HyperliquidDefinitiveOrderError(`Hyperliquid testnet order exceeds $${readiness.maximumNotionalUsd} limit`);
   }
+  if (request.action === "open") await assertRecentTestnetReconciliation();
   const response = await runExecutor({ ...request, slippage: 0.01 });
   if (!response.ok) throw new Error(response.error ?? "Hyperliquid testnet order failed");
   const evidence = normalizeHyperliquidFillAgainstRequestedQuantity(
     parseHyperliquidOrderEvidence(response.result, "order"),
     request.size,
   );
-  if (evidence.status === "REJECTED") throw new Error(evidence.reason ?? "Hyperliquid testnet order was rejected");
+  if (evidence.status === "REJECTED") {
+    throw new HyperliquidDefinitiveOrderError(evidence.reason ?? "Hyperliquid testnet order was rejected");
+  }
   return { ...response, evidence };
 }
 
@@ -221,6 +233,12 @@ export async function reconcileHyperliquidTestnetOrders() {
       recentFills: [],
       orderMismatches: [],
       positionMismatches: [],
+      safety: evaluateTestnetAccountSafety({
+        accountValue: null,
+        previousAccountValue: null,
+        orderMismatchCount: 0,
+        positionMismatchCount: 0,
+      }),
     };
   }
   const orders = await prisma.combinedExecutionOrder.findMany({
@@ -261,7 +279,7 @@ export async function reconcileHyperliquidTestnetOrders() {
 
   const activeOrders = await prisma.combinedExecutionOrder.findMany({
     where: { environment: "TESTNET", status: { in: ["SUBMITTED", "PENDING", "UNKNOWN", "ACCEPTED", "OPEN", "PARTIALLY_FILLED"] } },
-    select: { asset: true, clientOrderId: true, exchangeOrderId: true, status: true },
+    select: { asset: true, clientOrderId: true, exchangeOrderId: true, status: true, createdAt: true },
   });
   const orderMismatches = compareTestnetOpenOrders(response.openOrders ?? [], activeOrders);
 
@@ -274,11 +292,41 @@ export async function reconcileHyperliquidTestnetOrders() {
     select: { asset: true, side: true, action: true, quantity: true, filledQuantity: true, status: true },
   });
   const positionMismatches = compareTestnetPositions(response.positions ?? [], filledOrders);
+  const previousAccount = await prisma.combinedExecutionAccountSnapshot.findFirst({
+    where: { environment: "TESTNET" },
+    orderBy: { capturedAt: "desc" },
+  });
+  const accountValue = response.accountValue ?? null;
+  const safety = evaluateTestnetAccountSafety({
+    accountValue,
+    previousAccountValue: previousAccount?.accountValue ?? null,
+    orderMismatchCount: orderMismatches.length,
+    positionMismatchCount: positionMismatches.length,
+  });
+  const capturedAt = new Date();
+  if (accountValue !== null && Number.isFinite(accountValue)) {
+    await prisma.combinedExecutionAccountSnapshot.create({
+      data: {
+        id: crypto.randomUUID(),
+        environment: "TESTNET",
+        accountValue,
+        accountLossPct: safety.accountLossPct,
+        openOrderCount: response.openOrders?.length ?? 0,
+        positionCount: response.positions?.length ?? 0,
+        orderMismatchCount: orderMismatches.length,
+        positionMismatchCount: positionMismatches.length,
+        healthy: safety.healthy,
+        issuesJson: JSON.stringify(safety.issues),
+        capturedAt,
+      },
+    });
+  }
 
   return {
     ...readiness,
     connected: true,
-    accountValue: response.accountValue ?? null,
+    accountValue,
+    capturedAt: capturedAt.toISOString(),
     checkedOrders: orders.length,
     updatedOrders,
     positions: response.positions ?? [],
@@ -286,7 +334,51 @@ export async function reconcileHyperliquidTestnetOrders() {
     recentFills: response.recentFills ?? [],
     orderMismatches,
     positionMismatches,
+    safety,
   };
+}
+
+export function evaluateTestnetAccountSafety(input: {
+  accountValue: number | null;
+  previousAccountValue: number | null;
+  orderMismatchCount: number;
+  positionMismatchCount: number;
+  maximumAccountLossPct?: number;
+}) {
+  const maximumAccountLossPct = input.maximumAccountLossPct ?? maximumTestnetAccountLossPct();
+  const accountLossPct = typeof input.accountValue === "number"
+    && Number.isFinite(input.accountValue)
+    && typeof input.previousAccountValue === "number"
+    && Number.isFinite(input.previousAccountValue)
+    && input.previousAccountValue > 0
+    ? Math.max(0, (input.previousAccountValue - input.accountValue) / input.previousAccountValue)
+    : null;
+  const issues: string[] = [];
+  if (typeof input.accountValue !== "number" || !Number.isFinite(input.accountValue) || input.accountValue <= 0) {
+    issues.push("account-value-unavailable");
+  }
+  if (accountLossPct !== null && accountLossPct > maximumAccountLossPct) issues.push("account-loss-limit");
+  if (input.orderMismatchCount > 0) issues.push("order-mismatch");
+  if (input.positionMismatchCount > 0) issues.push("position-mismatch");
+  return {
+    healthy: issues.length === 0,
+    accountLossPct,
+    maximumAccountLossPct,
+    issues,
+  };
+}
+
+async function assertRecentTestnetReconciliation(now = new Date()) {
+  const snapshot = await prisma.combinedExecutionAccountSnapshot.findFirst({
+    where: { environment: "TESTNET" },
+    orderBy: { capturedAt: "desc" },
+  });
+  if (!snapshot) throw new HyperliquidDefinitiveOrderError("testnet order blocked: account reconciliation has not completed");
+  const ageMs = now.getTime() - snapshot.capturedAt.getTime();
+  if (ageMs < 0 || ageMs > maximumTestnetReconciliationAgeMs()) {
+    throw new HyperliquidDefinitiveOrderError("testnet order blocked: account reconciliation is stale");
+  }
+  if (!snapshot.healthy) throw new HyperliquidDefinitiveOrderError("testnet order blocked: account reconciliation is unsafe");
 }
 
 export function deriveHyperliquidCloid(clientOrderId: string) {
@@ -295,7 +387,8 @@ export function deriveHyperliquidCloid(clientOrderId: string) {
 
 export function compareTestnetOpenOrders(
   actualOpenOrders: unknown[],
-  databaseOrders: Array<{ asset: string; clientOrderId: string; exchangeOrderId?: string | null; status: string }>,
+  databaseOrders: Array<{ asset: string; clientOrderId: string; exchangeOrderId?: string | null; status: string; createdAt?: Date }>,
+  now = new Date(),
 ) {
   const actual = actualOpenOrders.flatMap((value) => {
     if (!isRecord(value)) return [];
@@ -319,7 +412,11 @@ export function compareTestnetOpenOrders(
       matchedActual.add(matchIndex);
       continue;
     }
-    if (order.status === "OPEN" || order.status === "PARTIALLY_FILLED") {
+    const unresolvedAgeMs = order.createdAt instanceof Date ? now.getTime() - order.createdAt.getTime() : 0;
+    const shouldExistOnExchange = order.status === "OPEN"
+      || order.status === "PARTIALLY_FILLED"
+      || unresolvedAgeMs >= 30_000;
+    if (shouldExistOnExchange) {
       missing.push({
         kind: "missing",
         asset: order.asset,
@@ -429,6 +526,17 @@ function executorScript() {
 function maximumTestnetNotional() {
   const configured = Number(process.env.HYPERLIQUID_TESTNET_MAX_NOTIONAL_USD ?? 25);
   return Number.isFinite(configured) ? Math.max(1, Math.min(100, configured)) : 25;
+}
+
+function maximumTestnetAccountLossPct() {
+  const configured = Number(process.env.HYPERLIQUID_TESTNET_MAX_ACCOUNT_LOSS_PCT ?? 0.05);
+  return Number.isFinite(configured) ? Math.max(0.001, Math.min(0.5, configured)) : 0.05;
+}
+
+function maximumTestnetReconciliationAgeMs() {
+  const configuredSeconds = Number(process.env.HYPERLIQUID_TESTNET_RECONCILIATION_MAX_AGE_SECONDS ?? 180);
+  const seconds = Number.isFinite(configuredSeconds) ? Math.max(30, Math.min(900, configuredSeconds)) : 180;
+  return seconds * 1_000;
 }
 
 function supportedTestnetAssets() {

@@ -486,3 +486,19 @@ model CombinedExecutionOrder {
   @@index([environment, status])
   @@unique([positionId, environment, action])
 }
+
+model CombinedExecutionAccountSnapshot {
+  id                   String   @id
+  environment          String
+  accountValue         Float
+  accountLossPct       Float?
+  openOrderCount       Int
+  positionCount        Int
+  orderMismatchCount   Int
+  positionMismatchCount Int
+  healthy              Boolean
+  issuesJson           String
+  capturedAt           DateTime @default(now())
+
+  @@index([environment, capturedAt])
+}

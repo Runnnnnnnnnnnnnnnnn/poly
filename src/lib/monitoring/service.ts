@@ -104,6 +104,7 @@ export async function getMonitoringSnapshot() {
     combinedDecisionCount,
     combinedSnapshotAggregate,
     combinedSnapshotsLast24Hours,
+    latestTestnetAccount,
   ] = await Promise.all([
     prisma.marketSnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
     prisma.marketSnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
@@ -223,6 +224,7 @@ export async function getMonitoringSnapshot() {
     prisma.combinedShadowDecision.count(),
     prisma.combinedShadowEquitySnapshot.aggregate({ _count: { _all: true }, _min: { capturedAt: true }, _max: { capturedAt: true } }),
     prisma.combinedShadowEquitySnapshot.count({ where: { capturedAt: { gte: last24Hours } } }),
+    prisma.combinedExecutionAccountSnapshot.findFirst({ where: { environment: "TESTNET" }, orderBy: { capturedAt: "desc" } }),
   ]);
 
   const usableBacktests = backtestRuns
@@ -486,6 +488,9 @@ export async function getMonitoringSnapshot() {
     ? latestRunningEquity.equity / latestRunningPaper.initialCash - 1
     : null;
   const executionReadiness = getHyperliquidExecutionReadiness();
+  const testnetVerifiedReady = executionReadiness.ready
+    && latestTestnetAccount?.healthy === true
+    && now.getTime() - latestTestnetAccount.capturedAt.getTime() <= 3 * 60_000;
   const testnetReconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
   const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
   const realtimeHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "realtime-market-data");
@@ -551,7 +556,7 @@ export async function getMonitoringSnapshot() {
       currentStage: combinedShadowRunning ? "shadow" : "backtest",
       realTradingEnabled: false,
       combinedPaperRunning: combinedShadowRunning,
-      hyperliquidOrderConnection: executionReadiness.ready
+      hyperliquidOrderConnection: testnetVerifiedReady
         ? executionReadiness.autoMirrorEnabled ? "testnet_armed" : "testnet_ready"
         : executionReadiness.installed ? "connector_ready" : "not_installed",
       gates: [
@@ -568,7 +573,7 @@ export async function getMonitoringSnapshot() {
         },
         { id: "edge", label: "優位性確認", status: combinedEdgeConfirmed ? "ready" : "blocked" },
         { id: "shadow", label: "シャドー検証", status: combinedShadowRunning ? "running" : "not_started" },
-        { id: "testnet", label: "テストネット", status: executionReadiness.ready ? "ready" : executionReadiness.installed ? "attention" : "not_started" },
+        { id: "testnet", label: "テストネット", status: testnetVerifiedReady ? "ready" : executionReadiness.installed ? "attention" : "not_started" },
         { id: "live", label: "実取引", status: "locked" },
       ],
     },
@@ -699,10 +704,17 @@ export async function getMonitoringSnapshot() {
       } : null,
       testnet: {
         ...executionReadiness,
+        verifiedReady: testnetVerifiedReady,
         reconciliation: {
           status: testnetReconciliation?.status ?? "not_configured",
           lastSuccessAt: testnetReconciliation?.lastSuccessAt?.toISOString() ?? null,
           message: testnetReconciliation?.message ?? null,
+          accountValue: latestTestnetAccount?.accountValue ?? null,
+          accountLossPct: latestTestnetAccount?.accountLossPct ?? null,
+          healthy: latestTestnetAccount?.healthy ?? false,
+          orderMismatchCount: latestTestnetAccount?.orderMismatchCount ?? 0,
+          positionMismatchCount: latestTestnetAccount?.positionMismatchCount ?? 0,
+          capturedAt: latestTestnetAccount?.capturedAt.toISOString() ?? null,
         },
       },
     },

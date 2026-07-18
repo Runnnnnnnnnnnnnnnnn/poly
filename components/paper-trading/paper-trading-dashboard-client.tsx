@@ -447,12 +447,19 @@ type MonitoringSnapshot = {
       enabled: boolean;
       autoMirrorEnabled: boolean;
       ready: boolean;
+      verifiedReady: boolean;
       maximumNotionalUsd: number;
       mainnetSupported: false;
       reconciliation: {
         status: string;
         lastSuccessAt: string | null;
         message: string | null;
+        accountValue: number | null;
+        accountLossPct: number | null;
+        healthy: boolean;
+        orderMismatchCount: number;
+        positionMismatchCount: number;
+        capturedAt: string | null;
       };
     };
   };
@@ -1001,7 +1008,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
   const edgePositive = sampleReady && (auditedConfidenceLower ?? Number.NEGATIVE_INFINITY) > 0;
   const drawdownReady = sampleReady && (auditedDrawdown ?? Number.POSITIVE_INFINITY) <= 0.05;
   const dataReady = snapshot?.collection.realtimePrices?.status === "healthy";
-  const testnetReady = snapshot?.combinedShadow.testnet.ready === true;
+  const testnetReady = snapshot?.combinedShadow.testnet.verifiedReady === true;
   const liveEnabled = snapshot?.tradeReadiness.realTradingEnabled === true;
   const promising = audit?.readinessStatus === "promising" && sampleReady && netPositive && edgePositive && drawdownReady;
   const verdict = liveEnabled
@@ -1269,7 +1276,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
             <span>同期間比較 {forward?.comparableEvents ?? 0}件</span>
             <span>参照価格差 {shadow?.settlementBasis.samples ?? 0}件 / 中央 {formatBasisBps(shadow?.settlementBasis.medianAbsolutePct)}</span>
             <span>固定ルール {formatShadowRule(shadow?.signalRule)}</span>
-            <span>{shadow?.testnet.ready ? "テストネット接続可" : "テストネット設定待ち"}</span>
+            <span>{shadow?.testnet.verifiedReady ? "テストネット照合済み" : "テストネット照合待ち"}</span>
           </div>
         </div>
       </details>

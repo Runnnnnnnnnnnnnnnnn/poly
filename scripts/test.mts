@@ -7,6 +7,8 @@ import {
   compareTestnetOpenOrders,
   compareTestnetPositions,
   deriveHyperliquidCloid,
+  evaluateTestnetAccountSafety,
+  HyperliquidDefinitiveOrderError,
   normalizeExchangeOrderStatus,
   normalizeHyperliquidFillAgainstRequestedQuantity,
   parseHyperliquidOrderEvidence,
@@ -1165,6 +1167,32 @@ const aggregatedTestnetFill = aggregateHyperliquidFills([
 assert.equal(aggregatedTestnetFill?.filledQuantity, 0.5);
 assert.ok(Math.abs((aggregatedTestnetFill?.averageFillPrice ?? 0) - 101.2) < 1e-12);
 assert.ok(Math.abs((aggregatedTestnetFill?.feePaid ?? 0) - 0.03) < 1e-12);
+assert.deepEqual(evaluateTestnetAccountSafety({
+  accountValue: 100,
+  previousAccountValue: 102,
+  orderMismatchCount: 0,
+  positionMismatchCount: 0,
+  maximumAccountLossPct: 0.05,
+}), {
+  healthy: true,
+  accountLossPct: 2 / 102,
+  maximumAccountLossPct: 0.05,
+  issues: [],
+});
+assert.deepEqual(evaluateTestnetAccountSafety({
+  accountValue: 90,
+  previousAccountValue: 100,
+  orderMismatchCount: 1,
+  positionMismatchCount: 1,
+  maximumAccountLossPct: 0.05,
+}).issues, ["account-loss-limit", "order-mismatch", "position-mismatch"]);
+assert.deepEqual(evaluateTestnetAccountSafety({
+  accountValue: 0,
+  previousAccountValue: null,
+  orderMismatchCount: 0,
+  positionMismatchCount: 0,
+}).issues, ["account-value-unavailable"]);
+assert.equal(new HyperliquidDefinitiveOrderError("blocked").name, "HyperliquidDefinitiveOrderError");
 
 console.log("testnet reconciliation status tests passed");
 
@@ -1185,6 +1213,13 @@ assert.deepEqual(compareTestnetOpenOrders(
   [],
   [{ asset: "BTC", clientOrderId: "paper-order-2", exchangeOrderId: null, status: "PENDING" }],
 ), []);
+assert.deepEqual(compareTestnetOpenOrders(
+  [],
+  [{ asset: "SOL", clientOrderId: "uncertain-order", exchangeOrderId: null, status: "UNKNOWN", createdAt: new Date("2026-01-01T00:00:00Z") }],
+  new Date("2026-01-01T00:01:00Z"),
+), [
+  { kind: "missing", asset: "SOL", clientOrderId: "uncertain-order", exchangeOrderId: null },
+]);
 
 assert.deepEqual(compareTestnetPositions(
   [{ coin: "BTC", size: 0.1 }, { coin: "ETH", size: -0.2 }],

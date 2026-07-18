@@ -5,6 +5,7 @@ import {
   executeHyperliquidTestnetOrder,
   flattenHyperliquidTestnetPositions,
   getHyperliquidExecutionReadiness,
+  HyperliquidDefinitiveOrderError,
   reconcileHyperliquidTestnetOrders,
 } from "@/src/lib/combined-trading/hyperliquid-execution";
 import {
@@ -721,12 +722,13 @@ async function maybeMirrorTestnetOrder(run: CombinedShadowRun, position: Combine
       },
     });
   } catch (error) {
+    const definitive = error instanceof HyperliquidDefinitiveOrderError;
     await prisma.combinedExecutionOrder.update({
       where: { id: order.id },
       data: {
-        status: "UNKNOWN",
-        reason: error instanceof Error ? error.message : "testnet order result is unknown",
-        lastReconciledAt: null,
+        status: definitive ? "REJECTED" : "UNKNOWN",
+        reason: error instanceof Error ? error.message : definitive ? "testnet order was rejected" : "testnet order result is unknown",
+        lastReconciledAt: definitive ? new Date() : null,
       },
     });
   }
