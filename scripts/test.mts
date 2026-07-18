@@ -67,6 +67,7 @@ import {
   calculateHyperliquidReplayReturn,
   calculatePolymarketReplayReturn,
   selectCausalReferenceBoundary,
+  summarizeReplayDirectionCoverage,
 } from "../src/lib/model-evaluation/realtime-short-term-replay";
 import { applySynchronizedExecutionOverlay } from "../src/lib/model-evaluation/synchronized-execution";
 import type { EvaluationSample } from "../src/lib/model-evaluation/types";
@@ -597,6 +598,17 @@ const flatHyperliquidReplay = calculateHyperliquidReplayReturn({
   holdingHours: 0.2,
 });
 assert.equal((flatHyperliquidReplay?.returnPct ?? 0) < -0.001, true);
+assert.deepEqual(summarizeReplayDirectionCoverage([
+  { windowAt: "2026-01-01T00:00:00Z", side: "LONG" },
+  { windowAt: "2026-01-01T00:00:00Z", side: "LONG" },
+  { windowAt: "2026-01-01T00:15:00Z", side: "SHORT" },
+  { windowAt: "2026-01-01T00:30:00Z", side: "SHORT" },
+]), {
+  longTrades: 2,
+  shortTrades: 2,
+  longIndependentWindows: 1,
+  shortIndependentWindows: 2,
+});
 const delayedBoundaryTick = {
   capturedAt: new Date("2026-01-01T00:00:40Z"),
   chainlinkPrice: 100,

@@ -116,6 +116,10 @@ type ResearchDiagnosisSlice = {
 
 type RealtimeReplayMetric = {
   independentWindows: number;
+  longTrades: number;
+  shortTrades: number;
+  longIndependentWindows: number;
+  shortIndependentWindows: number;
   trades: number;
   correctTrades: number;
   directionAccuracy: number | null;
@@ -559,8 +563,15 @@ type MonitoringSnapshot = {
         replayableMarkets: number;
         independentWindows: number;
         minimumHoldoutWindows: number;
+        minimumHoldoutWindowsPerSide: number;
         selectedTrades: number;
         strategyTrials: number;
+        holdoutCoverage: {
+          passed: boolean;
+          total: { observed: number; required: number; passed: boolean };
+          long: { observed: number; required: number; passed: boolean };
+          short: { observed: number; required: number; passed: boolean };
+        };
         calibrationPositiveVariants: number;
         holdoutPositiveVariants: number;
         calibrationBenchmarkBeatingVariants: number;
@@ -591,6 +602,8 @@ type MonitoringSnapshot = {
           independentWindows: number;
           holdoutWindows: number;
           holdoutTrades: number;
+          holdoutLongWindows?: number;
+          holdoutShortWindows?: number;
           holdoutEqualWeightNetReturnPct: number;
           holdoutHyperliquidNetReturnPct: number;
           holdoutPolymarketNetReturnPct: number;
@@ -2243,7 +2256,8 @@ function RealtimeShortTermBacktest({
   const selected = research.selectedCandidate;
   const holdout = selected?.holdout ?? null;
   const calibration = selected?.calibration ?? null;
-  const sampleReady = (holdout?.independentWindows ?? 0) >= research.minimumHoldoutWindows;
+  const sampleReady = research.holdoutCoverage.passed;
+  const directionReady = research.holdoutCoverage.long.passed && research.holdoutCoverage.short.passed;
   const promising = research.status === "promising" && sampleReady;
   const tone: Tone = promising ? "watch" : "bad";
   const Icon = promising ? Clock3 : TrendingDown;
@@ -2275,10 +2289,11 @@ function RealtimeShortTermBacktest({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
+      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-6 lg:divide-y-0">
         <BacktestMetric label="独立データ" value={`${research.independentWindows}枠`} tone={research.independentWindows >= research.minimumHoldoutWindows ? "good" : "watch"} />
         <BacktestMetric label="学習側・単純比" value={calibration?.excessReturnPct === null || calibration?.excessReturnPct === undefined ? "未判定" : formatSignedPct(calibration.excessReturnPct)} tone={signedMetricTone(calibration?.excessReturnPct, Boolean(calibration))} />
         <BacktestMetric label="未使用データ" value={`${holdout?.independentWindows ?? 0} / ${research.minimumHoldoutWindows}`} tone={sampleReady ? "good" : "bad"} />
+        <BacktestMetric label="上昇・下落の検証" value={`上 ${holdout?.longIndependentWindows ?? 0} / 下 ${holdout?.shortIndependentWindows ?? 0}`} tone={directionReady ? "good" : "bad"} />
         <BacktestMetric label="複合モデル損益" value={holdout?.trades ? formatSignedPct(holdout.equalWeightNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.equalWeightNetReturnPct, true) : "watch"} />
         <BacktestMetric label="最良単純との差" value={holdout?.excessReturnPct === null || holdout?.excessReturnPct === undefined ? "未判定" : formatSignedPct(holdout.excessReturnPct)} tone={signedMetricTone(holdout?.excessReturnPct, Boolean(holdout))} />
       </div>
@@ -2292,7 +2307,7 @@ function RealtimeShortTermBacktest({
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
         <span>単純戦略との差の95%下限 {holdout?.excessConfidenceInterval95 ? formatSignedPct(holdout.excessConfidenceInterval95[0]) : "未判定"}</span>
-        <span className="font-bold text-rose-700">{sampleReady ? "新しい前向き検証が必要" : `判定まであと${Math.max(0, research.minimumHoldoutWindows - (holdout?.independentWindows ?? 0))}枠`}</span>
+        <span className="font-bold text-rose-700">{sampleReady ? "新しい前向き検証が必要" : `総数あと${Math.max(0, research.minimumHoldoutWindows - (holdout?.independentWindows ?? 0))}枠・上昇/下落を各${research.minimumHoldoutWindowsPerSide}枠必要`}</span>
       </div>
 
       {research.history.length ? (
@@ -2306,7 +2321,7 @@ function RealtimeShortTermBacktest({
               <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 text-xs sm:px-5" key={item.runId}>
                 <div className="min-w-0">
                   <p className="font-bold text-slate-800">{formatJapanDateTime(item.generatedAt)}</p>
-                  <p className="truncate text-[10px] font-semibold text-slate-500">独立{item.independentWindows}枠・未使用{item.holdoutWindows}枠・{item.holdoutTrades}取引</p>
+                  <p className="truncate text-[10px] font-semibold text-slate-500">独立{item.independentWindows}枠・未使用{item.holdoutWindows}枠（上{item.holdoutLongWindows ?? 0}/下{item.holdoutShortWindows ?? 0}）・{item.holdoutTrades}取引</p>
                 </div>
                 <span className={`font-bold ${(item.holdoutExcessReturnPct ?? item.holdoutEqualWeightNetReturnPct) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.holdoutExcessReturnPct ?? item.holdoutEqualWeightNetReturnPct)}</span>
                 <span className={`rounded-sm px-2 py-1 text-[10px] font-bold ${tonePillClass(item.status === "promising" ? "watch" : "bad")}`}>{item.status === "promising" ? "探索通過" : item.status === "rejected" ? "未達" : "不足"}</span>

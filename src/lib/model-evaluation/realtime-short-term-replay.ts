@@ -7,7 +7,7 @@ import {
 import { calculatePolymarketTakerFee } from "@/src/lib/realtime-market-data/execution-audit";
 
 export const realtimeShortTermReplaySpecification = Object.freeze({
-  version: 3,
+  version: 4,
   purpose: "diagnostic_only",
   promotionPolicy: "new_forward_cohort_required",
   synchronizationVersion: "websocket-v6-near-term-discovery",
@@ -37,6 +37,7 @@ export const realtimeShortTermReplaySpecification = Object.freeze({
   walkForwardFolds: 4,
   walkForwardInitialFraction: 0.2,
   minimumHoldoutWindows: 20,
+  minimumHoldoutWindowsPerSide: 5,
 });
 
 export type RealtimeReplayStrategy = (typeof realtimeShortTermReplaySpecification.strategies)[number];
@@ -326,7 +327,8 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       - (left.calibration.excessAverageReturnPct ?? Number.NEGATIVE_INFINITY)
     ))[0] ?? null;
   const selectedHoldout = selectedExploratoryCandidate?.holdout ?? null;
-  const status = !selectedHoldout || selectedHoldout.independentWindows < realtimeShortTermReplaySpecification.minimumHoldoutWindows
+  const holdoutCoverage = replayHoldoutCoverage(selectedHoldout);
+  const status = !selectedHoldout || !holdoutCoverage.passed
     ? "insufficient" as const
     : selectedHoldout.equalWeightNetReturnPct > 0
       && (selectedHoldout.excessReturnPct ?? 0) > 0
@@ -371,6 +373,7 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       independentSampleUnit: "15-minute-window" as const,
       split: "chronological 60% calibration / 40% holdout" as const,
       walkForwardSelection: "expanding calibration; each next block uses a candidate selected only from earlier windows" as const,
+      directionCoverage: `holdout requires at least ${realtimeShortTermReplaySpecification.minimumHoldoutWindowsPerSide} independent long and short windows` as const,
       execution: "first complete synchronized 5-second executable book after each fixed entry offset" as const,
       settlement: "official Polymarket result with Chainlink boundary audit" as const,
       costs: {
@@ -395,12 +398,13 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       status,
       promotionAllowed: false,
       reason: status === "insufficient"
-        ? `holdout has fewer than ${realtimeShortTermReplaySpecification.minimumHoldoutWindows} independent windows`
+        ? `holdout coverage ${holdoutCoverage.total.observed}/${holdoutCoverage.total.required}; long ${holdoutCoverage.long.observed}/${holdoutCoverage.long.required}; short ${holdoutCoverage.short.observed}/${holdoutCoverage.short.required}`
         : status === "promising"
           ? "diagnostic gate passed; a new frozen forward cohort is still required"
           : "holdout, benchmark, selection-bias, or walk-forward gate failed",
       selectedExploratoryCandidateId: selectedExploratoryCandidate?.id ?? null,
       strategyTrials: realtimeShortTermReplaySpecification.strategyTrials,
+      holdoutCoverage,
     },
     variants,
     walkForwardSelection,
@@ -525,8 +529,10 @@ function summarizeReplayTrades(trades: RealtimeReplayTrade[]) {
   const hyperliquidWindowReturns = groupedWindowReturns(trades, (trade) => trade.hyperliquidReturnPct);
   const polymarketWindowReturns = groupedWindowReturns(trades, (trade) => trade.polymarketReturnPct);
   const benchmark = buildRealtimeReplayBenchmarkSummary(trades);
+  const directionCoverage = summarizeReplayDirectionCoverage(trades);
   return {
     independentWindows: windowReturns.length,
+    ...directionCoverage,
     trades: trades.length,
     correctTrades: trades.filter((trade) => trade.correct).length,
     directionAccuracy: trades.length ? trades.filter((trade) => trade.correct).length / trades.length : null,
@@ -541,6 +547,31 @@ function summarizeReplayTrades(trades: RealtimeReplayTrade[]) {
     polymarketNetReturnPct: sum(polymarketWindowReturns),
     maximumDrawdownPct: maximumDrawdown(windowReturns),
     ...benchmark,
+  };
+}
+
+export function summarizeReplayDirectionCoverage(trades: Array<Pick<RealtimeReplayTrade, "windowAt" | "side">>) {
+  const longTrades = trades.filter((trade) => trade.side === "LONG");
+  const shortTrades = trades.filter((trade) => trade.side === "SHORT");
+  return {
+    longTrades: longTrades.length,
+    shortTrades: shortTrades.length,
+    longIndependentWindows: new Set(longTrades.map((trade) => trade.windowAt)).size,
+    shortIndependentWindows: new Set(shortTrades.map((trade) => trade.windowAt)).size,
+  };
+}
+
+function replayHoldoutCoverage(summary: ReturnType<typeof summarizeReplayTrades> | null) {
+  const totalObserved = summary?.independentWindows ?? 0;
+  const longObserved = summary?.longIndependentWindows ?? 0;
+  const shortObserved = summary?.shortIndependentWindows ?? 0;
+  const totalRequired = realtimeShortTermReplaySpecification.minimumHoldoutWindows;
+  const sideRequired = realtimeShortTermReplaySpecification.minimumHoldoutWindowsPerSide;
+  return {
+    passed: totalObserved >= totalRequired && longObserved >= sideRequired && shortObserved >= sideRequired,
+    total: { observed: totalObserved, required: totalRequired, passed: totalObserved >= totalRequired },
+    long: { observed: longObserved, required: sideRequired, passed: longObserved >= sideRequired },
+    short: { observed: shortObserved, required: sideRequired, passed: shortObserved >= sideRequired },
   };
 }
 

@@ -250,6 +250,8 @@ def import_realtime_short_term_runs(args):
                 values = selected[split]
                 candidates = {
                     "independent_windows": values["independentWindows"],
+                    "long_independent_windows": values.get("longIndependentWindows", 0),
+                    "short_independent_windows": values.get("shortIndependentWindows", 0),
                     "trades": values["trades"],
                     "direction_accuracy": values["directionAccuracy"],
                     "equal_weight_net_return_pct": values["equalWeightNetReturnPct"],

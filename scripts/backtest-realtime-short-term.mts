@@ -138,6 +138,8 @@ async function updateHistory(path: string, value: typeof report) {
     independentWindows: value.coverage.independentWindows,
     holdoutWindows: selected?.holdout.independentWindows ?? 0,
     holdoutTrades: selected?.holdout.trades ?? 0,
+    holdoutLongWindows: selected?.holdout.longIndependentWindows ?? 0,
+    holdoutShortWindows: selected?.holdout.shortIndependentWindows ?? 0,
     holdoutEqualWeightNetReturnPct: selected?.holdout.equalWeightNetReturnPct ?? 0,
     holdoutHyperliquidNetReturnPct: selected?.holdout.hyperliquidNetReturnPct ?? 0,
     holdoutPolymarketNetReturnPct: selected?.holdout.polymarketNetReturnPct ?? 0,

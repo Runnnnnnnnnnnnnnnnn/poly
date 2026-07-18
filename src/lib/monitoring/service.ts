@@ -141,6 +141,10 @@ const shortTermResearchSchema = z.object({
 });
 const realtimeReplayMetricSchema = z.object({
   independentWindows: z.number(),
+  longTrades: z.number(),
+  shortTrades: z.number(),
+  longIndependentWindows: z.number(),
+  shortIndependentWindows: z.number(),
   trades: z.number(),
   correctTrades: z.number(),
   directionAccuracy: z.number().nullable(),
@@ -172,6 +176,7 @@ const realtimeReplaySchema = z.object({
   generatedAt: z.string(),
   specification: z.object({
     minimumHoldoutWindows: z.number(),
+    minimumHoldoutWindowsPerSide: z.number(),
     strategyTrials: z.number(),
   }).passthrough(),
   coverage: z.object({
@@ -186,6 +191,12 @@ const realtimeReplaySchema = z.object({
     reason: z.string(),
     selectedExploratoryCandidateId: z.string().nullable(),
     strategyTrials: z.number(),
+    holdoutCoverage: z.object({
+      passed: z.boolean(),
+      total: z.object({ observed: z.number(), required: z.number(), passed: z.boolean() }),
+      long: z.object({ observed: z.number(), required: z.number(), passed: z.boolean() }),
+      short: z.object({ observed: z.number(), required: z.number(), passed: z.boolean() }),
+    }),
   }),
   variants: z.array(z.object({
     id: z.string(),
@@ -229,6 +240,8 @@ const realtimeReplayHistoryItemSchema = z.object({
   independentWindows: z.number(),
   holdoutWindows: z.number(),
   holdoutTrades: z.number(),
+  holdoutLongWindows: z.number().optional(),
+  holdoutShortWindows: z.number().optional(),
   holdoutEqualWeightNetReturnPct: z.number(),
   holdoutHyperliquidNetReturnPct: z.number(),
   holdoutPolymarketNetReturnPct: z.number(),
@@ -1269,8 +1282,10 @@ function loadRealtimeShortTermResearchSummary() {
       replayableMarkets: parsed.coverage.replayableMarkets,
       independentWindows: parsed.coverage.independentWindows,
       minimumHoldoutWindows: parsed.specification.minimumHoldoutWindows,
+      minimumHoldoutWindowsPerSide: parsed.specification.minimumHoldoutWindowsPerSide,
       selectedTrades: parsed.coverage.selectedTrades,
       strategyTrials: parsed.selection.strategyTrials,
+      holdoutCoverage: parsed.selection.holdoutCoverage,
       calibrationPositiveVariants: parsed.variants.filter((variant) => variant.calibration.equalWeightNetReturnPct > 0).length,
       holdoutPositiveVariants: parsed.variants.filter((variant) => variant.holdout.equalWeightNetReturnPct > 0).length,
       calibrationBenchmarkBeatingVariants: parsed.variants.filter((variant) => (variant.calibration.excessReturnPct ?? 0) > 0).length,
