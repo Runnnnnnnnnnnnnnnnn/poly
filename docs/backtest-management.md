@@ -36,6 +36,10 @@ The currently deployed 15-minute strategy is evaluated separately every six hour
 allocation rules (5% per position, at most three concurrent positions), treats skipped windows as a
 zero return, and compares the strategy with a simultaneously simulated Polymarket-direction control.
 Correlated assets that close in the same 15-minute interval are combined into one statistical sample.
+Because historical Hyperliquid data is aggregated into one-minute candles, a signal is never filled at
+the open of the candle that already contains the Polymarket observation. The simulator enters at the
+next complete candle boundary, which keeps the historical fill strictly after the decision timestamp.
+Every run records the entry-lag distribution and fails if even one entry is not strictly causal.
 Its immutable artifacts are stored under:
 
 ```text
@@ -60,6 +64,19 @@ The dashboard reads the latest report and up to 24 historical summaries. Aggrega
 history and Hyperliquid candles are suitable for screening only; authorization still requires the
 prospective five-second order-book and official-settlement audit.
 
+The latest 15-minute result can also be downloaded from the live backend:
+
+```text
+GET /api/short-term-backtests/latest
+GET /api/short-term-backtests/latest?format=metrics
+GET /api/short-term-backtests/latest?format=observations
+GET /api/short-term-backtests/latest?format=samples
+```
+
+The report includes a fixed nine-variant sensitivity check and loss slices by asset, side, probability,
+trend strength, and Japan time session. These are diagnostic outputs only and are never used to promote
+a model. A changed rule starts a new forward cohort instead of rewriting the current 50-event test.
+
 The live API exposes the same data as read-only downloads:
 
 ```text
@@ -72,8 +89,10 @@ GET /api/model-evaluations/<run-id>?format=csv
 
 - Polymarket Watch: executive status, latest result, forward collection, and operational health.
 - MLflow: experiment search, parameter/metric comparison, run artifacts, and model research history.
+  Keep this as the researcher workspace; the executive dashboard should not expose its complexity.
 - SQLite now; PostgreSQL later: operational state and normalized execution records.
-- Parquet plus DuckDB later: immutable raw order-book and trade research datasets at larger scale.
+- CSV artifacts now; Parquet plus DuckDB when the five-second dataset becomes large enough that SQLite
+  extracts are slow. DuckDB can query partitioned Parquet directly without loading it into the app DB.
 - DVC only when dataset snapshots become too large or numerous for the current hash plus artifact model.
 
 Do not tune on the final test period. New parameters must be declared before the next forward window,

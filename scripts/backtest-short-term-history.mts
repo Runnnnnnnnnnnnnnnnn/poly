@@ -42,6 +42,8 @@ const strategyTrials = Math.round(boundedNumber(process.env.SHORT_TERM_STRATEGY_
 const randomBenchmarkTrials = Math.round(boundedNumber(process.env.SHORT_TERM_RANDOM_TRIALS, 200, 20, 1_000));
 const walkForwardFolds = Math.round(boundedNumber(process.env.SHORT_TERM_WALK_FORWARD_FOLDS, 4, 3, 8));
 const minimumProfitableFolds = Math.ceil(walkForwardFolds * 0.75);
+const sensitivityProbabilityThresholds = [0.58, 0.65, 0.7] as const;
+const sensitivityTrendThresholds = [0.15, 0.6, 1] as const;
 
 const marketSchema = z.object({
   id: z.union([z.string(), z.number()]),
@@ -92,7 +94,7 @@ const [historyByToken, candlesByAsset] = await Promise.all([
 const skipCounts = new Map<string, number>();
 const impliedDiagnostics: Array<{ expectedReturnPct: number; signalZ: number; trendZ: number; probabilityChange: number }> = [];
 const observations = markets.flatMap((market) => {
-  const history = historyByToken.get(market.tokenId) ?? [];
+  const history = [...(historyByToken.get(market.tokenId) ?? [])].sort((left, right) => left.t - right.t);
   const candles = candlesByAsset.get(market.asset) ?? [];
   const startCandle = candleAt(candles, market.startAt.getTime());
   const exitCandle = candleAt(candles, market.endAt.getTime() - marketDuration.candleMs);
@@ -103,7 +105,10 @@ const observations = markets.flatMap((market) => {
     .filter((point) => point.t * 1_000 >= market.startAt.getTime() + marketDuration.decisionStartMs)
     .filter((point) => point.t * 1_000 < market.startAt.getTime() + marketDuration.decisionEndMs)
     .flatMap((point) => {
-      const entryTime = Math.floor((point.t * 1_000) / marketDuration.candleMs) * marketDuration.candleMs;
+      // Aggregated candles cannot support an intra-candle fill. Enter at the first
+      // complete candle boundary strictly after the Polymarket observation.
+      const entryTime = Math.floor((point.t * 1_000) / marketDuration.candleMs) * marketDuration.candleMs
+        + marketDuration.candleMs;
       const entryCandle = candleAt(candles, entryTime);
       if (!entryCandle) return [];
       const prior = candles.filter((candle) => (
@@ -187,6 +192,19 @@ const observations = markets.flatMap((market) => {
     startAt: market.startAt.toISOString(),
     endAt: market.endAt.toISOString(),
     officialResult: market.officialResult,
+    decisionSamples: samples.map((sample) => ({
+      observedAt: new Date(sample.point.t * 1_000).toISOString(),
+      probability: sample.point.p,
+      entryAt: new Date(sample.entryCandle.t).toISOString(),
+      entryOpen: sample.entryPrice,
+      entryHigh: number(sample.entryCandle.h) ?? 0,
+      entryLow: number(sample.entryCandle.l) ?? 0,
+      entryClose: number(sample.entryCandle.c) ?? 0,
+      trendZ: sample.trendZ,
+      baselineSide: sample.baselineSide,
+      baselineSignalStrength: Math.abs(sample.baselineSignalZ),
+      baselineReturnPct: calculateCandleReturn(sample.baselineSide, sample.entryCandle, exitCandle, candles),
+    })),
     input: {
       polymarketObservedAt: new Date(representative.point.t * 1_000).toISOString(),
       polymarketProbability: representative.point.p,
@@ -214,12 +232,20 @@ const observations = markets.flatMap((market) => {
       side: (baseline ?? representative).baselineSide,
       returnPct: baselineReturn,
       signalStrength: Math.abs((baseline ?? representative).baselineSignalZ),
+      observedAt: new Date((baseline ?? representative).point.t * 1_000).toISOString(),
+      probability: (baseline ?? representative).point.p,
+      trendZ: (baseline ?? representative).trendZ,
+      entryAt: new Date((baseline ?? representative).entryCandle.t).toISOString(),
     },
     control: {
       selected: Boolean(control),
       side: (control ?? representative).baselineSide,
       returnPct: controlReturn,
       signalStrength: Math.abs((control ?? representative).baselineSignalZ),
+      observedAt: new Date((control ?? representative).point.t * 1_000).toISOString(),
+      probability: (control ?? representative).point.p,
+      trendZ: (control ?? representative).trendZ,
+      entryAt: new Date((control ?? representative).entryCandle.t).toISOString(),
       alwaysLongReturnPct: control
         ? calculateCandleReturn("LONG", control.entryCandle, exitCandle, candles) ?? 0
         : 0,
@@ -231,6 +257,11 @@ const observations = markets.flatMap((market) => {
       selected: Boolean(implied),
       side: (implied ?? representative).implied.side,
       returnPct: impliedReturn,
+      signalStrength: Math.abs((implied ?? representative).implied.signalZ),
+      observedAt: new Date((implied ?? representative).point.t * 1_000).toISOString(),
+      probability: (implied ?? representative).point.p,
+      trendZ: (implied ?? representative).trendZ,
+      entryAt: new Date((implied ?? representative).entryCandle.t).toISOString(),
       benchmarks: implied ? {
         polymarketDirection: calculateCandleReturn(implied.baselineSide, implied.entryCandle, exitCandle, candles) ?? 0,
         alwaysLong: calculateCandleReturn("LONG", implied.entryCandle, exitCandle, candles) ?? 0,
@@ -241,6 +272,11 @@ const observations = markets.flatMap((market) => {
       selected: Boolean(leadLag),
       side: (leadLag ?? representative).leadLagSide,
       returnPct: leadLagReturn,
+      signalStrength: Math.abs((leadLag ?? representative).probabilityChange),
+      observedAt: new Date((leadLag ?? representative).point.t * 1_000).toISOString(),
+      probability: (leadLag ?? representative).point.p,
+      trendZ: (leadLag ?? representative).trendZ,
+      entryAt: new Date((leadLag ?? representative).entryCandle.t).toISOString(),
       benchmarks: leadLag ? {
         polymarketDirection: calculateCandleReturn(leadLag.baselineSide, leadLag.entryCandle, exitCandle, candles) ?? 0,
         alwaysLong: calculateCandleReturn("LONG", leadLag.entryCandle, exitCandle, candles) ?? 0,
@@ -252,6 +288,12 @@ const observations = markets.flatMap((market) => {
 
 applyConcurrentPositionLimit(observations, "baseline");
 applyConcurrentPositionLimit(observations, "control");
+applyConcurrentPositionLimit(observations, "implied");
+applyConcurrentPositionLimit(observations, "leadLag");
+const causalAudit = auditDecisionSampleCausality(observations);
+if (causalAudit.nonCausalSamples > 0) {
+  throw new Error(`causal audit failed: ${causalAudit.nonCausalSamples} entries are not strictly after observation`);
+}
 
 const observationTimes = Array.from(new Set(observations.map((row) => row.startAt))).sort();
 const splitIndex = Math.floor(observationTimes.length * calibrationFraction);
@@ -263,11 +305,13 @@ const calibrationCrossSections = crossSections.filter((row) => calibrationTimes.
 const holdoutCrossSections = crossSections.filter((row) => !calibrationTimes.has(row.startAt));
 const calibrationSummary = summarizePeriod(calibration);
 const holdoutSummary = summarizePeriod(holdout);
+const holdoutDiagnosis = diagnoseBaseline(holdout);
+const sensitivity = buildBaselineSensitivity(calibration, holdout);
 const calibrationCrossSectional = summarizeCrossSectional(calibrationCrossSections);
 const holdoutCrossSectional = summarizeCrossSectional(holdoutCrossSections);
 const walkForward = buildWalkForwardValidation(observationTimes, observations, crossSections);
 const modelSpecification = {
-  version: "short-term-history-v2",
+  version: "short-term-history-v3",
   marketDuration: marketDuration.slug,
   hyperliquidCandleInterval: marketDuration.candleInterval,
   decisionWindowMs: [marketDuration.decisionStartMs, marketDuration.decisionEndMs],
@@ -286,6 +330,7 @@ const modelSpecification = {
     positionPct,
     maximumConcurrentPositions,
     makerLimitOffset,
+    signalLagCandles: 1,
   },
   rules: {
     baselineMinimumProbability: 0.58,
@@ -297,6 +342,8 @@ const modelSpecification = {
     leadLagMinimumProbabilityChange,
     leadLagRequireTrend,
     crossSectionalMinimumExpectedPairReturnPct: roundTripCost,
+    sensitivityProbabilityThresholds,
+    sensitivityTrendThresholds,
   },
   trials: {
     strategyTrials,
@@ -306,6 +353,7 @@ const modelSpecification = {
 const reproducibilityInputRows = researchInputRows(observations);
 const reproducibilityRows = researchDatasetRows(observations);
 const serializedObservations = researchObservationsCsv(reproducibilityRows);
+const serializedDecisionSamples = researchDecisionSamplesCsv(observations);
 const runId = generatedAt.toISOString().replaceAll(":", "-");
 const reproducibility = {
   runId,
@@ -316,7 +364,9 @@ const reproducibility = {
   datasetSha256: sha256Json(reproducibilityInputRows),
   decisionSha256: sha256Json(reproducibilityRows),
   observationsCsvSha256: sha256Text(serializedObservations),
+  decisionSamplesCsvSha256: sha256Text(serializedDecisionSamples),
   observationRows: reproducibilityRows.length,
+  decisionSampleRows: observations.reduce((total, row) => total + row.decisionSamples.length, 0),
   randomSeedPolicy: "deterministic FNV-1a seed by window and trial",
   replayEnvironment: {
     SHORT_TERM_HISTORY_END_AT: endAt.toISOString(),
@@ -345,7 +395,7 @@ const report = {
     walkForward: `anchored expanding window / ${walkForwardFolds} non-overlapping validation folds`,
     marketDuration: marketDuration.slug,
     hyperliquidCandleInterval: marketDuration.candleInterval,
-    entry: `first actionable one-minute observation in [${marketDuration.decisionStartMs / 60_000}m, ${marketDuration.decisionEndMs / 60_000}m)`,
+    entry: `first full ${marketDuration.candleInterval} candle open strictly after the first actionable Polymarket observation in [${marketDuration.decisionStartMs / 60_000}m, ${marketDuration.decisionEndMs / 60_000}m)`,
     exit: `final ${marketDuration.candleInterval} Hyperliquid candle close`,
     executionMode,
     roundTripCost,
@@ -381,12 +431,17 @@ const report = {
     skipped: Object.fromEntries(skipCounts),
   },
   diagnostics: {
+    causalAudit,
     samples: impliedDiagnostics.length,
     absoluteExpectedReturnPct: distribution(impliedDiagnostics.map((row) => Math.abs(row.expectedReturnPct))),
     absoluteSignalZ: distribution(impliedDiagnostics.map((row) => Math.abs(row.signalZ))),
     absoluteTrendZ: distribution(impliedDiagnostics.map((row) => Math.abs(row.trendZ))),
     absoluteOneMinuteProbabilityChange: distribution(impliedDiagnostics.map((row) => Math.abs(row.probabilityChange))),
     crossSectionalExpectedPairReturnPct: distribution(crossSections.map((row) => row.expectedReturnPct)),
+  },
+  diagnosis: {
+    baseline: holdoutDiagnosis,
+    sensitivity,
   },
   calibration: { ...calibrationSummary, crossSectional: calibrationCrossSectional },
   holdout: { ...holdoutSummary, crossSectional: holdoutCrossSectional },
@@ -402,7 +457,7 @@ const serializedReport = `${JSON.stringify(report, null, 2)}\n`;
 if (process.env.SHORT_TERM_HISTORY_OUTPUT) {
   await writeAtomic(resolve(process.env.SHORT_TERM_HISTORY_OUTPUT), serializedReport);
 }
-await persistResearchArtifacts(report, serializedReport, serializedObservations);
+await persistResearchArtifacts(report, serializedReport, serializedObservations, serializedDecisionSamples);
 if (process.env.SHORT_TERM_HISTORY_QUIET !== "1") console.log(serializedReport.trimEnd());
 
 function buildCrossSectionalTrades(rows: typeof observations) {
@@ -616,6 +671,162 @@ function summarizeBaseline(rows: typeof observations) {
   };
 }
 
+function diagnoseBaseline(rows: typeof observations) {
+  const selected = rows.filter((row) => row.baseline.selected);
+  const returns = selected.map((row) => row.baseline.returnPct);
+  const estimatedBeforeCostReturns = returns.map((value) => value + roundTripCost);
+  const correct = selected.filter((row) => (
+    (row.baseline.side === "LONG" && row.officialResult === 1)
+    || (row.baseline.side === "SHORT" && row.officialResult === 0)
+  )).length;
+  const averageNetReturnPct = average(returns);
+  const estimatedBeforeCostAverageReturnPct = average(estimatedBeforeCostReturns);
+  return {
+    verdict: (estimatedBeforeCostAverageReturnPct ?? 0) <= 0
+      ? "no_remaining_move_edge" as const
+      : (averageNetReturnPct ?? 0) <= 0
+        ? "cost_barrier" as const
+        : "positive_after_costs" as const,
+    trades: selected.length,
+    binaryOutcomeAccuracy: selected.length ? correct / selected.length : null,
+    afterCostWinRate: selected.length ? returns.filter((value) => value > 0).length / selected.length : null,
+    estimatedBeforeCostWinRate: selected.length
+      ? estimatedBeforeCostReturns.filter((value) => value > 0).length / selected.length
+      : null,
+    averageNetReturnPct,
+    estimatedBeforeCostAverageReturnPct,
+    assumedRoundTripCostPct: roundTripCost,
+    slices: {
+      byAsset: summarizeBaselineSlices(selected, (row) => ({ key: row.asset, label: row.asset })),
+      bySide: summarizeBaselineSlices(selected, (row) => ({
+        key: row.baseline.side,
+        label: row.baseline.side,
+      })),
+      byProbability: summarizeBaselineSlices(selected, (row) => {
+        const confidence = Math.max(row.baseline.probability, 1 - row.baseline.probability);
+        if (confidence < 0.6) return { key: "58-60", label: "0.58-0.60" };
+        if (confidence < 0.65) return { key: "60-65", label: "0.60-0.65" };
+        if (confidence < 0.7) return { key: "65-70", label: "0.65-0.70" };
+        if (confidence < 0.8) return { key: "70-80", label: "0.70-0.80" };
+        return { key: "80-plus", label: "0.80+" };
+      }),
+      byTrendStrength: summarizeBaselineSlices(selected, (row) => {
+        const strength = Math.abs(row.baseline.trendZ);
+        if (strength < 0.3) return { key: "015-030", label: "0.15-0.30" };
+        if (strength < 0.6) return { key: "030-060", label: "0.30-0.60" };
+        if (strength < 1) return { key: "060-100", label: "0.60-1.00" };
+        if (strength < 2) return { key: "100-200", label: "1.00-2.00" };
+        return { key: "200-plus", label: "2.00+" };
+      }),
+      byJstSession: summarizeBaselineSlices(selected, (row) => {
+        const hour = (new Date(row.startAt).getUTCHours() + 9) % 24;
+        if (hour < 6) return { key: "00-05", label: "00-05 JST" };
+        if (hour < 12) return { key: "06-11", label: "06-11 JST" };
+        if (hour < 18) return { key: "12-17", label: "12-17 JST" };
+        return { key: "18-23", label: "18-23 JST" };
+      }),
+    },
+  };
+}
+
+function auditDecisionSampleCausality(rows: typeof observations) {
+  const entryLagsMs = rows.flatMap((row) => row.decisionSamples.map((sample) => (
+    Date.parse(sample.entryAt) - Date.parse(sample.observedAt)
+  )));
+  const sortedLags = [...entryLagsMs].sort((left, right) => left - right);
+  return {
+    policy: "entry_at_strictly_after_polymarket_observed_at" as const,
+    samples: entryLagsMs.length,
+    nonCausalSamples: entryLagsMs.filter((lag) => !Number.isFinite(lag) || lag <= 0).length,
+    minimumEntryLagMs: sortedLags.at(0) ?? null,
+    medianEntryLagMs: quantile(sortedLags, 0.5),
+    maximumEntryLagMs: sortedLags.at(-1) ?? null,
+  };
+}
+
+function summarizeBaselineSlices(
+  rows: typeof observations,
+  classify: (row: (typeof observations)[number]) => { key: string; label: string },
+) {
+  const groups = new Map<string, { label: string; rows: typeof observations }>();
+  for (const row of rows) {
+    const group = classify(row);
+    const existing = groups.get(group.key);
+    if (existing) existing.rows.push(row);
+    else groups.set(group.key, { label: group.label, rows: [row] });
+  }
+  return Array.from(groups, ([key, group]) => {
+    const returns = group.rows.map((row) => row.baseline.returnPct);
+    return {
+      key,
+      label: group.label,
+      trades: returns.length,
+      profitableTrades: returns.filter((value) => value > 0).length,
+      afterCostWinRate: returns.length ? returns.filter((value) => value > 0).length / returns.length : null,
+      averageReturnPct: average(returns),
+      netReturnPct: sum(returns) * positionPct,
+    };
+  }).sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function buildBaselineSensitivity(calibrationRows: typeof observations, holdoutRows: typeof observations) {
+  const variants = sensitivityProbabilityThresholds.flatMap((minimumProbability) => (
+    sensitivityTrendThresholds.map((minimumTrendZ) => {
+      const summarize = (rows: typeof observations) => {
+        const candidates = rows.flatMap((row) => {
+          const sample = row.decisionSamples.find((candidate) => {
+            const confidence = Math.max(candidate.probability, 1 - candidate.probability);
+            return candidate.baselineReturnPct !== null
+              && confidence >= minimumProbability
+              && sideMultiplier(candidate.baselineSide) * candidate.trendZ >= minimumTrendZ;
+          });
+          return sample ? [{ row, sample }] : [];
+        });
+        const selected = applySensitivityConcurrentLimit(candidates);
+        const returns = selected.map((item) => item.sample.baselineReturnPct ?? 0);
+        return {
+          trades: selected.length,
+          netReturnPct: sum(groupWindowReturns(
+            selected.map((item) => ({ ...item, startAt: item.row.startAt })),
+            (item) => (item.sample.baselineReturnPct ?? 0) * positionPct,
+          )),
+          averageReturnPct: average(returns),
+        };
+      };
+      return {
+        id: `p${Math.round(minimumProbability * 100)}-t${Math.round(minimumTrendZ * 100)}`,
+        minimumProbability,
+        minimumTrendZ,
+        calibration: summarize(calibrationRows),
+        holdout: summarize(holdoutRows),
+      };
+    })
+  ));
+  return {
+    purpose: "diagnostic_only" as const,
+    selectionPolicy: "fixed_grid_not_used_for_promotion" as const,
+    testedVariants: variants.length,
+    calibrationPositiveVariants: variants.filter((variant) => variant.calibration.netReturnPct > 0).length,
+    holdoutPositiveVariants: variants.filter((variant) => variant.holdout.netReturnPct > 0).length,
+    variants,
+  };
+}
+
+function applySensitivityConcurrentLimit<T extends {
+  row: (typeof observations)[number];
+  sample: (typeof observations)[number]["decisionSamples"][number];
+}>(candidates: T[]) {
+  const groups = new Map<string, T[]>();
+  for (const candidate of candidates) {
+    groups.set(candidate.row.startAt, [...(groups.get(candidate.row.startAt) ?? []), candidate]);
+  }
+  return Array.from(groups.values()).flatMap((group) => (
+    [...group]
+      .sort((left, right) => right.sample.baselineSignalStrength - left.sample.baselineSignalStrength)
+      .slice(0, maximumConcurrentPositions)
+  ));
+}
+
 function screeningVerdict(model: {
   trades: number;
   netReturnPct: number;
@@ -709,7 +920,10 @@ function normalizeDirectionMarket(market: z.infer<typeof marketSchema>): Directi
   return { id: String(market.id), asset, tokenId: tokens[0], startAt, endAt, officialResult };
 }
 
-function applyConcurrentPositionLimit(rows: typeof observations, key: "baseline" | "control") {
+function applyConcurrentPositionLimit(
+  rows: typeof observations,
+  key: "baseline" | "control" | "implied" | "leadLag",
+) {
   const groups = new Map<string, typeof observations>();
   for (const row of rows) groups.set(row.startAt, [...(groups.get(row.startAt) ?? []), row]);
   for (const group of groups.values()) {
@@ -930,6 +1144,7 @@ async function persistResearchArtifacts(
   value: typeof report,
   serialized: string,
   observationsCsv: string,
+  decisionSamplesCsv: string,
 ) {
   const historyPath = process.env.SHORT_TERM_HISTORY_INDEX_OUTPUT
     ? resolve(process.env.SHORT_TERM_HISTORY_INDEX_OUTPUT)
@@ -952,8 +1167,10 @@ async function persistResearchArtifacts(
   await writeAtomic(resolve(runDirectory, "report.json"), serialized);
   await writeAtomic(resolve(runDirectory, "metrics.csv"), researchMetricsCsv(value));
   await writeAtomic(resolve(runDirectory, "observations.csv"), observationsCsv);
+  await writeAtomic(resolve(runDirectory, "decision-samples.csv"), decisionSamplesCsv);
   await writeAtomic(resolve(artifactRoot, "latest.json"), serialized);
   await writeAtomic(resolve(artifactRoot, "latest-observations.csv"), observationsCsv);
+  await writeAtomic(resolve(artifactRoot, "latest-decision-samples.csv"), decisionSamplesCsv);
   await writeAtomic(resolve(artifactRoot, "history.json"), `${JSON.stringify({ items }, null, 2)}\n`);
 }
 
@@ -970,6 +1187,7 @@ function researchHistoryItem(value: typeof report) {
     datasetSha256: value.reproducibility.datasetSha256,
     decisionSha256: value.reproducibility.decisionSha256,
     observationsCsvSha256: value.reproducibility.observationsCsvSha256,
+    decisionSamplesCsvSha256: value.reproducibility.decisionSamplesCsvSha256,
     marketDuration: value.methodology.marketDuration,
     lookbackHours: value.methodology.period.lookbackHours,
     executionMode: value.methodology.executionMode,
@@ -995,13 +1213,14 @@ function researchMetricsCsv(value: typeof report) {
     ["leadLag", value.holdout.leadLag, value.screening.leadLag, value.walkForward.stability.leadLag],
     ["crossSectional", value.holdout.crossSectional, value.screening.crossSectional, value.walkForward.stability.crossSectional],
   ] as const;
-  const header = "run_id,code_revision,dataset_sha256,decision_sha256,observations_csv_sha256,specification_sha256,script_sha256,candidate,status,trades,net_return_pct,average_return_pct,confidence_lower_pct,excess_return_pct,max_drawdown_pct,profitable_folds,total_folds,passed_gates,total_gates";
+  const header = "run_id,code_revision,dataset_sha256,decision_sha256,observations_csv_sha256,decision_samples_csv_sha256,specification_sha256,script_sha256,candidate,status,trades,net_return_pct,average_return_pct,confidence_lower_pct,excess_return_pct,max_drawdown_pct,profitable_folds,total_folds,passed_gates,total_gates";
   const rows = definitions.map(([id, metrics, screening, stability]) => [
     value.reproducibility.runId,
     value.reproducibility.codeRevision ?? "",
     value.reproducibility.datasetSha256,
     value.reproducibility.decisionSha256,
     value.reproducibility.observationsCsvSha256,
+    value.reproducibility.decisionSamplesCsvSha256,
     value.reproducibility.specificationSha256,
     value.reproducibility.scriptSha256,
     id,
@@ -1033,17 +1252,33 @@ function researchDatasetRows(rows: typeof observations) {
     trendZ: row.crossSection.trendZ,
     baselineSelected: row.baseline.selected,
     baselineSide: row.baseline.side,
+    baselineObservedAt: row.baseline.observedAt,
+    baselineProbability: row.baseline.probability,
+    baselineTrendZ: row.baseline.trendZ,
+    baselineEntryAt: row.baseline.entryAt,
     baselineReturnPct: row.baseline.returnPct,
     controlSelected: row.control.selected,
     controlSide: row.control.side,
+    controlObservedAt: row.control.observedAt,
+    controlProbability: row.control.probability,
+    controlTrendZ: row.control.trendZ,
+    controlEntryAt: row.control.entryAt,
     controlReturnPct: row.control.returnPct,
     alwaysLongReturnPct: row.control.alwaysLongReturnPct,
     alwaysShortReturnPct: row.control.alwaysShortReturnPct,
     impliedSelected: row.implied.selected,
     impliedSide: row.implied.side,
+    impliedObservedAt: row.implied.observedAt,
+    impliedProbability: row.implied.probability,
+    impliedTrendZ: row.implied.trendZ,
+    impliedEntryAt: row.implied.entryAt,
     impliedReturnPct: row.implied.returnPct,
     leadLagSelected: row.leadLag.selected,
     leadLagSide: row.leadLag.side,
+    leadLagObservedAt: row.leadLag.observedAt,
+    leadLagProbability: row.leadLag.probability,
+    leadLagTrendZ: row.leadLag.trendZ,
+    leadLagEntryAt: row.leadLag.entryAt,
     leadLagReturnPct: row.leadLag.returnPct,
   }));
 }
@@ -1056,6 +1291,15 @@ function researchInputRows(rows: typeof observations) {
     endAt: row.endAt,
     officialResult: row.officialResult,
     ...row.input,
+    decisionSamples: row.decisionSamples.map((sample) => ({
+      observedAt: sample.observedAt,
+      probability: sample.probability,
+      entryAt: sample.entryAt,
+      entryOpen: sample.entryOpen,
+      entryHigh: sample.entryHigh,
+      entryLow: sample.entryLow,
+      entryClose: sample.entryClose,
+    })),
   }));
 }
 
@@ -1083,21 +1327,79 @@ function researchObservationsCsv(rows: ReturnType<typeof researchDatasetRows>) {
     "trendZ",
     "baselineSelected",
     "baselineSide",
+    "baselineObservedAt",
+    "baselineProbability",
+    "baselineTrendZ",
+    "baselineEntryAt",
     "baselineReturnPct",
     "controlSelected",
     "controlSide",
+    "controlObservedAt",
+    "controlProbability",
+    "controlTrendZ",
+    "controlEntryAt",
     "controlReturnPct",
     "alwaysLongReturnPct",
     "alwaysShortReturnPct",
     "impliedSelected",
     "impliedSide",
+    "impliedObservedAt",
+    "impliedProbability",
+    "impliedTrendZ",
+    "impliedEntryAt",
     "impliedReturnPct",
     "leadLagSelected",
     "leadLagSide",
+    "leadLagObservedAt",
+    "leadLagProbability",
+    "leadLagTrendZ",
+    "leadLagEntryAt",
     "leadLagReturnPct",
   ] as const;
   const header = keys.map(toSnakeCase).join(",");
   const lines = rows.map((row) => keys.map((key) => csvCell(row[key])).join(","));
+  return `${header}\n${lines.join("\n")}\n`;
+}
+
+function researchDecisionSamplesCsv(rows: typeof observations) {
+  const header = [
+    "market_id",
+    "asset",
+    "start_at",
+    "end_at",
+    "official_result",
+    "sample_index",
+    "observed_at",
+    "probability",
+    "entry_at",
+    "entry_open",
+    "entry_high",
+    "entry_low",
+    "entry_close",
+    "trend_z",
+    "baseline_side",
+    "baseline_signal_strength",
+    "baseline_return_pct",
+  ].join(",");
+  const lines = rows.flatMap((row) => row.decisionSamples.map((sample, index) => [
+    row.marketId,
+    row.asset,
+    row.startAt,
+    row.endAt,
+    row.officialResult,
+    index,
+    sample.observedAt,
+    sample.probability,
+    sample.entryAt,
+    sample.entryOpen,
+    sample.entryHigh,
+    sample.entryLow,
+    sample.entryClose,
+    sample.trendZ,
+    sample.baselineSide,
+    sample.baselineSignalStrength,
+    sample.baselineReturnPct ?? "",
+  ].map(csvCell).join(",")));
   return `${header}\n${lines.join("\n")}\n`;
 }
 

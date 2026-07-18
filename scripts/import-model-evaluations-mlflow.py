@@ -134,6 +134,7 @@ def import_short_term_runs(args):
             "market_duration": methodology["marketDuration"],
             "lookback_hours": methodology["period"]["lookbackHours"],
             "execution_mode": methodology["executionMode"],
+            "historical_entry_policy": methodology.get("entry", "unavailable"),
             "position_pct": methodology["positionPct"],
             "maximum_concurrent_positions": methodology["maximumConcurrentPositions"],
             "strategy_trials": methodology["impliedRule"]["strategyTrials"],
@@ -144,6 +145,7 @@ def import_short_term_runs(args):
             "dataset_sha256": reproducibility.get("datasetSha256"),
             "decision_sha256": reproducibility.get("decisionSha256"),
             "observations_csv_sha256": reproducibility.get("observationsCsvSha256"),
+            "decision_samples_csv_sha256": reproducibility.get("decisionSamplesCsvSha256"),
         }
         params = {key: value for key, value in params.items() if value is not None}
         metrics = {"complete_markets": float(report["coverage"]["completeMarkets"])}
@@ -164,6 +166,20 @@ def import_short_term_runs(args):
                 "passed_gates": screening["passedGates"],
             }
             metrics.update({f"{prefix}_{key}": float(value) for key, value in values.items() if value is not None})
+        diagnosis = report.get("diagnosis", {})
+        baseline_diagnosis = diagnosis.get("baseline", {})
+        sensitivity = diagnosis.get("sensitivity", {})
+        diagnostic_values = {
+            "baseline_binary_outcome_accuracy": baseline_diagnosis.get("binaryOutcomeAccuracy"),
+            "baseline_after_cost_win_rate": baseline_diagnosis.get("afterCostWinRate"),
+            "baseline_estimated_before_cost_win_rate": baseline_diagnosis.get("estimatedBeforeCostWinRate"),
+            "baseline_estimated_before_cost_average_return_pct": baseline_diagnosis.get("estimatedBeforeCostAverageReturnPct"),
+            "assumed_round_trip_cost_pct": baseline_diagnosis.get("assumedRoundTripCostPct"),
+            "sensitivity_tested_variants": sensitivity.get("testedVariants"),
+            "sensitivity_calibration_positive_variants": sensitivity.get("calibrationPositiveVariants"),
+            "sensitivity_holdout_positive_variants": sensitivity.get("holdoutPositiveVariants"),
+        }
+        metrics.update({key: float(value) for key, value in diagnostic_values.items() if value is not None})
         with mlflow.start_run(
             run_name=f"15m-{generated_at}",
             tags={

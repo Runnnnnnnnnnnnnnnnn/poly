@@ -69,6 +69,15 @@ const researchHistoryItemSchema = z.object({
   passedGates: z.number(),
   totalGates: z.number(),
 });
+const researchDiagnosisSliceSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  trades: z.number(),
+  profitableTrades: z.number(),
+  afterCostWinRate: z.number().nullable(),
+  averageReturnPct: z.number().nullable(),
+  netReturnPct: z.number(),
+});
 const shortTermResearchSchema = z.object({
   generatedAt: z.string(),
   methodology: z.object({
@@ -99,6 +108,32 @@ const shortTermResearchSchema = z.object({
     leadLag: researchScreeningSchema,
     crossSectional: researchScreeningSchema,
   }),
+  diagnosis: z.object({
+    baseline: z.object({
+      verdict: z.enum(["no_remaining_move_edge", "cost_barrier", "positive_after_costs"]),
+      trades: z.number(),
+      binaryOutcomeAccuracy: z.number().nullable(),
+      afterCostWinRate: z.number().nullable(),
+      estimatedBeforeCostWinRate: z.number().nullable(),
+      averageNetReturnPct: z.number().nullable(),
+      estimatedBeforeCostAverageReturnPct: z.number().nullable(),
+      assumedRoundTripCostPct: z.number(),
+      slices: z.object({
+        byAsset: z.array(researchDiagnosisSliceSchema),
+        bySide: z.array(researchDiagnosisSliceSchema),
+        byProbability: z.array(researchDiagnosisSliceSchema),
+        byTrendStrength: z.array(researchDiagnosisSliceSchema),
+        byJstSession: z.array(researchDiagnosisSliceSchema),
+      }),
+    }),
+    sensitivity: z.object({
+      purpose: z.literal("diagnostic_only"),
+      selectionPolicy: z.literal("fixed_grid_not_used_for_promotion"),
+      testedVariants: z.number(),
+      calibrationPositiveVariants: z.number(),
+      holdoutPositiveVariants: z.number(),
+    }).passthrough(),
+  }).optional(),
 });
 
 export type MonitoringSnapshot = Awaited<ReturnType<typeof getMonitoringSnapshot>>;
@@ -1070,6 +1105,8 @@ function loadShortTermResearchSummary() {
       acceptedCandidates: definitions.filter((item) => item.screening.status === "promising").length,
       totalCandidates: definitions.length,
       currentCandidateId: "baseline",
+      diagnosis: parsed.diagnosis?.baseline ?? null,
+      sensitivity: parsed.diagnosis?.sensitivity ?? null,
       history: loadShortTermResearchHistory(root),
       candidates: definitions.map((item) => ({
         id: item.id,
@@ -1087,7 +1124,8 @@ function loadShortTermResearchSummary() {
         totalGates: item.screening.totalGates,
       })),
     };
-  } catch {
+  } catch (error) {
+    console.warn(`[monitoring] failed to parse short-term research artifact at ${path}`, error);
     return null;
   }
 }

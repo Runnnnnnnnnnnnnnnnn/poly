@@ -104,6 +104,16 @@ type HoldoutSlice = {
   averageNetTradeReturn: number | null;
 };
 
+type ResearchDiagnosisSlice = {
+  key: string;
+  label: string;
+  trades: number;
+  profitableTrades: number;
+  afterCostWinRate: number | null;
+  averageReturnPct: number | null;
+  netReturnPct: number;
+};
+
 type MonitoringSnapshot = {
   status: "live" | "delayed" | "offline";
   generatedAt: string;
@@ -444,6 +454,30 @@ type MonitoringSnapshot = {
         acceptedCandidates: number;
         totalCandidates: number;
         currentCandidateId: string;
+        diagnosis: {
+          verdict: "no_remaining_move_edge" | "cost_barrier" | "positive_after_costs";
+          trades: number;
+          binaryOutcomeAccuracy: number | null;
+          afterCostWinRate: number | null;
+          estimatedBeforeCostWinRate: number | null;
+          averageNetReturnPct: number | null;
+          estimatedBeforeCostAverageReturnPct: number | null;
+          assumedRoundTripCostPct: number;
+          slices: {
+            byAsset: Array<ResearchDiagnosisSlice>;
+            bySide: Array<ResearchDiagnosisSlice>;
+            byProbability: Array<ResearchDiagnosisSlice>;
+            byTrendStrength: Array<ResearchDiagnosisSlice>;
+            byJstSession: Array<ResearchDiagnosisSlice>;
+          };
+        } | null;
+        sensitivity: {
+          purpose: "diagnostic_only";
+          selectionPolicy: "fixed_grid_not_used_for_promotion";
+          testedVariants: number;
+          calibrationPositiveVariants: number;
+          holdoutPositiveVariants: number;
+        } | null;
         candidates: Array<{
           id: string;
           label: string;
@@ -1918,7 +1952,7 @@ function BacktestResultsPanel({
         <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500"><Clock3 className="h-3.5 w-3.5" />6時間ごとに自動実行</span>
       </div>
 
-      {research ? <ShortTermHistoricalBacktest research={research} /> : null}
+      {research ? <ShortTermHistoricalBacktest research={research} downloadsAvailable={downloadsAvailable} /> : null}
 
       <details className={research ? "border-t" : ""} open={requestedId || !research ? true : undefined}>
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
@@ -2023,8 +2057,10 @@ function BacktestResultsPanel({
 
 function ShortTermHistoricalBacktest({
   research,
+  downloadsAvailable,
 }: {
   research: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["shortTermDirection"]>["research"]>;
+  downloadsAvailable: boolean;
 }) {
   const current = research.candidates.find((candidate) => candidate.id === research.currentCandidateId)
     ?? research.candidates[0];
@@ -2042,9 +2078,19 @@ function ShortTermHistoricalBacktest({
           <p className="mt-1 text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{label}</p>
           <p className="mt-1 text-xs font-semibold text-slate-600">Polymarket方向 + Hyperliquidトレンド一致 / 1取引5% / 同時3件まで</p>
         </div>
-        <div className="text-left text-[11px] font-semibold leading-5 text-slate-600 sm:text-right">
+        <div className="flex flex-wrap items-center gap-2 text-left text-[11px] font-semibold leading-5 text-slate-600 sm:justify-end sm:text-right">
+          <div>
           <p>過去 {research.lookbackHours}時間・{formatCompact(research.completeMarkets)}市場</p>
           <p>{formatJapanDateTime(research.generatedAt)} 実行</p>
+          </div>
+          {downloadsAvailable ? (
+            <div className="flex gap-1">
+              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/short-term-backtests/latest")} title="最新レポート" aria-label="最新レポート"><FileJson className="h-4 w-4" /></a>
+              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/short-term-backtests/latest?format=metrics")} title="指標一覧" aria-label="指標一覧"><Download className="h-4 w-4" /></a>
+              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/short-term-backtests/latest?format=observations")} title="約定観測一覧" aria-label="約定観測一覧"><History className="h-4 w-4" /></a>
+              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/short-term-backtests/latest?format=samples")} title="判断時点サンプル" aria-label="判断時点サンプル"><Database className="h-4 w-4" /></a>
+            </div>
+          ) : null}
         </div>
       </div>
       <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
@@ -2054,6 +2100,7 @@ function ShortTermHistoricalBacktest({
         <BacktestMetric label="単純戦略との差" value={current.excessReturnPct === null ? "未判定" : formatSignedPct(current.excessReturnPct)} tone={signedMetricTone(current.excessReturnPct, current.excessReturnPct !== null)} />
         <BacktestMetric label="最大下落" value={current.trades ? formatPct(current.maxDrawdownPct) : "未判定"} tone={current.maxDrawdownPct <= 0.05 ? "good" : "bad"} />
       </div>
+      {research.diagnosis ? <ShortTermBacktestDiagnosis diagnosis={research.diagnosis} sensitivity={research.sensitivity} /> : null}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
         <div className="flex flex-wrap gap-x-4 gap-y-1">
           <span>順次検証 {current.profitableFolds}/{current.totalFolds}期間でプラス</span>
@@ -2082,6 +2129,90 @@ function ShortTermHistoricalBacktest({
           </div>
         </details>
       ) : null}
+    </div>
+  );
+}
+
+function ShortTermBacktestDiagnosis({
+  diagnosis,
+  sensitivity,
+}: {
+  diagnosis: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["shortTermDirection"]>["research"]>["diagnosis"];
+  sensitivity: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["shortTermDirection"]>["research"]>["sensitivity"];
+}) {
+  if (!diagnosis) return null;
+  const verdict = diagnosis.verdict === "positive_after_costs"
+    ? { label: "コスト後もプラス", tone: "good" as Tone }
+    : diagnosis.verdict === "cost_barrier"
+      ? { label: "コストを超えない", tone: "bad" as Tone }
+      : { label: "判定後の値動きに優位性なし", tone: "bad" as Tone };
+  const accuracy = clamp((diagnosis.binaryOutcomeAccuracy ?? 0) * 100, 0, 100);
+  const profitable = clamp((diagnosis.afterCostWinRate ?? 0) * 100, 0, 100);
+
+  return (
+    <div className="border-t" aria-label="15分モデルの損失原因">
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-4 py-3 sm:px-5">
+        <p className="text-xs font-bold text-slate-800">結果が伸びない理由</p>
+        <span className={`rounded-sm px-2 py-1 text-[10px] font-bold ${tonePillClass(verdict.tone)}`}>{verdict.label}</span>
+      </div>
+      <div className="grid divide-y border-t sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        <BacktestRatio label="方向の正解" value={diagnosis.binaryOutcomeAccuracy} meter={accuracy} tone="neutral" />
+        <BacktestRatio label="利益になった取引" value={diagnosis.afterCostWinRate} meter={profitable} tone={profitable >= 50 ? "good" : "bad"} />
+        <div className="min-w-0 px-4 py-4 sm:px-5">
+          <p className="text-[10px] font-bold text-slate-500">固定した閾値の再確認</p>
+          <p className={`mt-2 text-2xl font-bold ${sensitivity && sensitivity.holdoutPositiveVariants > 0 ? "text-emerald-700" : "text-rose-700"}`}>
+            {sensitivity ? `${sensitivity.holdoutPositiveVariants} / ${sensitivity.testedVariants}` : "未集計"}
+          </p>
+          <p className="mt-1 text-[10px] font-semibold text-slate-500">最終期間でプラス</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 divide-x border-t bg-white">
+        <div className="px-4 py-3 sm:px-5">
+          <p className="text-[10px] font-bold text-slate-500">予測後の平均値幅（コスト前）</p>
+          <p className={`mt-1 text-lg font-bold ${signedMetricTone(diagnosis.estimatedBeforeCostAverageReturnPct, true) === "good" ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPctPrecise(diagnosis.estimatedBeforeCostAverageReturnPct)}</p>
+        </div>
+        <div className="px-4 py-3 sm:px-5">
+          <p className="text-[10px] font-bold text-slate-500">想定する往復コスト</p>
+          <p className="mt-1 text-lg font-bold text-slate-800">{formatPct(diagnosis.assumedRoundTripCostPct)}</p>
+        </div>
+      </div>
+      <details className="border-t">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
+          <span>どこで負けたか</span>
+          <span className="text-[10px] font-semibold text-slate-500">銘柄・売買方向</span>
+        </summary>
+        <div className="grid border-t sm:grid-cols-2 sm:divide-x">
+          <ResearchDiagnosisList label="銘柄別" items={diagnosis.slices.byAsset} />
+          <ResearchDiagnosisList label="方向別" items={diagnosis.slices.bySide} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function BacktestRatio({ label, value, meter, tone }: { label: string; value: number | null; meter: number; tone: Tone }) {
+  return (
+    <div className="min-w-0 px-4 py-4 sm:px-5">
+      <p className="text-[10px] font-bold text-slate-500">{label}</p>
+      <p className={`mt-2 text-2xl font-bold ${tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-700" : "text-slate-950"}`}>{formatPct(value)}</p>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+        <div className={`h-full rounded-full ${tone === "good" ? "bg-emerald-500" : tone === "bad" ? "bg-rose-500" : "bg-slate-500"}`} style={{ width: `${meter}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function ResearchDiagnosisList({ label, items }: { label: string; items: ResearchDiagnosisSlice[] }) {
+  return (
+    <div className="min-w-0 px-4 py-3 sm:px-5">
+      <p className="mb-1 text-[10px] font-bold text-slate-500">{label}</p>
+      {items.map((item) => (
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-t border-slate-100 py-2 text-xs" key={item.key}>
+          <span className="truncate font-semibold text-slate-700">{item.label === "LONG" ? "買い" : item.label === "SHORT" ? "売り" : item.label}</span>
+          <span className="tabular-nums text-slate-500">{item.trades}件</span>
+          <span className={`min-w-16 text-right font-bold tabular-nums ${(item.averageReturnPct ?? 0) > 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.averageReturnPct)}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -2945,6 +3076,12 @@ function formatUsdCompact(value: number) {
 function formatSignedPct(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
+}
+
+function formatSignedPctPrecise(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
+  const digits = Math.abs(value) < 0.001 ? 3 : 2;
+  return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
 }
 
 function formatPct(value: number | null | undefined) {

@@ -1652,6 +1652,7 @@ assert.deepEqual(compareTestnetPositions(
 assert.equal(requiredApiAccess("GET", "/api/public-dashboard"), "public");
 assert.equal(requiredApiAccess("GET", "/api/model-evaluations"), "public");
 assert.equal(requiredApiAccess("GET", "/api/model-evaluations/evaluation-run-1"), "public");
+assert.equal(requiredApiAccess("GET", "/api/short-term-backtests/latest"), "public");
 assert.equal(requiredApiAccess("POST", "/api/model-evaluations"), "admin");
 assert.equal(requiredApiAccess("GET", "/api/markets/123"), "public");
 assert.equal(requiredApiAccess("POST", "/api/markets"), "admin");
