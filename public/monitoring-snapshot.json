@@ -1,16 +1,16 @@
 {
   "status": "live",
-  "generatedAt": "2026-07-18T14:25:04.274Z",
+  "generatedAt": "2026-07-18T14:39:05.537Z",
   "collection": {
     "startedAt": "2026-07-13T02:42:17.427Z",
-    "latestAt": "2026-07-18T14:25:01.439Z",
-    "totalRecords": 226672,
-    "last24Hours": 166932,
+    "latestAt": "2026-07-18T14:39:01.747Z",
+    "totalRecords": 229408,
+    "last24Hours": 168411,
     "realtimePrices": {
       "status": "healthy",
-      "records": 22967,
-      "last24Hours": 22967,
-      "latestAt": "2026-07-18T14:25:01.439Z",
+      "records": 23735,
+      "last24Hours": 23735,
+      "latestAt": "2026-07-18T14:39:01.747Z",
       "maximumSkewMs": 117467,
       "activeMarkets": 4,
       "assets": [
@@ -22,53 +22,53 @@
       "arbitrageViolations": 187,
       "targetCadenceSeconds": 5,
       "synchronizationVersion": "websocket-v6-near-term-discovery",
-      "executionRecords": 15864,
-      "executionLast24Hours": 15864,
-      "executionLatestAt": "2026-07-18T14:25:01.439Z",
+      "executionRecords": 16536,
+      "executionLast24Hours": 16536,
+      "executionLatestAt": "2026-07-18T14:39:01.747Z",
       "executionMaximumSkewMs": 12134,
       "executionSynchronizationVersion": "websocket-asset-v1"
     },
     "synchronizedPrices": {
-      "records": 98790,
-      "last24Hours": 98790,
-      "latestAt": "2026-07-18T14:24:23.692Z",
+      "records": 99795,
+      "last24Hours": 99795,
+      "latestAt": "2026-07-18T14:38:23.536Z",
       "maximumSkewMs": 19058,
       "targetCadenceMinutes": 1,
       "quality": {
         "status": "collecting",
-        "records": 98790,
-        "completeRecords": 98790,
-        "windowRecords": 98790,
-        "windowCompleteRecords": 98790,
-        "totalRecords": 110940,
-        "coverage": 0.8904813412655489,
-        "durationHours": 3.2655777777777777,
+        "records": 99795,
+        "completeRecords": 99795,
+        "windowRecords": 99795,
+        "windowCompleteRecords": 99795,
+        "totalRecords": 112060,
+        "coverage": 0.8905497055149028,
+        "durationHours": 3.498867777777778,
         "startedAt": "2026-07-17T15:26:56.226Z",
         "continuousStartedAt": "2026-07-18T11:08:27.612Z",
-        "latestAt": "2026-07-18T14:24:23.692Z",
-        "medianSkewMs": 4000,
-        "p95SkewMs": 4639,
+        "latestAt": "2026-07-18T14:38:23.536Z",
+        "medianSkewMs": 4001,
+        "p95SkewMs": 4641,
         "medianSpread": 0.004000000000000004,
         "p95Spread": 0.03999999999999998,
-        "medianAbsoluteBasisPct": 0.0002423967364115764,
-        "p95AbsoluteBasisPct": 0.0006374501992032489,
+        "medianAbsoluteBasisPct": 0.0002424544640209358,
+        "p95AbsoluteBasisPct": 0.0006349418526935269,
         "maximumCaptureGapMs": 815799,
         "assets": [
           {
             "asset": "BTC",
-            "records": 34647
+            "records": 34997
           },
           {
             "asset": "ETH",
-            "records": 25681
+            "records": 25933
           },
           {
             "asset": "SOL",
-            "records": 19446
+            "records": 19639
           },
           {
             "asset": "XRP",
-            "records": 19016
+            "records": 19226
           }
         ],
         "passedGates": 5,
@@ -109,8 +109,8 @@
       "prospective": {
         "methodology": "prospective-1m-orderbook-holdout",
         "collectionStartedAt": "2026-07-17T15:26:56.226Z",
-        "latestSnapshotAt": "2026-07-18T14:24:23.692Z",
-        "generatedAt": "2026-07-18T14:25:04.274Z",
+        "latestSnapshotAt": "2026-07-18T14:38:23.536Z",
+        "generatedAt": "2026-07-18T14:39:05.537Z",
         "completedEvents": 0,
         "targetEvents": 50,
         "horizons": [
@@ -235,9 +235,9 @@
   "combinedShadow": {
     "status": "running",
     "startedAt": "2026-07-17T16:18:34.585Z",
-    "updatedAt": "2026-07-18T14:23:14.799Z",
+    "updatedAt": "2026-07-18T14:38:19.758Z",
     "initialEquity": 40000,
-    "equity": 39999.06798803025,
+    "equity": 39999.12420050403,
     "returnPct": 0,
     "cash": 39999.775,
     "realizedPnl": 0,
@@ -247,7 +247,7 @@
         "side": "SHORT",
         "quantity": 0.007800837954467829,
         "entryPrice": 64095.6783,
-        "markPrice": 64146.5,
+        "markPrice": 64139.5,
         "signalZ": -0.6255913555132823,
         "polymarketSide": "SHORT",
         "entryTrendZ6h": 0.448099556973332,
@@ -261,7 +261,7 @@
     "trades": 0,
     "wins": 0,
     "winRate": null,
-    "maxDrawdownPct": 0.0001531554396919453,
+    "maxDrawdownPct": 0.0001717834773432424,
     "riskStatus": "NORMAL",
     "emergencyStopped": false,
     "experimentKey": "forward-v2-6-12-24-48",
@@ -418,7 +418,7 @@
           "progressPct": 0,
           "netReturnPct": null,
           "excessReturnPct": null,
-          "maxDrawdownPct": 0.0001531554396919453,
+          "maxDrawdownPct": 0.0001717834773432424,
           "passedGates": 0,
           "totalGates": 8,
           "horizonEligibleMarkets": 11,
@@ -435,28 +435,28 @@
       "status": "collecting",
       "running": true,
       "startedAt": "2026-07-18T06:35:12.058Z",
-      "updatedAt": "2026-07-18T14:24:15.914Z",
-      "trades": 48,
-      "controlTrades": 51,
+      "updatedAt": "2026-07-18T14:38:15.936Z",
+      "trades": 50,
+      "controlTrades": 53,
       "minimumTrades": 50,
-      "progressPct": 0.96,
-      "netReturnPct": -0.002992570109955523,
+      "progressPct": 1,
+      "netReturnPct": -0.0032610471600868713,
       "excessReturnPct": -0.000512071218912215,
-      "confidenceLowerPct": -0.0013278572698349391,
-      "maxDrawdownPct": 0.0029925701099557046,
+      "confidenceLowerPct": -0.0013870723143807465,
+      "maxDrawdownPct": 0.003261047160087037,
       "passedGates": 0,
       "totalGates": 10,
-      "openPositions": 2,
-      "scannedMarkets": 44,
-      "fifteenMinuteMarkets": 11,
+      "openPositions": 1,
+      "scannedMarkets": 37,
+      "fifteenMinuteMarkets": 8,
       "decisionWindowMarkets": 0,
       "priceReadyMarkets": 0,
-      "thresholdSignals": 50,
-      "opened": 50,
+      "thresholdSignals": 51,
+      "opened": 51,
       "latestAction": "NO_SIGNAL",
-      "latestReason": "次回は7/18 23:32",
-      "nextDecisionAt": "2026-07-18T14:32:00.000Z",
-      "observedAt": "2026-07-18T14:24:15.914Z",
+      "latestReason": "次回は7/18 23:47",
+      "nextDecisionAt": "2026-07-18T14:47:00.000Z",
+      "observedAt": "2026-07-18T14:38:15.936Z",
       "specificationHash": "655dac2ae6bf6768",
       "executionAudit": {
         "status": "collecting",
@@ -469,49 +469,49 @@
         "collectionStartedAt": "2026-07-18T06:35:18.248Z",
         "minimumAuditedPositions": 50,
         "minimumIndependentEvents": 50,
-        "eligiblePositions": 48,
-        "auditedPositions": 43,
-        "coverage": 0.8958333333333334,
-        "verifiedPositions": 43,
-        "verifiedIndependentEvents": 24,
+        "eligiblePositions": 50,
+        "auditedPositions": 45,
+        "coverage": 0.9,
+        "verifiedPositions": 45,
+        "verifiedIndependentEvents": 25,
         "directionCoverage": {
           "minimumIndependentEventsPerSide": 5,
           "longIndependentEvents": 16,
-          "shortIndependentEvents": 13,
+          "shortIndependentEvents": 14,
           "passed": true
         },
-        "verifiedCoverage": 0.8958333333333334,
-        "resolvedPredictions": 48,
-        "predictionAccuracy": 0.7708333333333334,
-        "polymarketAuditedPositions": 47,
-        "polymarketNetReturnPct": 0.03951457829118467,
-        "hyperliquidNetReturnPct": -0.0013941401125509587,
-        "storedNetReturnPct": -0.001285857504035828,
-        "portfolioNetReturnPct": -0.002992570109955523,
-        "storedPortfolioReturnPct": -0.0027601377347924055,
+        "verifiedCoverage": 0.9,
+        "resolvedPredictions": 50,
+        "predictionAccuracy": 0.74,
+        "polymarketAuditedPositions": 49,
+        "polymarketNetReturnPct": -0.0035860167411085843,
+        "hyperliquidNetReturnPct": -0.0014517849840089397,
+        "storedNetReturnPct": -0.0013441944171016225,
+        "portfolioNetReturnPct": -0.0032610471600868713,
+        "storedPortfolioReturnPct": -0.003019373691543073,
         "meanTradeReturnConfidenceInterval95": [
-          -0.0018213080034609151,
-          -0.0010502508745907065
+          -0.0019191272908126989,
+          -0.0010689265699841107
         ],
-        "benchmarkReturnPct": -0.002480498891043308,
+        "benchmarkReturnPct": -0.0027489759411746563,
         "benchmarkLabel": "常時ショート",
         "excessReturnPct": -0.000512071218912215,
         "excessConfidenceInterval95": [
-          -0.0013278572698349391,
-          0.00035653681609612825
+          -0.0013870723143807465,
+          0.00036787660218634484
         ],
-        "deflatedSharpeProbability": 0.0072915594091012,
+        "deflatedSharpeProbability": 0.007215259063152957,
         "strategyTrials": 11,
         "randomBenchmarkTrials": 200,
-        "maxDrawdownPct": 0.0029925701099557046,
+        "maxDrawdownPct": 0.003261047160087037,
         "attribution": {
           "byAsset": [
             {
               "asset": "BTC",
-              "trades": 2,
+              "trades": 3,
               "wins": 1,
-              "netPnl": -1.0468508227438993,
-              "returnContributionPct": -0.00010468508227438993
+              "netPnl": -2.0751093813100123,
+              "returnContributionPct": -0.00020751093813100124
             },
             {
               "asset": "ETH",
@@ -522,10 +522,10 @@
             },
             {
               "asset": "SOL",
-              "trades": 13,
+              "trades": 14,
               "wins": 0,
-              "netPnl": -12.643077628828134,
-              "returnContributionPct": -0.0012643077628828134
+              "netPnl": -14.299589571575508,
+              "returnContributionPct": -0.0014299589571575508
             },
             {
               "asset": "XRP",
@@ -545,22 +545,22 @@
             },
             {
               "side": "SHORT",
-              "trades": 18,
+              "trades": 20,
               "wins": 3,
-              "netPnl": -9.837802372165912,
-              "returnContributionPct": -0.0009837802372165913
+              "netPnl": -12.5225728734794,
+              "returnContributionPct": -0.0012522572873479398
             }
           ]
         },
-        "controlComparablePositions": 46,
-        "comparableEvents": 46,
-        "comparableIndependentEvents": 25,
+        "controlComparablePositions": 48,
+        "comparableEvents": 48,
+        "comparableIndependentEvents": 26,
         "controlCoverage": 1,
         "benchmarks": {
-          "polymarketOnlyReturnPct": -0.0031227160799660336,
-          "alwaysLongReturnPct": -0.0037220944735923403,
-          "alwaysShortReturnPct": -0.002480498891043308,
-          "randomMedianReturnPct": -0.0031006887298994203
+          "polymarketOnlyReturnPct": -0.003391193130097381,
+          "alwaysLongReturnPct": -0.003715957682148677,
+          "alwaysShortReturnPct": -0.0027489759411746563,
+          "randomMedianReturnPct": -0.0032193328937191227
         },
         "passedReadinessGates": 0,
         "currentlyPassingReadinessGates": 3,
@@ -629,10 +629,10 @@
           }
         ],
         "settlementResolutionStatus": "attention",
-        "returnDifferencePct": -0.00010828260851513056,
-        "medianTimingErrorMs": 1485,
+        "returnDifferencePct": -0.00010759056690731717,
+        "medianTimingErrorMs": 1569.5,
         "maximumTimingErrorMs": 6280,
-        "medianPolymarketQuoteAgeMs": 43,
+        "medianPolymarketQuoteAgeMs": 37,
         "maximumPolymarketQuoteAgeMs": 314,
         "medianCloseDelayMs": 36300,
         "maximumCloseDelayMs": 72143,
@@ -647,12 +647,12 @@
         "source": "CHAINLINK",
         "rule": "終了価格が開始価格以上ならUp",
         "targetMarkets": 50,
-        "resolvedObservedMarkets": 120,
-        "completeMarkets": 104,
+        "resolvedObservedMarkets": 124,
+        "completeMarkets": 108,
         "missingBoundaryMarkets": 16,
-        "matchedMarkets": 104,
+        "matchedMarkets": 108,
         "mismatchedMarkets": 0,
-        "coverage": 0.8666666666666667,
+        "coverage": 0.8709677419354839,
         "matchRate": 1,
         "medianBoundaryErrorMs": 1000,
         "maximumBoundaryErrorMs": 3000,
@@ -660,26 +660,26 @@
         "byAsset": [
           {
             "asset": "BTC",
-            "completeMarkets": 26,
-            "matchedMarkets": 26,
+            "completeMarkets": 27,
+            "matchedMarkets": 27,
             "mismatchedMarkets": 0
           },
           {
             "asset": "ETH",
-            "completeMarkets": 26,
-            "matchedMarkets": 26,
+            "completeMarkets": 27,
+            "matchedMarkets": 27,
             "mismatchedMarkets": 0
           },
           {
             "asset": "SOL",
-            "completeMarkets": 26,
-            "matchedMarkets": 26,
+            "completeMarkets": 27,
+            "matchedMarkets": 27,
             "mismatchedMarkets": 0
           },
           {
             "asset": "XRP",
-            "completeMarkets": 26,
-            "matchedMarkets": 26,
+            "completeMarkets": 27,
+            "matchedMarkets": 27,
             "mismatchedMarkets": 0
           }
         ],
@@ -1458,13 +1458,13 @@
       "medianReferenceCaptureLagSeconds": null
     },
     "funnel": {
-      "scans": 308,
+      "scans": 311,
       "scannedMarkets": 83,
       "structuredMarkets": 11,
       "horizonEligibleMarkets": 11,
       "groupedEvents": 1,
       "priceReadyEvents": 1,
-      "thresholdSignals": 37,
+      "thresholdSignals": 40,
       "opened": 1,
       "closed": 0
     },
@@ -1488,7 +1488,7 @@
       "priceBasisPct": null,
       "ladderViolations": null,
       "nextWindowAt": "2026-07-19T13:00:00.000Z",
-      "observedAt": "2026-07-18T14:23:14.799Z"
+      "observedAt": "2026-07-18T14:38:19.758Z"
     },
     "testnet": {
       "environment": "testnet",
@@ -1516,8 +1516,8 @@
         "label": "testnet API疎通",
         "cadence": "10分ごと",
         "status": "healthy",
-        "lastSuccessAt": "2026-07-18T14:23:19.933Z",
-        "records": 2310
+        "lastSuccessAt": "2026-07-18T14:33:24.930Z",
+        "records": 2520
       },
       "verifiedReady": false,
       "verification": {
@@ -1571,9 +1571,9 @@
     }
   },
   "polymarket": {
-    "snapshots": 145604,
-    "markets": 509,
-    "latestAt": "2026-07-18T14:24:23.692Z",
+    "snapshots": 146724,
+    "markets": 513,
+    "latestAt": "2026-07-18T14:38:23.536Z",
     "backtestRuns": 7,
     "backtestPoints": 781
   },
@@ -2197,7 +2197,7 @@
     "maximumExecutionTimingErrorMinutes": 0.000016666666666666667,
     "probabilityLadderEvents": 240,
     "probabilityLadderViolationEvents": 0,
-    "aiPredictions": 276,
+    "aiPredictions": 278,
     "aiResolved": 0,
     "aiBrierScore": null,
     "marketBrierScore": null,
@@ -2288,53 +2288,53 @@
     ]
   },
   "hyperliquid": {
-    "snapshots": 8795,
-    "latestAt": "2026-07-18T14:24:20.013Z",
+    "snapshots": 8865,
+    "latestAt": "2026-07-18T14:38:20.029Z",
     "assets": [
       {
         "asset": "BTC",
-        "price": 64126.5,
-        "change24hPct": 0.013713463696865213,
-        "dayVolume": 1050308882.692401,
-        "openInterestUsd": 2510419172.539,
+        "price": 64139.5,
+        "change24hPct": 0.013326276541961501,
+        "dayVolume": 1021975878.527669,
+        "openInterestUsd": 2512236546.62852,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-18T14:24:20.013Z"
+        "capturedAt": "2026-07-18T14:38:20.029Z"
       },
       {
         "asset": "ETH",
-        "price": 1843.55,
-        "change24hPct": 0.01099533863449409,
-        "dayVolume": 351615476.7389202,
-        "openInterestUsd": 1776254725.95586,
+        "price": 1845.45,
+        "change24hPct": 0.012926066194631991,
+        "dayVolume": 345924368.8805701,
+        "openInterestUsd": 1780659602.1051993,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-18T14:24:20.013Z"
+        "capturedAt": "2026-07-18T14:38:20.029Z"
       },
       {
         "asset": "SOL",
-        "price": 74.81649999999999,
-        "change24hPct": 0.005219809749019033,
-        "dayVolume": 60943727.31009998,
-        "openInterestUsd": 326304726.1415201,
-        "fundingRate": 2.786e-7,
-        "capturedAt": "2026-07-18T14:24:20.013Z"
+        "price": 74.8425,
+        "change24hPct": 0.005893500349443581,
+        "dayVolume": 60449087.98540999,
+        "openInterestUsd": 327744387.70835996,
+        "fundingRate": 0.0000038726,
+        "capturedAt": "2026-07-18T14:38:20.029Z"
       },
       {
         "asset": "XRP",
-        "price": 1.08735,
-        "change24hPct": 0.003090405904059068,
-        "dayVolume": 12610015.89679999,
-        "openInterestUsd": 101545338.888,
-        "fundingRate": 0.0000067041,
-        "capturedAt": "2026-07-18T14:24:20.013Z"
+        "price": 1.08795,
+        "change24hPct": 0.003921749561686783,
+        "dayVolume": 12462615.53999999,
+        "openInterestUsd": 101582671.20320001,
+        "fundingRate": 0.0000091704,
+        "capturedAt": "2026-07-18T14:38:20.029Z"
       },
       {
         "asset": "HYPE",
-        "price": 59.0295,
-        "change24hPct": -0.021945521423600733,
-        "dayVolume": 223108718.1792999,
-        "openInterestUsd": 1348043192.2832,
+        "price": 59.4135,
+        "change24hPct": -0.011274566906858019,
+        "dayVolume": 223062177.69791,
+        "openInterestUsd": 1357717745.7472205,
         "fundingRate": 0.0000125,
-        "capturedAt": "2026-07-18T14:24:20.013Z"
+        "capturedAt": "2026-07-18T14:38:20.029Z"
       }
     ]
   },
@@ -2342,7 +2342,7 @@
     "alerts": {
       "status": "healthy",
       "message": "異常1件を監視中",
-      "lastSuccessAt": "2026-07-18T14:24:29.795Z",
+      "lastSuccessAt": "2026-07-18T14:38:29.831Z",
       "webhookConfigured": false
     },
     "tunnel": {
@@ -2351,10 +2351,10 @@
       "publicUrl": "https://model-insurance-nancy-julian.trycloudflare.com",
       "fixedUrl": false,
       "fallback": false,
-      "publishedAt": "2026-07-18T14:21:35.550Z",
-      "lastCheckedAt": "2026-07-18T14:24:40.972Z",
+      "publishedAt": "2026-07-18T14:36:35.347Z",
+      "lastCheckedAt": "2026-07-18T14:38:38.448Z",
       "consecutiveFailures": 0,
-      "updatedAt": "2026-07-18T14:24:40.972Z"
+      "updatedAt": "2026-07-18T14:38:38.448Z"
     },
     "backup": {
       "encrypted": true,
@@ -2371,24 +2371,24 @@
       "label": "価格同期収集",
       "cadence": "1分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T14:24:23.740Z",
-      "records": 138955
+      "lastSuccessAt": "2026-07-18T14:38:23.618Z",
+      "records": 140075
     },
     {
       "id": "hyperliquid",
       "label": "相場データ収集",
       "cadence": "1分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T14:24:20.025Z",
-      "records": 8795
+      "lastSuccessAt": "2026-07-18T14:38:20.041Z",
+      "records": 8865
     },
     {
       "id": "realtime-market-data",
       "label": "秒単位の板収集",
       "cadence": "5秒ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T14:24:51.445Z",
-      "records": 59853
+      "lastSuccessAt": "2026-07-18T14:38:51.752Z",
+      "records": 61293
     },
     {
       "id": "backtest",
@@ -2419,32 +2419,32 @@
       "label": "testnet API疎通",
       "cadence": "10分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T14:23:19.933Z",
-      "records": 2310
+      "lastSuccessAt": "2026-07-18T14:33:24.930Z",
+      "records": 2520
     },
     {
       "id": "forward-experiment",
       "label": "固定フォワード検証",
       "cadence": "5分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T14:23:19.741Z",
-      "records": 2538
+      "lastSuccessAt": "2026-07-18T14:38:23.708Z",
+      "records": 2562
     },
     {
       "id": "short-term-direction",
       "label": "15分モデル検証",
       "cadence": "1分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T14:24:16.296Z",
-      "records": 17097
+      "lastSuccessAt": "2026-07-18T14:38:16.271Z",
+      "records": 17804
     },
     {
       "id": "forward-execution-audit-report",
       "label": "前向き監査の保存",
       "cadence": "5分ごと",
       "status": "healthy",
-      "lastSuccessAt": "2026-07-18T14:23:16.865Z",
-      "records": 138
+      "lastSuccessAt": "2026-07-18T14:38:20.874Z",
+      "records": 211
     }
   ]
 }

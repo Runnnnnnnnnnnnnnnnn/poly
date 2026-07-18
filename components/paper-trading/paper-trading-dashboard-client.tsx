@@ -1012,9 +1012,32 @@ export function PaperTradingDashboardClient() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    let cancelled = false;
+
+    const initialize = async () => {
+      if (process.env.NEXT_PUBLIC_STATIC_EXPORT === "1") {
+        const publishedSnapshot = await fetchLiveDashboardSnapshot<PublicDashboardResponse>().catch(() => null);
+        if (!cancelled && publishedSnapshot?.monitoring) {
+          setRuns(publishedSnapshot.runs ?? []);
+          setBacktests(publishedSnapshot.backtests ?? []);
+          setModelEvaluations(publishedSnapshot.modelEvaluations ?? []);
+          setMonitoring(publishedSnapshot.monitoring);
+          setSnapshot(true);
+          setReadOnly(true);
+          setUpdatedAt(publishedSnapshot.generatedAt);
+          setMessage("接続確認中・保存時点の結果");
+        }
+      }
+
+      if (!cancelled) await refresh();
+    };
+
+    void initialize();
     const timer = window.setInterval(() => void refresh(), 30_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [refresh]);
 
   async function startRun(runMode: "historical" | "live") {
