@@ -13,13 +13,14 @@ import { realtimeSynchronizationVersion } from "@/src/lib/realtime-market-data/c
 import { prisma } from "@/src/lib/server/prisma";
 
 export const shortTermDirectionHorizonKey = 0;
-export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v7-m15";
-export const shortTermDirectionControlKey = "poly-updown-forward-control-v7-m15";
+export const shortTermDirectionStrategyKey = "poly-updown-hl-trend-forward-v9-m15";
+export const shortTermDirectionControlKey = "poly-updown-forward-control-v9-m15";
 
 export const shortTermDirectionSpecification = Object.freeze({
-  version: 7,
-  executionAuditVersion: 3,
+  version: 9,
+  executionAuditVersion: 5,
   decisionDataSource: "persisted-synchronized-5s-orderbook",
+  settlementAudit: "nearest Chainlink start/end boundary versus official Polymarket resolution",
   independentSampleUnit: "15-minute-window",
   strategyTrials: 11,
   supportedAssets: ["BTC", "ETH", "SOL", "XRP"] as const,

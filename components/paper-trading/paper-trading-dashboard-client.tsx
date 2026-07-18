@@ -375,6 +375,7 @@ type MonitoringSnapshot = {
         };
         passedReadinessGates: number;
         totalReadinessGates: number;
+        settlementResolutionStatus: "collecting" | "healthy" | "attention";
         readinessGates: Array<{
           id: "trades" | "execution" | "control" | "net-positive" | "benchmark" | "significance" | "selection-bias" | "drawdown" | "settlement";
           label: string;
@@ -393,6 +394,35 @@ type MonitoringSnapshot = {
         missingExit: number;
         missingResolution: number;
       } | null;
+      settlementResolution?: {
+        status: "collecting" | "healthy" | "attention";
+        source: "CHAINLINK";
+        rule: string;
+        targetMarkets: number;
+        resolvedObservedMarkets: number;
+        completeMarkets: number;
+        missingBoundaryMarkets: number;
+        matchedMarkets: number;
+        mismatchedMarkets: number;
+        coverage: number;
+        matchRate: number | null;
+        medianBoundaryErrorMs: number | null;
+        maximumBoundaryErrorMs: number | null;
+        allowedBoundaryErrorMs: number;
+        byAsset: Array<{
+          asset: string;
+          completeMarkets: number;
+          matchedMarkets: number;
+          mismatchedMarkets: number;
+        }>;
+        passedGates: number;
+        totalGates: number;
+        gates: Array<{
+          id: "samples" | "coverage" | "agreement" | "timing";
+          label: string;
+          passed: boolean;
+        }>;
+      };
       research?: {
         generatedAt: string;
         marketDuration: string;
@@ -1021,6 +1051,7 @@ export function PaperTradingDashboardClient() {
 function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: MonitoringSnapshot | null; savedSnapshot: boolean }) {
   const model = snapshot?.combinedShadow.shortTermDirection;
   const audit = model?.executionAudit;
+  const settlementResolution = model?.settlementResolution;
   const research = model?.research;
   const trades = model?.trades ?? 0;
   const minimumTrades = audit?.minimumIndependentEvents ?? audit?.minimumAuditedPositions ?? model?.minimumTrades ?? 50;
@@ -1035,6 +1066,7 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
   const edgePositive = sampleReady && (auditedConfidenceLower ?? Number.NEGATIVE_INFINITY) > 0;
   const drawdownReady = sampleReady && (auditedDrawdown ?? Number.POSITIVE_INFINITY) <= 0.05;
   const dataReady = snapshot?.collection.realtimePrices?.status === "healthy";
+  const settlementReady = settlementResolution?.status === "healthy";
   const testnetReady = snapshot?.combinedShadow.testnet.verifiedReady === true;
   const liveEnabled = snapshot?.tradeReadiness.realTradingEnabled === true;
   const promising = audit?.readinessStatus === "promising" && sampleReady && netPositive && edgePositive && drawdownReady;
@@ -1076,8 +1108,15 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
         <ExecutiveMetric icon={LockKeyhole} label="運用可否" value={liveEnabled ? "運用中" : "不可"} note={testnetReady ? "テストネット接続済み" : "テストネット未接続"} tone={liveEnabled ? "good" : "bad"} />
       </div>
 
-      <div className="grid grid-cols-2 border-t sm:grid-cols-5">
+      <div className="grid grid-cols-2 border-t sm:grid-cols-6">
         <ExecutiveGate label="5秒板" value={dataReady ? "正常" : "確認中"} tone={dataReady ? "good" : "watch"} />
+        <ExecutiveGate
+          label="公式決着"
+          value={settlementResolution?.completeMarkets
+            ? `${settlementResolution.matchedMarkets}/${settlementResolution.completeMarkets}一致`
+            : "収集中"}
+          tone={settlementReady ? "good" : settlementResolution?.mismatchedMarkets ? "bad" : "watch"}
+        />
         <ExecutiveGate label="独立枠" value={sampleReady ? "合格" : `${verifiedTrades}/${minimumTrades}`} tone={sampleReady ? "good" : "watch"} />
         <ExecutiveGate label="純損益" value={netPositive ? "合格" : trades ? "未合格" : "未判定"} tone={netPositive ? "good" : trades ? "bad" : "neutral"} />
         <ExecutiveGate label="95%下限" value={edgePositive ? "合格" : auditedConfidenceLower === null ? "未判定" : sampleReady ? "未合格" : formatSignedPct(auditedConfidenceLower)} tone={edgePositive ? "good" : auditedConfidenceLower === null ? "neutral" : sampleReady ? "bad" : "watch"} />
@@ -1314,6 +1353,7 @@ function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null
 function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
   const model = snapshot?.combinedShadow.shortTermDirection;
   const audit = model?.executionAudit;
+  const settlementResolution = model?.settlementResolution;
   const research = model?.research;
   const hasTrades = (audit?.verifiedIndependentEvents ?? audit?.verifiedPositions ?? 0) > 0;
   const requiredAudits = audit?.minimumIndependentEvents ?? audit?.minimumAuditedPositions ?? 50;
@@ -1357,7 +1397,13 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
         </div>
         <div className="grid min-w-0">
           <div className="grid grid-cols-3 divide-x divide-border">
-            <CompactMetric label="方向的中率" value={hasTrades ? formatPct(audit?.predictionAccuracy) : "未判定"} tone={hasTrades ? "good" : "neutral"} />
+            <CompactMetric
+              label="公式決着の一致"
+              value={settlementResolution?.completeMarkets
+                ? `${settlementResolution.matchedMarkets}/${settlementResolution.completeMarkets}`
+                : "収集中"}
+              tone={settlementResolution?.status === "healthy" ? "good" : settlementResolution?.mismatchedMarkets ? "bad" : "watch"}
+            />
             <CompactMetric label="Poly側リターン" value={hasTrades ? formatSignedPct(audit?.polymarketNetReturnPct) : "未判定"} tone={signedMetricTone(audit?.polymarketNetReturnPct, hasTrades)} />
             <CompactMetric label="HL側リターン" value={hasTrades ? formatSignedPct(audit?.hyperliquidNetReturnPct) : "未判定"} tone={signedMetricTone(audit?.hyperliquidNetReturnPct, hasTrades)} />
           </div>
@@ -1418,7 +1464,7 @@ function ShortTermDirectionPanel({ snapshot }: { snapshot: MonitoringSnapshot | 
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
         <span>{research
-          ? `完全監査条件 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 9}・過去 ${formatCompact(research.completeMarkets)}市場・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用`
+          ? `完全監査条件 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 9}・公式決着 ${settlementResolution?.completeMarkets ?? 0}/${settlementResolution?.targetMarkets ?? 50}・候補 ${research.acceptedCandidates}/${research.totalCandidates}採用`
           : "発注後の最初の5秒板で約定を再現中"}</span>
         <span className="font-bold text-rose-700">実取引 OFF</span>
       </div>

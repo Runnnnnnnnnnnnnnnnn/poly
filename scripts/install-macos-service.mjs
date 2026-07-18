@@ -38,12 +38,15 @@ const modelRevision = fileFingerprint([
 ]);
 buildRuntime(modelRevision);
 stageRuntime();
+try { execFileSync("launchctl", ["bootout", `${domain}/${runtimeLabel}`], { stdio: "ignore" }); } catch {}
+execFileSync("/bin/sleep", ["1"]);
 const databaseUrl = `file:${resolve(deployedRoot, "prisma/dev.db")}`;
 execFileSync(runtimeNode, [resolve(deployedRoot, "node_modules/prisma/build/index.js"), "db", "push", "--schema", resolve(deployedRoot, "prisma/schema.prisma")], {
   cwd: deployedRoot,
   env: { ...process.env, DATABASE_URL: databaseUrl },
   stdio: "inherit",
 });
+configureSqliteDatabase(resolve(deployedRoot, "prisma/dev.db"));
 const command = `set -a; source ${shellQuote(resolve(deployedRoot, ".env"))}; set +a; cd ${shellQuote(homedir())}; PAPER_PRODUCTION=1 APP_PORT=3001 POLYMARKET_PROJECT_ROOT=${shellQuote(deployedRoot)} POLYMARKET_MODEL_REVISION=${shellQuote(modelRevision)} DATABASE_URL=${shellQuote(databaseUrl)} ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-all.mjs"))}`;
 const runtimePlist = makePlist(runtimeLabel, command, "/tmp/polymarket-watch-runtime.log");
 
@@ -205,8 +208,10 @@ function dependencyFingerprint(directory) {
       overrides: packageJson.overrides ?? {},
       packageManager: packageJson.packageManager ?? null,
     };
-    const lockPath = resolve(directory, "pnpm-lock.yaml");
-    const lockfile = existsSync(lockPath) ? readFileSync(lockPath, "utf8") : "";
+    const lockPath = ["pnpm-lock.yaml", "package-lock.json"]
+      .map((name) => resolve(directory, name))
+      .find((candidate) => existsSync(candidate));
+    const lockfile = lockPath ? readFileSync(lockPath, "utf8") : "";
     return createHash("sha256")
       .update(JSON.stringify(dependencyConfig))
       .update("\n")
@@ -215,6 +220,15 @@ function dependencyFingerprint(directory) {
   } catch {
     return `unreadable:${directory}`;
   }
+}
+
+function configureSqliteDatabase(path) {
+  if (!existsSync("/usr/bin/sqlite3")) return;
+  const mode = execFileSync("/usr/bin/sqlite3", [path, "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;"], {
+    encoding: "utf8",
+  }).trim().split(/\s+/)[0];
+  if (mode.toLowerCase() !== "wal") throw new Error(`failed to enable SQLite WAL mode: ${mode || "empty response"}`);
+  console.log("configured runtime SQLite database in WAL mode");
 }
 
 function fileFingerprint(paths) {

@@ -43,7 +43,8 @@ import {
 } from "../src/lib/combined-trading/forward-evaluation";
 import { planAlertDeliveries } from "../src/lib/monitoring/alert-state";
 import { evaluateBackupStatus } from "../src/lib/monitoring/backup-status";
-import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts, evaluateTestnetReconciliationAlerts } from "../src/lib/monitoring/operational-alerts";
+import { isTransientHeartbeatWriteError } from "../src/lib/monitoring/heartbeat";
+import { evaluatePipelineAlerts, evaluateSettlementBasisAlerts, evaluateSettlementResolutionAlerts, evaluateTestnetReconciliationAlerts } from "../src/lib/monitoring/operational-alerts";
 import { evaluateSynchronizedPriceQuality } from "../src/lib/monitoring/synchronized-quality";
 import { resolveTunnelConfig } from "./tunnel-config.mjs";
 import { decideTunnelRecovery } from "./tunnel-health-policy.mjs";
@@ -61,6 +62,7 @@ import { annualizeRealizedVolatility } from "../src/lib/model-evaluation/volatil
 import { normalizeHyperliquidOrderBook } from "../src/lib/monitoring/hyperliquid";
 import { buildRealtimeMarketTick, isRealtimeCaptureWindow, selectRealtimeMarketsForCollection, shouldReconnectManagedSocket } from "../src/lib/realtime-market-data/collector";
 import { calculatePolymarketTakerFee, evaluateExactExecutionAudit, selectCausalExecutionTick } from "../src/lib/realtime-market-data/execution-audit";
+import { evaluateReferenceSettlementAudit } from "../src/lib/realtime-market-data/settlement-audit";
 import {
   normalizeHyperliquidWebSocketMessage,
   normalizePolymarketWebSocketMessage,
@@ -344,7 +346,7 @@ assert.ok(Math.abs(realtimeTick.complementBidSum - 0.98) < 1e-12);
 assert.ok(Math.abs(realtimeTick.complementAskSum - 1.02) < 1e-12);
 assert.equal(realtimeTick.arbitrageViolation, false);
 assert.equal(realtimeTick.captureSkewMs, 2_000);
-assert.equal(realtimeTick.synchronizationVersion, "websocket-v4-causal-exit");
+assert.equal(realtimeTick.synchronizationVersion, "websocket-v6-near-term-discovery");
 assert.ok(Math.abs(realtimeTick.priceBasisPct - (100.05 / 99 - 1)) < 1e-12);
 const unchangedPolymarketTick = buildRealtimeMarketTick({
   market: realtimeMarket,
@@ -477,6 +479,7 @@ const auditConfig = {
   fundingPer24h: 0.0003,
   initialEquity: 10_000,
   settlementBasisStatus: "healthy" as const,
+  settlementResolutionStatus: "healthy" as const,
 };
 const exactAudit = evaluateExactExecutionAudit(auditConfig);
 assert.equal(exactAudit.readinessStatus, "collecting");
@@ -500,6 +503,7 @@ assert.equal(exactAudit.comparableEvents, 2);
 assert.equal(exactAudit.comparableIndependentEvents, 1);
 assert.equal(exactAudit.controlCoverage, 1);
 assert.equal(exactAudit.totalReadinessGates, 9);
+assert.equal(exactAudit.settlementResolutionStatus, "healthy");
 assert.deepEqual(exactAudit.attribution.byAsset.map((item) => ({ asset: item.asset, trades: item.trades })), [
   { asset: "BTC", trades: 1 },
   { asset: "ETH", trades: 1 },
@@ -510,6 +514,37 @@ assert.deepEqual(exactAudit.attribution.bySide.map((item) => ({ side: item.side,
 ]);
 assert.ok(Math.abs(exactAudit.attribution.byAsset.reduce((total, item) => total + item.returnContributionPct, 0) - (exactAudit.portfolioNetReturnPct ?? 0)) < 1e-12);
 assert.equal(calculatePolymarketTakerFee(100, 0.5), 1.75);
+const settlementRows = [
+  { marketId: "settlement-up", asset: "BTC", officialResult: 1, startPrice: 100, endPrice: 101, startErrorMs: 1_000, endErrorMs: 2_000 },
+  { marketId: "settlement-down", asset: "ETH", officialResult: 0, startPrice: 200, endPrice: 199, startErrorMs: 3_000, endErrorMs: 4_000 },
+  { marketId: "settlement-mismatch", asset: "SOL", officialResult: 1, startPrice: 50, endPrice: 49, startErrorMs: 5_000, endErrorMs: 6_000 },
+  { marketId: "settlement-missing", asset: "XRP", officialResult: 0, startPrice: 1, endPrice: null, startErrorMs: 1_000, endErrorMs: null },
+];
+const collectingSettlement = evaluateReferenceSettlementAudit(settlementRows, { targetMarkets: 4 });
+assert.equal(collectingSettlement.status, "collecting");
+assert.equal(collectingSettlement.resolvedObservedMarkets, 4);
+assert.equal(collectingSettlement.completeMarkets, 3);
+assert.equal(collectingSettlement.missingBoundaryMarkets, 1);
+assert.equal(collectingSettlement.matchedMarkets, 2);
+assert.equal(collectingSettlement.mismatchedMarkets, 1);
+assert.equal(collectingSettlement.medianBoundaryErrorMs, 3_500);
+assert.equal(collectingSettlement.maximumBoundaryErrorMs, 6_000);
+const attentionSettlement = evaluateReferenceSettlementAudit(settlementRows.slice(0, 3), { targetMarkets: 3 });
+assert.equal(attentionSettlement.status, "attention");
+assert.equal(attentionSettlement.gates.find((gate) => gate.id === "agreement")?.passed, false);
+const healthySettlement = evaluateReferenceSettlementAudit([
+  settlementRows[0],
+  settlementRows[1],
+  { ...settlementRows[2], officialResult: 0 },
+], { targetMarkets: 3 });
+assert.equal(healthySettlement.status, "healthy");
+assert.equal(healthySettlement.matchRate, 1);
+assert.equal(healthySettlement.passedGates, healthySettlement.totalGates);
+assert.equal(evaluateSettlementResolutionAlerts(healthySettlement).length, 0);
+assert.equal(evaluateSettlementResolutionAlerts(attentionSettlement)[0]?.severity, "critical");
+assert.equal(isTransientHeartbeatWriteError(Object.assign(new Error("Socket timeout"), { code: "P1008" })), true);
+assert.equal(isTransientHeartbeatWriteError(new Error("database is locked")), true);
+assert.equal(isTransientHeartbeatWriteError(new Error("validation failed")), false);
 const incompleteAudit = evaluateExactExecutionAudit({
   ...auditConfig,
   positions: [{ ...auditPositions[0], marketId: "missing-market" }],

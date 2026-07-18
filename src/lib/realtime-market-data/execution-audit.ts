@@ -63,6 +63,7 @@ export type ExactExecutionAuditInput = {
   fundingPer24h: number;
   initialEquity?: number;
   settlementBasisStatus?: "collecting" | "healthy" | "attention";
+  settlementResolutionStatus?: "collecting" | "healthy" | "attention";
   strategyTrials?: number;
   randomBenchmarkTrials?: number;
   minimumAuditedPositions?: number;
@@ -235,7 +236,11 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     { id: "significance" as const, label: "対照との差の95%下限がプラス", passed: enoughData && (benchmark.excessConfidenceInterval95?.[0] ?? 0) > 0 },
     { id: "selection-bias" as const, label: "試行補正後の確信度95%以上", passed: enoughData && (benchmark.deflatedSharpeProbability ?? 0) >= minimumDeflatedSharpeProbability },
     { id: "drawdown" as const, label: "最大下落5%以内", passed: enoughData && maxDrawdown <= maximumDrawdownPct },
-    { id: "settlement" as const, label: "判定参照価格との整合性を確認", passed: enoughData && input.settlementBasisStatus === "healthy" },
+    {
+      id: "settlement" as const,
+      label: "Chainlink方向とPolymarket正式決着が一致",
+      passed: enoughData && (input.settlementResolutionStatus ?? input.settlementBasisStatus) === "healthy",
+    },
   ];
   const readinessStatus = !enoughData
     ? "collecting" as const
@@ -283,6 +288,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     passedReadinessGates: readinessGates.filter((gate) => gate.passed).length,
     totalReadinessGates: readinessGates.length,
     readinessGates,
+    settlementResolutionStatus: input.settlementResolutionStatus ?? input.settlementBasisStatus ?? "collecting",
     returnDifferencePct: hyperliquidNetReturnPct !== null && storedNetReturnPct !== null
       ? hyperliquidNetReturnPct - storedNetReturnPct
       : null,

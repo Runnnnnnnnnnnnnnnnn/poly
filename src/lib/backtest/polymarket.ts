@@ -120,23 +120,24 @@ export async function discoverActiveCryptoPriceMarkets(limit = 300) {
 
 export async function discoverActiveCryptoDirectionMarkets(limit = 200) {
   const now = new Date();
-  const url = new URL(`${GAMMA_API}/events`);
+  const url = new URL(`${GAMMA_API}/markets`);
   url.searchParams.set("active", "true");
   url.searchParams.set("closed", "false");
-  url.searchParams.set("limit", "200");
-  url.searchParams.set("order", "volume24hr");
-  url.searchParams.set("ascending", "false");
+  url.searchParams.set("limit", "500");
+  // Low-volume SOL/XRP windows otherwise appear only after they open, which
+  // makes the official start price impossible to audit prospectively.
+  url.searchParams.set("order", "endDate");
+  url.searchParams.set("ascending", "true");
   url.searchParams.set("tag_id", CRYPTO_PRICES_TAG_ID);
-  url.searchParams.set("related_tags", "true");
   url.searchParams.set("end_date_min", now.toISOString());
   const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, 20_000);
-  if (!response.ok) throw new Error(`active crypto direction events ${response.status}`);
-  const events = z.array(historicalEventSchema).parse(await response.json());
-  const markets = events.flatMap((event) => event.markets.flatMap((market) => {
+  if (!response.ok) throw new Error(`active crypto direction markets ${response.status}`);
+  const activeMarkets = marketsSchema.parse(await response.json());
+  const markets = activeMarkets.flatMap((market) => {
     if (!isUpDownDirectionMarket(market)) return [];
-    const startAt = parseDate(market.eventStartTime ?? event.startDate);
-    const endAt = parseDate(market.endDate ?? event.endDate);
-    const normalized = toCryptoMarket(market, String(event.id));
+    const startAt = parseDate(market.eventStartTime);
+    const endAt = parseDate(market.endDate);
+    const normalized = toCryptoMarket(market);
     if (!startAt || !endAt || !normalized || normalized.asset === "OTHER" || normalized.resolved) return [];
     const durationMinutes = (endAt.getTime() - startAt.getTime()) / 60_000;
     if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return [];
@@ -145,7 +146,7 @@ export async function discoverActiveCryptoDirectionMarkets(limit = 200) {
       eventStartTime: startAt.toISOString(),
       durationMinutes,
     } satisfies ActiveCryptoDirectionMarket];
-  }));
+  });
   return Array.from(new Map(markets.map((market) => [market.id, market])).values()).slice(0, limit);
 }
 

@@ -27,8 +27,9 @@ const maximumHyperliquidBookAgeMs = 15_000;
 const maximumReferenceAgeMs = 15_000;
 const maximumContextAgeMs = 60_000;
 const connectionStaleMs = 30_000;
+const pipelineHeartbeatIntervalMs = 15_000;
 
-export const realtimeSynchronizationVersion = "websocket-v4-causal-exit";
+export const realtimeSynchronizationVersion = "websocket-v6-near-term-discovery";
 
 type ReferenceState = Record<"BINANCE" | "CHAINLINK", RealtimeReferenceUpdate | null>;
 
@@ -48,6 +49,8 @@ export class RealtimeMarketDataCollector {
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
   private flushing = false;
+  private pendingHeartbeatRecords = 0;
+  private lastHeartbeatAtMs = 0;
 
   private readonly polymarketSocket = new ManagedWebSocket({
     name: "Polymarket CLOB",
@@ -159,7 +162,6 @@ export class RealtimeMarketDataCollector {
     if (this.flushing) return { saved: 0, skipped: true };
     this.flushing = true;
     try {
-      await markPipelineAttempt("realtime-market-data", "Up/Down両板・Hyperliquid・判定価格を同期中");
       const activeMarkets = Array.from(this.markets.values()).filter((market) => isRealtimeCaptureWindow(market, now));
       const rows = activeMarkets.flatMap((market) => {
         const row = buildRealtimeMarketTick({
@@ -175,16 +177,23 @@ export class RealtimeMarketDataCollector {
         return row ? [row] : [];
       });
       if (rows.length) await prisma.realtimeMarketTick.createMany({ data: rows });
+      this.pendingHeartbeatRecords += rows.length;
       const health = this.connectionHealth(now);
       const startupGrace = now.getTime() - this.startedAt.getTime() < connectionStaleMs;
       if (activeMarkets.length && !rows.length && !startupGrace) {
         throw new Error(`秒単位価格が未完成: 市場${activeMarkets.length} / 接続${health.connected}/3`);
       }
-      await markPipelineSuccess(
-        "realtime-market-data",
-        rows.length,
-        `5秒板 ${rows.length}/${activeMarkets.length}市場 / 接続${health.connected}/3`,
-      );
+      if (now.getTime() - this.lastHeartbeatAtMs >= pipelineHeartbeatIntervalMs) {
+        const recorded = await markPipelineSuccess(
+          "realtime-market-data",
+          this.pendingHeartbeatRecords,
+          `5秒板 ${rows.length}/${activeMarkets.length}市場 / 接続${health.connected}/3`,
+        );
+        if (recorded) {
+          this.pendingHeartbeatRecords = 0;
+          this.lastHeartbeatAtMs = now.getTime();
+        }
+      }
       return { saved: rows.length, activeMarkets: activeMarkets.length, health };
     } catch (error) {
       await markPipelineError("realtime-market-data", error);

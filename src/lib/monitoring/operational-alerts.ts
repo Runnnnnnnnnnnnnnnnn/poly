@@ -4,6 +4,7 @@ import { isForwardStrategyExperimentKey } from "@/src/lib/combined-trading/forwa
 import { isShortTermDirectionStrategyKey } from "@/src/lib/combined-trading/short-term-direction";
 import type { CombinedShadowConfig } from "@/src/lib/combined-trading/service";
 import { readBackupStatus } from "@/src/lib/monitoring/backup-status";
+import { loadReferenceSettlementAudit, type ReferenceSettlementAudit } from "@/src/lib/realtime-market-data/settlement-audit";
 
 export type OperationalAlertCandidate = {
   key: string;
@@ -30,9 +31,10 @@ const pipelineLimitsMs: Record<string, { label: string; maximumAgeMs: number }> 
 };
 
 export async function collectOperationalAlertCandidates(now = new Date()) {
-  const [heartbeats, runs] = await Promise.all([
+  const [heartbeats, runs, settlementResolution] = await Promise.all([
     prisma.pipelineHeartbeat.findMany(),
     prisma.combinedShadowRun.findMany({ orderBy: { startedAt: "desc" }, take: 20 }),
+    loadReferenceSettlementAudit(),
   ]);
   const strategyRuns = runs.filter((item) => (
     isForwardStrategyExperimentKey(parseJson<Partial<CombinedShadowConfig>>(item.configJson)?.experimentKey)
@@ -55,6 +57,7 @@ export async function collectOperationalAlertCandidates(now = new Date()) {
     : [null, []];
   const alerts = evaluatePipelineAlerts(heartbeats, now);
   alerts.push(...evaluateSettlementBasisAlerts(settlementBasisRows));
+  alerts.push(...evaluateSettlementResolutionAlerts(settlementResolution));
 
   const backup = readBackupStatus(now);
   if (backup.status !== "healthy") {
@@ -100,6 +103,29 @@ export async function collectOperationalAlertCandidates(now = new Date()) {
   }
 
   return alerts;
+}
+
+export function evaluateSettlementResolutionAlerts(audit: Pick<
+  ReferenceSettlementAudit,
+  "completeMarkets" | "mismatchedMarkets" | "missingBoundaryMarkets" | "coverage" | "maximumBoundaryErrorMs" | "allowedBoundaryErrorMs"
+>) {
+  if (audit.mismatchedMarkets > 0) {
+    return [{
+      key: "settlement-resolution-mismatch",
+      severity: "critical" as const,
+      title: "正式決着との不一致を検知",
+      message: `Chainlinkの開始・終了価格から再計算した方向とPolymarket正式決着が${audit.mismatchedMarkets}市場で一致しません`,
+    }];
+  }
+  if (audit.completeMarkets < 10) return [];
+  if (audit.coverage >= 0.95
+    && (audit.maximumBoundaryErrorMs ?? Number.POSITIVE_INFINITY) <= audit.allowedBoundaryErrorMs) return [];
+  return [{
+    key: "settlement-resolution-coverage",
+    severity: "warning" as const,
+    title: "決着境界価格の取得不足",
+    message: `完全取得${audit.completeMarkets}市場、欠測${audit.missingBoundaryMarkets}市場、取得率${formatPct(audit.coverage)}です`,
+  }];
 }
 
 function parseJson<T>(value: string) {

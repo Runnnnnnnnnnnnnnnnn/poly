@@ -159,7 +159,7 @@ ASSET=BTC npm run paper:trade
 
 常駐workerは、終了6・12・24・48時間前のPolymarket価格帯を一つのテーマに束ね、暗黙の将来価格とHyperliquid現値の差からロング・ショート・見送りを判定します。仮想残高、手数料、スリッページ、資金調達コスト、最大下落、日次損失、注文判断をSQLiteへ保存します。
 
-15分Up/Downの固定モデルは別の前向き実験として、PolymarketのUp/Down両板、Hyperliquid L2板、Binance・Chainlink参照価格を5秒単位で同期保存します。売買判断も保存済みの同一同期板だけから作り、公式決着と発注後のエントリー・終了用実板が揃った取引だけを完全監査へ含めます。50件到達後に純損益、最良対照との差、95%信頼区間、Deflated Sharpe、最大下落、参照価格整合の9条件を判定します。過去足やシャドー記録だけではテストネット・実取引へ昇格しません。
+15分Up/Downの固定モデルは別の前向き実験として、直近終了時刻順に市場を開始前から発見し、PolymarketのUp/Down両板、Hyperliquid L2板、Binance・Chainlink参照価格を5秒単位で同期保存します。売買判断も保存済みの同一同期板だけから作り、公式決着と発注後のエントリー・終了用実板が揃った取引だけを完全監査へ含めます。Chainlinkの開始値・終了値から方向を再計算して正式決着とも照合し、50件到達後に純損益、最良対照との差、95%信頼区間、Deflated Sharpe、最大下落、決着整合の9条件を判定します。過去足やシャドー記録だけではテストネット・実取引へ昇格しません。
 
 正式なバックテストは`ModelEvaluationRun`へ保存し、6時間ごとに自動実行します。各実行はID、データ・設定・コードの指紋、未使用期間の成績、6/12/24/48時間別結果を持ち、JSON/CSV/Markdown成果物として`~/.polymarket-watch/artifacts/model-evaluations/`にも保存します。画面は最新結果と履歴の参照に絞り、詳しい比較は任意のローカルMLflowへ取り込めます。運用手順は [docs/backtest-management.md](./docs/backtest-management.md) を参照してください。
 
@@ -180,7 +180,7 @@ python3 -m venv ~/.polymarket-watch/hyperliquid-venv
 
 日次バックアップはSQLiteのオンラインバックアップを作成し、AES-256で暗号化したあと、同じ鍵で別ファイルへ復号して`PRAGMA integrity_check`が`ok`になることまで確認します。復元確認に失敗した世代は保存せず、確認記録の期限切れも異常として扱います。
 
-常駐監視は、データ停止、パイプラインエラー、最大下落、緊急停止、バックアップ復元失敗、HyperliquidとDBの注文・ポジション不一致を検知します。Mac通知は既定で有効です。`POLYMARKET_ALERT_WEBHOOK_URL`へHTTPS Webhookを設定すると、同じ通知をリモートにも送信します。通知は新規・6時間ごとの再通知・復旧に分かれ、連投を抑制します。
+常駐監視は、データ停止、パイプラインエラー、最大下落、正式決着との不一致、境界価格の欠測、緊急停止、バックアップ復元失敗、HyperliquidとDBの注文・ポジション不一致を検知します。Mac通知は既定で有効です。`POLYMARKET_ALERT_WEBHOOK_URL`へHTTPS Webhookを設定すると、同じ通知をリモートにも送信します。通知は新規・6時間ごとの再通知・復旧に分かれ、連投を抑制します。
 
 ## 統合起動
 

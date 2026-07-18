@@ -25,6 +25,7 @@ import { readBackupStatus } from "@/src/lib/monitoring/backup-status";
 import { evaluateSynchronizedPriceQuality } from "@/src/lib/monitoring/synchronized-quality";
 import { realtimeSynchronizationVersion } from "@/src/lib/realtime-market-data/collector";
 import { evaluateExactExecutionAudit } from "@/src/lib/realtime-market-data/execution-audit";
+import { loadReferenceSettlementAudit } from "@/src/lib/realtime-market-data/settlement-audit";
 
 const monitoredAssets = ["BTC", "ETH", "SOL", "XRP", "HYPE"] as const;
 const freshnessMs = 12 * 60 * 1_000;
@@ -446,6 +447,7 @@ export async function getMonitoringSnapshot() {
         strategyTrials: shortTermDirectionSpecification.strategyTrials,
       })
     : null;
+  const shortTermSettlementResolution = await loadReferenceSettlementAudit();
   const shortTermExecutionAudit = shortTermStrategyRun && shortTermConfig
     ? evaluateExactExecutionAudit({
         positions: shortTermPositions,
@@ -462,6 +464,7 @@ export async function getMonitoringSnapshot() {
         fundingPer24h: shortTermConfig.fundingPer24h ?? 0.0003,
         initialEquity: shortTermStrategyRun.initialEquity,
         settlementBasisStatus: shortTermSettlementBasis.status,
+        settlementResolutionStatus: shortTermSettlementResolution.status,
         strategyTrials: shortTermDirectionSpecification.strategyTrials,
       })
     : null;
@@ -494,6 +497,15 @@ export async function getMonitoringSnapshot() {
   const testnetReconciliation = heartbeats.find((heartbeat) => heartbeat.id === "testnet-reconcile");
   const alertHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "operational-alerts");
   const realtimeHeartbeat = heartbeats.find((heartbeat) => heartbeat.id === "realtime-market-data");
+  const realtimeHeartbeatStatus = operationalStatus(realtimeHeartbeat, now, 30_000);
+  const realtimeLatestAt = executionAuditRealtimeAggregate._max.capturedAt;
+  const realtimePriceStatus = realtimeHeartbeatStatus === "error"
+    ? "error" as const
+    : realtimeHeartbeatStatus === "healthy"
+      && realtimeLatestAt
+      && now.getTime() - realtimeLatestAt.getTime() <= 30_000
+      ? "healthy" as const
+      : "waiting" as const;
   const realtimeMarketIds = new Set(realtimeRecent.map((row) => row.marketId));
   const realtimeAssets = Array.from(new Set(realtimeRecent.map((row) => row.asset))).sort();
   const tunnelStatus = readTunnelStatus();
@@ -530,7 +542,7 @@ export async function getMonitoringSnapshot() {
       totalRecords: polymarketAggregate._count._all + hyperAggregate._count._all + realtimeAggregate._count._all + backtestPointCount + paperEquityAggregate._count._all + aiRows.length + combinedDecisionCount + combinedSnapshotAggregate._count._all,
       last24Hours: polymarketLast24Hours + hyperLast24Hours + realtimeLast24Hours + paperEquityLast24Hours + combinedSnapshotsLast24Hours,
       realtimePrices: {
-        status: operationalStatus(realtimeHeartbeat, now, 30_000),
+        status: realtimePriceStatus,
         records: executionAuditRealtimeAggregate._count._all,
         last24Hours: realtimeLast24Hours,
         latestAt: executionAuditRealtimeAggregate._max.capturedAt?.toISOString() ?? null,
@@ -563,13 +575,11 @@ export async function getMonitoringSnapshot() {
         {
           id: "data",
           label: "同期データ品質",
-          status: status !== "live"
+          status: status !== "live" || realtimePriceStatus === "error"
             ? "attention" as const
-            : synchronizedQuality.status === "healthy"
+            : realtimePriceStatus === "healthy"
               ? "ready" as const
-              : synchronizedQuality.status === "collecting"
-                ? "running" as const
-                : "attention" as const,
+              : "running" as const,
         },
         { id: "edge", label: "優位性確認", status: combinedEdgeConfirmed ? "ready" : "blocked" },
         { id: "shadow", label: "シャドー検証", status: combinedShadowRunning ? "running" : "not_started" },
@@ -651,6 +661,7 @@ export async function getMonitoringSnapshot() {
         observedAt: shortTermDecision?.observedAt.toISOString() ?? null,
         specificationHash: shortTermConfig?.specificationHash ?? null,
         executionAudit: shortTermExecutionAudit,
+        settlementResolution: shortTermSettlementResolution,
         research: shortTermResearch,
         realTradingEnabled: false,
       },
