@@ -7,7 +7,7 @@ import {
 import { calculatePolymarketTakerFee } from "@/src/lib/realtime-market-data/execution-audit";
 
 export const realtimeShortTermReplaySpecification = Object.freeze({
-  version: 6,
+  version: 7,
   purpose: "diagnostic_only",
   promotionPolicy: "new_forward_cohort_required",
   synchronizationVersion: "websocket-v6-near-term-discovery",
@@ -145,6 +145,10 @@ export type RealtimeReplayTrade = {
   hyperliquidEntryPrice: number;
   hyperliquidExitPrice: number;
   hyperliquidReturnPct: number;
+  polymarketBaselineSide: "LONG" | "SHORT";
+  polymarketBaselineReturnPct: number;
+  hyperliquidBaselineSide: "LONG" | "SHORT";
+  hyperliquidBaselineReturnPct: number;
   equalWeightReturnPct: number;
   longEqualWeightReturnPct: number;
   shortEqualWeightReturnPct: number;
@@ -157,6 +161,7 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
   const ticksByMarket = groupBy(input.marketTicks, (tick) => tick.marketId);
   const priceTicksByAsset = buildPriceTicksByAsset(input.marketTicks, input.assetTicks);
   const allTrades: RealtimeReplayTrade[] = [];
+  const replayWindowsByOffset = new Map<number, Set<string>>();
   const skipped = new Map<string, number>();
   let completeMarkets = 0;
   let replayableMarkets = 0;
@@ -222,6 +227,43 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       });
       const marketProbability = clamp((entry.polymarketBestBid + entry.polymarketBestAsk) / 2, 0.01, 0.99);
       const trendLogReturn = Math.log(entry.hyperliquidMidPrice / startBoundary.hyperliquidMidPrice);
+      const longPolymarket = calculatePolymarketReplayReturn({
+        price: entry.polymarketBestAsk,
+        correct: officialResult === 1,
+      });
+      const shortPolymarket = calculatePolymarketReplayReturn({
+        price: entry.negativeBestAsk,
+        correct: officialResult === 0,
+      });
+      const holdingHours = Math.max(0, (market.marketEndAt.getTime() - entry.capturedAt.getTime()) / 3_600_000);
+      const longHyperliquid = calculateHyperliquidReplayReturn({
+        side: "LONG",
+        entryBestBid: entry.hyperliquidBestBid,
+        entryBestAsk: entry.hyperliquidBestAsk,
+        exitBestBid: exitExecution.hyperliquidBestBid,
+        exitBestAsk: exitExecution.hyperliquidBestAsk,
+        fundingRatePerHour: entry.hyperliquidFundingRate,
+        holdingHours,
+      });
+      const shortHyperliquid = calculateHyperliquidReplayReturn({
+        side: "SHORT",
+        entryBestBid: entry.hyperliquidBestBid,
+        entryBestAsk: entry.hyperliquidBestAsk,
+        exitBestBid: exitExecution.hyperliquidBestBid,
+        exitBestAsk: exitExecution.hyperliquidBestAsk,
+        fundingRatePerHour: entry.hyperliquidFundingRate,
+        holdingHours,
+      });
+      if (!longPolymarket || !shortPolymarket || !longHyperliquid || !shortHyperliquid) continue;
+
+      const windowAt = market.marketStartAt.toISOString();
+      replayWindowsByOffset.set(entryOffsetSeconds, new Set([
+        ...(replayWindowsByOffset.get(entryOffsetSeconds) ?? []),
+        windowAt,
+      ]));
+      marketHasReplay = true;
+      const polymarketBaselineSide = marketProbability >= 0.5 ? "LONG" as const : "SHORT" as const;
+      const hyperliquidBaselineSide = trendLogReturn >= 0 ? "LONG" as const : "SHORT" as const;
       const candidates = buildStrategyCandidates({
         entry,
         marketProbability,
@@ -233,41 +275,13 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
         const modelBrierScore = binaryBrierScore(candidate.forecastProbability, officialResult);
         const marketLogLoss = binaryLogLoss(marketProbability, officialResult);
         const modelLogLoss = binaryLogLoss(candidate.forecastProbability, officialResult);
-        const longPolymarket = calculatePolymarketReplayReturn({
-          price: entry.polymarketBestAsk,
-          correct: officialResult === 1,
-        });
-        const shortPolymarket = calculatePolymarketReplayReturn({
-          price: entry.negativeBestAsk,
-          correct: officialResult === 0,
-        });
-        const longHyperliquid = calculateHyperliquidReplayReturn({
-          side: "LONG",
-          entryBestBid: entry.hyperliquidBestBid,
-          entryBestAsk: entry.hyperliquidBestAsk,
-          exitBestBid: exitExecution.hyperliquidBestBid,
-          exitBestAsk: exitExecution.hyperliquidBestAsk,
-          fundingRatePerHour: entry.hyperliquidFundingRate,
-          holdingHours: Math.max(0, (market.marketEndAt.getTime() - entry.capturedAt.getTime()) / 3_600_000),
-        });
-        const shortHyperliquid = calculateHyperliquidReplayReturn({
-          side: "SHORT",
-          entryBestBid: entry.hyperliquidBestBid,
-          entryBestAsk: entry.hyperliquidBestAsk,
-          exitBestBid: exitExecution.hyperliquidBestBid,
-          exitBestAsk: exitExecution.hyperliquidBestAsk,
-          fundingRatePerHour: entry.hyperliquidFundingRate,
-          holdingHours: Math.max(0, (market.marketEndAt.getTime() - entry.capturedAt.getTime()) / 3_600_000),
-        });
-        if (!longPolymarket || !shortPolymarket || !longHyperliquid || !shortHyperliquid) continue;
         const polymarket = candidate.side === "LONG" ? longPolymarket : shortPolymarket;
         const hyperliquid = candidate.side === "LONG" ? longHyperliquid : shortHyperliquid;
-        marketHasReplay = true;
         allTrades.push({
           variantId: variantId(candidate.strategy, entryOffsetSeconds),
           strategy: candidate.strategy,
           entryOffsetSeconds,
-          windowAt: market.marketStartAt.toISOString(),
+          windowAt,
           marketId: market.marketId,
           eventId: market.eventId ?? market.marketId,
           asset: market.asset,
@@ -299,6 +313,10 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
           hyperliquidEntryPrice: hyperliquid.entryPrice,
           hyperliquidExitPrice: hyperliquid.exitPrice,
           hyperliquidReturnPct: hyperliquid.returnPct,
+          polymarketBaselineSide,
+          polymarketBaselineReturnPct: polymarketBaselineSide === "LONG" ? longPolymarket.returnPct : shortPolymarket.returnPct,
+          hyperliquidBaselineSide,
+          hyperliquidBaselineReturnPct: hyperliquidBaselineSide === "LONG" ? longHyperliquid.returnPct : shortHyperliquid.returnPct,
           equalWeightReturnPct: (polymarket.returnPct + hyperliquid.returnPct) / 2,
           longEqualWeightReturnPct: (longPolymarket.returnPct + longHyperliquid.returnPct) / 2,
           shortEqualWeightReturnPct: (shortPolymarket.returnPct + shortHyperliquid.returnPct) / 2,
@@ -309,7 +327,7 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
   }
 
   const selectedTrades = applyConcurrentPositionLimit(allTrades);
-  const windows = uniqueSorted(selectedTrades.map((trade) => trade.windowAt));
+  const windows = uniqueSorted([...replayWindowsByOffset.values()].flatMap((values) => [...values]));
   const splitIndex = Math.max(1, Math.floor(windows.length * realtimeShortTermReplaySpecification.calibrationFraction));
   const calibrationWindows = new Set(windows.slice(0, splitIndex));
   const holdoutWindows = new Set(windows.slice(splitIndex));
@@ -322,20 +340,29 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
   ));
   const variants = variantDefinitions.map(({ id, strategy, entryOffsetSeconds }) => {
       const trades = selectedTrades.filter((trade) => trade.strategy === strategy && trade.entryOffsetSeconds === entryOffsetSeconds);
-      const calibration = summarizeReplayTrades(trades.filter((trade) => calibrationWindows.has(trade.windowAt)));
-      const holdout = summarizeReplayTrades(trades.filter((trade) => holdoutWindows.has(trade.windowAt)));
+      const availableWindows = replayWindowsByOffset.get(entryOffsetSeconds) ?? new Set<string>();
+      const calibrationEvaluationWindows = windows.filter((windowAt) => calibrationWindows.has(windowAt) && availableWindows.has(windowAt));
+      const holdoutEvaluationWindows = windows.filter((windowAt) => holdoutWindows.has(windowAt) && availableWindows.has(windowAt));
+      const calibration = summarizeReplayTrades(
+        trades.filter((trade) => calibrationWindows.has(trade.windowAt)),
+        calibrationEvaluationWindows,
+      );
+      const holdout = summarizeReplayTrades(
+        trades.filter((trade) => holdoutWindows.has(trade.windowAt)),
+        holdoutEvaluationWindows,
+      );
       return {
         id,
         strategy,
         entryOffsetSeconds,
         calibration,
         holdout,
-        walkForward: walkForwardSummary(trades, windows),
+        walkForward: walkForwardSummary(trades, windows.filter((windowAt) => availableWindows.has(windowAt))),
       };
     });
-  const walkForwardSelection = expandingWalkForwardSelectionSummary(selectedTrades, windows, variantDefinitions);
+  const walkForwardSelection = expandingWalkForwardSelectionSummary(selectedTrades, windows, variantDefinitions, replayWindowsByOffset);
   const selectedExploratoryCandidate = [...variants]
-    .filter((variant) => variant.calibration.independentWindows > 0)
+    .filter((variant) => variant.calibration.trades > 0)
     .sort((left, right) => (
       (right.calibration.excessAverageReturnPct ?? Number.NEGATIVE_INFINITY)
       - (left.calibration.excessAverageReturnPct ?? Number.NEGATIVE_INFINITY)
@@ -391,6 +418,7 @@ export function buildRealtimeShortTermReplay(input: RealtimeShortTermReplayInput
       walkForwardSelection: "expanding calibration; each next block uses a candidate selected only from earlier windows" as const,
       directionCoverage: `rolling diagnostic requires at least ${realtimeShortTermReplaySpecification.minimumHoldoutWindowsPerSide} independent long and short windows` as const,
       probabilityScoring: "model and Polymarket probabilities scored against the same official outcomes with Brier score and log loss; confidence intervals use independent 15-minute windows" as const,
+      benchmarkComparison: "candidate skips are zero-return windows; Polymarket and Hyperliquid baselines choose their own direction on the candidate's selected opportunities" as const,
       execution: "first complete synchronized 5-second executable book after each fixed entry offset" as const,
       settlement: "official Polymarket result with Chainlink boundary audit" as const,
       costs: {
@@ -546,15 +574,16 @@ function buildStrategyCandidates(input: {
   return candidates;
 }
 
-function summarizeReplayTrades(trades: RealtimeReplayTrade[]) {
-  const windowReturns = groupedWindowReturns(trades, (trade) => trade.equalWeightReturnPct);
-  const hyperliquidWindowReturns = groupedWindowReturns(trades, (trade) => trade.hyperliquidReturnPct);
-  const polymarketWindowReturns = groupedWindowReturns(trades, (trade) => trade.polymarketReturnPct);
-  const benchmark = buildRealtimeReplayBenchmarkSummary(trades);
+function summarizeReplayTrades(trades: RealtimeReplayTrade[], evaluationWindows = uniqueSorted(trades.map((trade) => trade.windowAt))) {
+  const windowReturns = groupedWindowReturns(trades, (trade) => trade.equalWeightReturnPct, evaluationWindows);
+  const hyperliquidWindowReturns = groupedWindowReturns(trades, (trade) => trade.hyperliquidReturnPct, evaluationWindows);
+  const polymarketWindowReturns = groupedWindowReturns(trades, (trade) => trade.polymarketReturnPct, evaluationWindows);
+  const benchmark = buildRealtimeReplayBenchmarkSummary(trades, evaluationWindows);
   const directionCoverage = summarizeReplayDirectionCoverage(trades);
   const probabilityScores = summarizeRealtimeProbabilityScores(trades);
   return {
-    independentWindows: windowReturns.length,
+    independentWindows: evaluationWindows.length,
+    tradedIndependentWindows: new Set(trades.map((trade) => trade.windowAt)).size,
     ...directionCoverage,
     trades: trades.length,
     correctTrades: trades.filter((trade) => trade.correct).length,
@@ -654,18 +683,18 @@ function replayHoldoutCoverage(summary: ReturnType<typeof summarizeReplayTrades>
 
 export function buildRealtimeReplayBenchmarkSummary(trades: Array<Pick<
   RealtimeReplayTrade,
-  "windowAt" | "polymarketReturnPct" | "hyperliquidReturnPct" | "equalWeightReturnPct" | "longEqualWeightReturnPct" | "shortEqualWeightReturnPct"
->>) {
-  const strategyReturns = groupedWindowReturnEntries(trades, (trade) => trade.equalWeightReturnPct);
-  const polymarketOnly = groupedWindowReturnEntries(trades, (trade) => trade.polymarketReturnPct);
-  const hyperliquidOnly = groupedWindowReturnEntries(trades, (trade) => trade.hyperliquidReturnPct);
-  const alwaysLong = groupedWindowReturnEntries(trades, (trade) => trade.longEqualWeightReturnPct);
-  const alwaysShort = groupedWindowReturnEntries(trades, (trade) => trade.shortEqualWeightReturnPct);
+  "windowAt" | "polymarketBaselineReturnPct" | "hyperliquidBaselineReturnPct" | "equalWeightReturnPct" | "longEqualWeightReturnPct" | "shortEqualWeightReturnPct"
+>>, evaluationWindows = uniqueSorted(trades.map((trade) => trade.windowAt))) {
+  const strategyReturns = groupedWindowReturnEntries(trades, (trade) => trade.equalWeightReturnPct, evaluationWindows);
+  const polymarketOnly = groupedWindowReturnEntries(trades, (trade) => trade.polymarketBaselineReturnPct, evaluationWindows);
+  const hyperliquidOnly = groupedWindowReturnEntries(trades, (trade) => trade.hyperliquidBaselineReturnPct, evaluationWindows);
+  const alwaysLong = groupedWindowReturnEntries(trades, (trade) => trade.longEqualWeightReturnPct, evaluationWindows);
+  const alwaysShort = groupedWindowReturnEntries(trades, (trade) => trade.shortEqualWeightReturnPct, evaluationWindows);
   const randomTrials = Array.from({ length: realtimeShortTermReplaySpecification.randomBenchmarkTrials }, (_, trial) => {
     const random = createSeededRandom(trial + 1);
     return groupedWindowReturnEntries(trades, (trade) => (
       random() < 0.5 ? trade.longEqualWeightReturnPct : trade.shortEqualWeightReturnPct
-    ));
+    ), evaluationWindows);
   });
   const randomMedian = medianWindowTrial(randomTrials);
   const candidates: Array<{ id: RealtimeReplayBenchmark; returns: Array<{ windowAt: string; value: number }> }> = [
@@ -725,6 +754,7 @@ function expandingWalkForwardSelectionSummary(
   trades: RealtimeReplayTrade[],
   windows: string[],
   variants: RealtimeReplayVariantDefinition[],
+  replayWindowsByOffset: Map<number, Set<string>>,
 ) {
   const folds = buildExpandingReplayFolds(
     windows,
@@ -737,17 +767,18 @@ function expandingWalkForwardSelectionSummary(
       ...variant,
       calibration: summarizeReplayTrades(trades.filter((trade) => (
         trade.variantId === variant.id && calibrationWindows.has(trade.windowAt)
-      ))),
+      )), range.calibration.filter((windowAt) => replayWindowsByOffset.get(variant.entryOffsetSeconds)?.has(windowAt))),
     }))
-      .filter((variant) => variant.calibration.independentWindows > 0)
+      .filter((variant) => variant.calibration.trades > 0)
       .sort((left, right) => (
         (right.calibration.excessAverageReturnPct ?? Number.NEGATIVE_INFINITY)
         - (left.calibration.excessAverageReturnPct ?? Number.NEGATIVE_INFINITY)
         || left.id.localeCompare(right.id)
       ))[0] ?? null;
-    const validation = summarizeReplayTrades(selected ? trades.filter((trade) => (
-      trade.variantId === selected.id && validationWindows.has(trade.windowAt)
-    )) : []);
+    const validation = summarizeReplayTrades(
+      selected ? trades.filter((trade) => trade.variantId === selected.id && validationWindows.has(trade.windowAt)) : [],
+      selected ? range.validation.filter((windowAt) => replayWindowsByOffset.get(selected.entryOffsetSeconds)?.has(windowAt)) : [],
+    );
     return {
       fold: index + 1,
       calibrationWindows: range.calibration.length,
@@ -780,8 +811,12 @@ export function buildExpandingReplayFolds(windows: string[], foldCount = 4, init
   }).filter((fold) => fold.validation.length > 0);
 }
 
-function groupedWindowReturns(trades: RealtimeReplayTrade[], valueFor: (trade: RealtimeReplayTrade) => number) {
-  return groupedWindowReturnEntries(trades, valueFor).map((row) => row.value);
+function groupedWindowReturns(
+  trades: RealtimeReplayTrade[],
+  valueFor: (trade: RealtimeReplayTrade) => number,
+  evaluationWindows?: string[],
+) {
+  return groupedWindowReturnEntries(trades, valueFor, evaluationWindows).map((row) => row.value);
 }
 
 function groupedWindowAverages<T extends { windowAt: string }>(trades: T[], valueFor: (trade: T) => number) {
@@ -790,14 +825,19 @@ function groupedWindowAverages<T extends { windowAt: string }>(trades: T[], valu
     .map(([, rows]) => sum(rows.map(valueFor)) / rows.length);
 }
 
-function groupedWindowReturnEntries<T extends { windowAt: string }>(trades: T[], valueFor: (trade: T) => number) {
+function groupedWindowReturnEntries<T extends { windowAt: string }>(
+  trades: T[],
+  valueFor: (trade: T) => number,
+  evaluationWindows = uniqueSorted(trades.map((trade) => trade.windowAt)),
+) {
   const grouped = groupBy(trades, (trade) => trade.windowAt);
-  return [...grouped.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([windowAt, rows]) => ({
+  return uniqueSorted(evaluationWindows).map((windowAt) => {
+    const rows = grouped.get(windowAt) ?? [];
+    return {
       windowAt,
       value: sum(rows.map((trade) => valueFor(trade) * realtimeShortTermReplaySpecification.positionPct)),
-    }));
+    };
+  });
 }
 
 function applyConcurrentPositionLimit(trades: RealtimeReplayTrade[]) {

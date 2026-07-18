@@ -935,16 +935,16 @@ assert.equal(selectCausalReferenceBoundary(
 const replayBenchmark = buildRealtimeReplayBenchmarkSummary([
   {
     windowAt: "2026-01-01T00:00:00Z",
-    polymarketReturnPct: 0.2,
-    hyperliquidReturnPct: 0,
+    polymarketBaselineReturnPct: 0.2,
+    hyperliquidBaselineReturnPct: 0,
     equalWeightReturnPct: 0.1,
     longEqualWeightReturnPct: 0.1,
     shortEqualWeightReturnPct: -0.1,
   },
   {
     windowAt: "2026-01-01T00:15:00Z",
-    polymarketReturnPct: 0.2,
-    hyperliquidReturnPct: 0,
+    polymarketBaselineReturnPct: 0.2,
+    hyperliquidBaselineReturnPct: 0,
     equalWeightReturnPct: 0.1,
     longEqualWeightReturnPct: -0.1,
     shortEqualWeightReturnPct: 0.1,
@@ -956,21 +956,34 @@ assert.ok(Math.abs((replayBenchmark.excessReturnPct ?? 0) + 0.01) < 1e-12);
 assert.deepEqual(replayBenchmark, buildRealtimeReplayBenchmarkSummary([
   {
     windowAt: "2026-01-01T00:00:00Z",
-    polymarketReturnPct: 0.2,
-    hyperliquidReturnPct: 0,
+    polymarketBaselineReturnPct: 0.2,
+    hyperliquidBaselineReturnPct: 0,
     equalWeightReturnPct: 0.1,
     longEqualWeightReturnPct: 0.1,
     shortEqualWeightReturnPct: -0.1,
   },
   {
     windowAt: "2026-01-01T00:15:00Z",
-    polymarketReturnPct: 0.2,
-    hyperliquidReturnPct: 0,
+    polymarketBaselineReturnPct: 0.2,
+    hyperliquidBaselineReturnPct: 0,
     equalWeightReturnPct: 0.1,
     longEqualWeightReturnPct: -0.1,
     shortEqualWeightReturnPct: 0.1,
   },
 ]));
+const independentReplayBenchmark = buildRealtimeReplayBenchmarkSummary([
+  {
+    windowAt: "2026-01-02T00:00:00Z",
+    polymarketBaselineReturnPct: -0.2,
+    hyperliquidBaselineReturnPct: -0.1,
+    equalWeightReturnPct: 0.5,
+    longEqualWeightReturnPct: -0.1,
+    shortEqualWeightReturnPct: -0.1,
+  },
+], ["2026-01-02T00:00:00Z", "2026-01-02T00:15:00Z"]);
+assert.equal(independentReplayBenchmark.bestBenchmarkId, "hyperliquid_only");
+assert.ok(Math.abs((independentReplayBenchmark.excessReturnPct ?? 0) - 0.03) < 1e-12);
+assert.ok(Math.abs((independentReplayBenchmark.excessAverageReturnPct ?? 0) - 0.015) < 1e-12);
 const replayWindows = Array.from({ length: 15 }, (_, index) => `2026-01-01T${String(Math.floor(index / 4)).padStart(2, "0")}:${String((index % 4) * 15).padStart(2, "0")}:00Z`);
 const expandingReplayFolds = buildExpandingReplayFolds(replayWindows, 4, 0.2);
 assert.deepEqual(expandingReplayFolds.map((fold) => [fold.calibration.length, fold.validation.length]), [

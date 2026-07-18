@@ -196,6 +196,14 @@ untouched promotion holdout. A profitable result from only one market direction 
 because it has not demonstrated robustness across rising and falling regimes. Passing this diagnostic
 still requires a new frozen 50-window forward cohort before promotion.
 
+Each entry offset has its own complete set of replayable 15-minute windows. A candidate that emits no
+signal in one of those windows receives a zero return for that window; the window does not disappear from
+the confidence interval or walk-forward denominator. The Polymarket-only baseline independently follows
+the contemporaneous Polymarket probability direction, while the Hyperliquid-only baseline independently
+follows the pre-entry Hyperliquid trend. Neither baseline reuses the candidate model's chosen direction.
+This prevents sparse candidates or a mislabeled same-direction control from making calibration excess
+return look better than it is.
+
 The production five-second execution audit applies the same directional minimum to the frozen forward
 cohort: at least five independent long windows and five independent short windows are required in addition
 to 50 total independent windows. Multiple assets with the same direction and 15-minute close count once;
