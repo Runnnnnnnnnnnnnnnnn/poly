@@ -123,10 +123,10 @@ The 48-hour synchronized-data gate measures the uninterrupted streak after the m
 longer than five minutes. Earlier records remain available for research, but they do not count toward
 operational continuity after a gap.
 
-The 15-minute settlement audit selects the first Chainlink report timestamped at or after each market
-boundary. A value immediately before the boundary is never substituted, even when it is equally close in
-wall-clock time. This keeps settlement causal and prevents near-flat markets from being assigned the wrong
-direction.
+The 5-minute and 15-minute settlement audit uses Polymarket's completed crypto reference-price response
+as the authoritative opening and closing prices. It separately selects the first public Chainlink RTDS
+report timestamped at or after each market boundary and records its timing error. Missing authoritative
+prices or public boundaries remain missing; they are never imputed.
 
 The public dashboard endpoint uses stale-while-revalidate caching: the most recent complete snapshot is
 returned immediately while a refresh runs in the background. Its original `generatedAt` remains unchanged,
@@ -203,6 +203,15 @@ metrics, and artifact paths in MLflow; do not move the dashboard request path on
 The five-second replay continues to write immutable JSON, candidate-trade CSV, and complete-opportunity CSV
 artifacts for individual model runs.
 
+Short-form crypto markets also persist the read-only Polymarket Web price response for each 5-minute and
+15-minute window. Its opening and completed closing prices are the authoritative settlement reference.
+The public Chainlink RTDS stream remains a separate execution-time reconstruction because a missing or
+delayed public tick can reverse a very small boundary move.
+
+The settlement gate stays closed unless authoritative prices cover at least 95% of observed resolved
+markets, agree with official outcomes, and the public RTDS reconstruction has zero directional mismatches.
+Missing or incomplete price responses fail closed and are retried automatically.
+
 The synchronized 5-second replay compares every candidate with the same execution timestamps and the
 same 5% capital budget against six fixed baselines: Polymarket-only, Hyperliquid-only, always long,
 always short, the median of 200 seeded-random direction trials, and a zero-return cash baseline. Candidate selection uses calibration
@@ -253,11 +262,12 @@ to 50 total independent windows. Multiple assets with the same direction and 15-
 a close window containing both directions contributes once to each side. Before 50 total windows the gate
 is pending. At 50 or more, missing either direction fails promotion and real-money execution remains off.
 
-Settlement promotion is scoped to the markets actually opened by the frozen forward cohort. The global
-Chainlink boundary audit remains an operational alert and keeps historical gaps visible, but gaps from
-before the active cohort cannot permanently fail a later model. Cohort settlement still requires at least
-50 complete markets, 95% boundary coverage, zero disagreement with official Polymarket outcomes, and a
-maximum Chainlink boundary timing error of 60 seconds. Missing rows are never backfilled or discarded.
+Settlement promotion is scoped to the markets actually opened by the frozen forward cohort. The public
+RTDS boundary audit remains an operational alert and keeps historical gaps visible, but gaps from before
+the active cohort cannot permanently fail a later model. Cohort settlement still requires at least 50
+resolved markets, 95% complete Polymarket reference prices, zero direction mismatches with the official
+resolution, zero public-RTDS reconstruction mismatches, and a maximum public-boundary timing error of 60
+seconds. Missing rows are never imputed or discarded.
 
 Every changed production-audit result is stored immutably under
 `~/.polymarket-watch/artifacts/forward-execution-audits/<run-id>/`. The run ID combines the frozen cohort,

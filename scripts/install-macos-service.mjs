@@ -47,6 +47,8 @@ const modelRevision = fileFingerprint([
   "src/lib/model-evaluation/service.ts",
   "src/lib/combined-trading/forward-evaluation.ts",
   "src/lib/combined-trading/short-term-direction.ts",
+  "src/lib/backtest/polymarket.ts",
+  "src/lib/backtest/service.ts",
   "src/lib/realtime-market-data/execution-audit.ts",
   "src/lib/realtime-market-data/settlement-audit.ts",
   "scripts/archive-realtime-data.py",
@@ -284,7 +286,7 @@ function stageRuntime(sourceRoot) {
     mkdirSync(target, { recursive: true });
     const excludes = directory === ".next"
       ? ["--exclude=cache/", "--exclude=* [0-9]*"]
-      : ["--exclude=* [0-9]*"];
+      : ["--exclude=* [0-9]*", "--exclude=.ignored_*/"];
     execFileSync("/usr/bin/rsync", [
       "-a",
       "--delete",

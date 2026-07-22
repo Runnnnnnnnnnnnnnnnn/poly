@@ -110,14 +110,22 @@ export async function collectOperationalAlertCandidates(now = new Date()) {
 
 export function evaluateSettlementResolutionAlerts(audit: Pick<
   ReferenceSettlementAudit,
-  "completeMarkets" | "mismatchedMarkets" | "missingBoundaryMarkets" | "coverage" | "maximumBoundaryErrorMs" | "allowedBoundaryErrorMs"
+  "completeMarkets" | "mismatchedMarkets" | "reconstructedMismatchedMarkets" | "missingBoundaryMarkets" | "coverage" | "maximumBoundaryErrorMs" | "allowedBoundaryErrorMs"
 >) {
   if (audit.mismatchedMarkets > 0) {
     return [{
       key: "settlement-resolution-mismatch",
       severity: "critical" as const,
       title: "正式決着との不一致を検知",
-      message: `Chainlinkの開始・終了価格から再計算した方向とPolymarket正式決着が${audit.mismatchedMarkets}市場で一致しません`,
+      message: `Polymarket基準価格から再計算した方向と正式決着が${audit.mismatchedMarkets}市場で一致しません`,
+    }];
+  }
+  if (audit.reconstructedMismatchedMarkets > 0) {
+    return [{
+      key: "settlement-rtds-reconstruction-mismatch",
+      severity: "warning" as const,
+      title: "公開価格フィードとの差を検知",
+      message: `公開RTDSの境界価格とPolymarket基準価格で${audit.reconstructedMismatchedMarkets}市場の方向が異なります`,
     }];
   }
   if (audit.completeMarkets < 10) return [];

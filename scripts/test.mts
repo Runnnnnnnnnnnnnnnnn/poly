@@ -104,7 +104,11 @@ import {
   normalizeRtdsReferenceMessage,
   realtimeReferenceSubscriptions,
 } from "../src/lib/realtime-market-data/normalizers";
-import type { ActiveCryptoDirectionMarket } from "../src/lib/backtest/polymarket";
+import {
+  buildPolymarketCryptoReferencePriceUrl,
+  deriveCryptoReferenceWindow,
+  type ActiveCryptoDirectionMarket,
+} from "../src/lib/backtest/polymarket";
 
 assert.deepEqual(deriveTestnetDisplayStatus(), {
   label: "確認中",
@@ -1049,10 +1053,10 @@ for (const fold of expandingReplayFolds) {
   assert.equal(fold.calibration.at(-1)! < fold.validation[0], true);
 }
 const settlementRows = [
-  { marketId: "settlement-up", asset: "BTC", officialResult: 1, startPrice: 100, endPrice: 101, startErrorMs: 1_000, endErrorMs: 2_000 },
-  { marketId: "settlement-down", asset: "ETH", officialResult: 0, startPrice: 200, endPrice: 199, startErrorMs: 3_000, endErrorMs: 4_000 },
-  { marketId: "settlement-mismatch", asset: "SOL", officialResult: 1, startPrice: 50, endPrice: 49, startErrorMs: 5_000, endErrorMs: 6_000 },
-  { marketId: "settlement-missing", asset: "XRP", officialResult: 0, startPrice: 1, endPrice: null, startErrorMs: 1_000, endErrorMs: null },
+  { marketId: "settlement-up", asset: "BTC", officialResult: 1, officialOpenPrice: 100, officialClosePrice: 101, officialReferenceStatus: "complete", startPrice: 100, endPrice: 101, startErrorMs: 1_000, endErrorMs: 2_000 },
+  { marketId: "settlement-down", asset: "ETH", officialResult: 0, officialOpenPrice: 200, officialClosePrice: 199, officialReferenceStatus: "complete", startPrice: 200, endPrice: 199, startErrorMs: 3_000, endErrorMs: 4_000 },
+  { marketId: "settlement-mismatch", asset: "SOL", officialResult: 1, officialOpenPrice: 50, officialClosePrice: 49, officialReferenceStatus: "complete", startPrice: 50, endPrice: 49, startErrorMs: 5_000, endErrorMs: 6_000 },
+  { marketId: "settlement-missing", asset: "XRP", officialResult: 0, officialOpenPrice: 1, officialClosePrice: null, officialReferenceStatus: "open", startPrice: 1, endPrice: null, startErrorMs: 1_000, endErrorMs: null },
 ];
 const collectingSettlement = evaluateReferenceSettlementAudit(settlementRows, { targetMarkets: 4 });
 assert.equal(collectingSettlement.status, "collecting");
@@ -1061,6 +1065,7 @@ assert.equal(collectingSettlement.completeMarkets, 3);
 assert.equal(collectingSettlement.missingBoundaryMarkets, 1);
 assert.equal(collectingSettlement.matchedMarkets, 2);
 assert.equal(collectingSettlement.mismatchedMarkets, 1);
+assert.equal(collectingSettlement.reconstructedMismatchedMarkets, 0);
 assert.equal(collectingSettlement.medianBoundaryErrorMs, 3_500);
 assert.equal(collectingSettlement.maximumBoundaryErrorMs, 6_000);
 const attentionSettlement = evaluateReferenceSettlementAudit(settlementRows.slice(0, 3), { targetMarkets: 3 });
@@ -1074,6 +1079,22 @@ const healthySettlement = evaluateReferenceSettlementAudit([
 assert.equal(healthySettlement.status, "healthy");
 assert.equal(healthySettlement.matchRate, 1);
 assert.equal(healthySettlement.passedGates, healthySettlement.totalGates);
+const rtdsDriftSettlement = evaluateReferenceSettlementAudit([{
+  marketId: "settlement-rtds-drift",
+  asset: "BTC",
+  officialResult: 1,
+  officialOpenPrice: 100,
+  officialClosePrice: 101,
+  officialReferenceStatus: "complete",
+  startPrice: 100,
+  endPrice: 99,
+  startErrorMs: 1_000,
+  endErrorMs: 2_000,
+}], { targetMarkets: 1 });
+assert.equal(rtdsDriftSettlement.mismatchedMarkets, 0);
+assert.equal(rtdsDriftSettlement.reconstructedMismatchedMarkets, 1);
+assert.equal(rtdsDriftSettlement.status, "attention");
+assert.equal(evaluateSettlementResolutionAlerts(rtdsDriftSettlement)[0]?.severity, "warning");
 assert.deepEqual(
   filterReferenceSettlementRows(settlementRows, [settlementRows[1].marketId]).map((row) => row.marketId),
   [settlementRows[1].marketId],
@@ -1082,6 +1103,19 @@ assert.equal(filterReferenceSettlementRows(settlementRows, []).length, 0);
 assert.equal(filterReferenceSettlementRows(settlementRows), settlementRows);
 assert.equal(evaluateSettlementResolutionAlerts(healthySettlement).length, 0);
 assert.equal(evaluateSettlementResolutionAlerts(attentionSettlement)[0]?.severity, "critical");
+const fifteenMinuteWindow = deriveCryptoReferenceWindow({
+  asset: "BTC",
+  slug: "btc-updown-15m-1767225600",
+  endDate: "2026-01-01T00:15:00.000Z",
+});
+assert.ok(fifteenMinuteWindow);
+assert.equal(fifteenMinuteWindow.variant, "fifteen");
+assert.equal(fifteenMinuteWindow.startAt.toISOString(), "2026-01-01T00:00:00.000Z");
+const referenceUrl = new URL(buildPolymarketCryptoReferencePriceUrl(fifteenMinuteWindow));
+assert.equal(referenceUrl.searchParams.get("symbol"), "BTC");
+assert.equal(referenceUrl.searchParams.get("variant"), "fifteen");
+assert.equal(referenceUrl.searchParams.get("eventStartTime"), "2026-01-01T00:00:00.000Z");
+assert.equal(deriveCryptoReferenceWindow({ asset: "DOGE", slug: "doge-updown-15m-1", endDate: "2026-01-01T00:15:00Z" }), null);
 assert.equal(isTransientHeartbeatWriteError(Object.assign(new Error("Socket timeout"), { code: "P1008" })), true);
 assert.equal(isTransientHeartbeatWriteError(new Error("database is locked")), true);
 assert.equal(isTransientHeartbeatWriteError(new Error("validation failed")), false);

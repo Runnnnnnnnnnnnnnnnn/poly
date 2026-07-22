@@ -48,6 +48,14 @@ const eventKeysetSchema = z.object({
 });
 const marketsSchema = z.array(marketSchema).default([]);
 const historySchema = z.object({ history: z.array(z.object({ t: z.number(), p: z.number() })).default([]) });
+const cryptoReferencePriceSchema = z.object({
+  openPrice: z.number().positive(),
+  closePrice: z.number().positive().nullable().optional(),
+  timestamp: z.number().finite().optional(),
+  completed: z.boolean().default(false),
+  incomplete: z.boolean().default(false),
+  cached: z.boolean().default(false),
+});
 const bookSchema = z.object({
   bids: z.array(z.object({ price: z.string(), size: z.string() })).default([]),
   asks: z.array(z.object({ price: z.string(), size: z.string() })).default([]),
@@ -76,6 +84,64 @@ export type ActiveCryptoDirectionMarket = CryptoMarket & {
   eventStartTime: string;
   durationMinutes: number;
 };
+
+export type CryptoReferenceWindow = {
+  symbol: "BTC" | "ETH" | "SOL" | "XRP";
+  variant: "fiveminute" | "fifteen";
+  startAt: Date;
+  endAt: Date;
+};
+
+export type PolymarketCryptoReferencePrice = z.infer<typeof cryptoReferencePriceSchema> & {
+  source: "POLYMARKET_CRYPTO_PRICE";
+};
+
+export function deriveCryptoReferenceWindow(input: {
+  asset: string;
+  slug?: string | null;
+  startDate?: Date | string | null;
+  endDate?: Date | string | null;
+}): CryptoReferenceWindow | null {
+  if (input.asset !== "BTC" && input.asset !== "ETH" && input.asset !== "SOL" && input.asset !== "XRP") return null;
+  const slug = input.slug?.toLowerCase() ?? "";
+  const durationMinutes = slug.includes("-updown-5m-")
+    ? 5
+    : slug.includes("-updown-15m-")
+      ? 15
+      : null;
+  if (!durationMinutes) return null;
+  const endAt = parseDateValue(input.endDate);
+  if (!endAt) return null;
+  const suppliedStartAt = parseDateValue(input.startDate);
+  const startAt = suppliedStartAt ?? new Date(endAt.getTime() - durationMinutes * 60_000);
+  if (Math.abs(endAt.getTime() - startAt.getTime() - durationMinutes * 60_000) > 1_000) return null;
+  return {
+    symbol: input.asset,
+    variant: durationMinutes === 5 ? "fiveminute" : "fifteen",
+    startAt,
+    endAt,
+  };
+}
+
+export function buildPolymarketCryptoReferencePriceUrl(window: CryptoReferenceWindow) {
+  const url = new URL("https://polymarket.com/api/crypto/crypto-price");
+  url.searchParams.set("symbol", window.symbol);
+  url.searchParams.set("eventStartTime", window.startAt.toISOString());
+  url.searchParams.set("variant", window.variant);
+  url.searchParams.set("endDate", window.endAt.toISOString());
+  return url.toString();
+}
+
+export async function fetchPolymarketCryptoReferencePrice(window: CryptoReferenceWindow) {
+  const response = await fetchWithTimeout(
+    buildPolymarketCryptoReferencePriceUrl(window),
+    { cache: "no-store", headers: { accept: "application/json" } },
+    15_000,
+  );
+  if (!response.ok) throw new Error(`crypto reference price ${response.status}`);
+  const parsed = cryptoReferencePriceSchema.parse(await response.json());
+  return { ...parsed, source: "POLYMARKET_CRYPTO_PRICE" as const };
+}
 
 export async function discoverCryptoMarkets(options: { includeResolved?: boolean; limit?: number; asset?: CryptoAsset } = {}) {
   const includeResolved = options.includeResolved ?? true;
@@ -346,6 +412,12 @@ function toHistoricalEvent(event: z.infer<typeof historicalEventSchema>, horizon
 function parseDate(value: string | null | undefined) {
   if (!value) return null;
   const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseDateValue(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 

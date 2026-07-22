@@ -404,7 +404,7 @@ type MonitoringSnapshot = {
         priceSources: {
           entry: "Polymarket CLOB 5秒板";
           exit: "Hyperliquid L2 独立5秒板";
-          settlement: "Chainlink 独立5秒価格";
+          settlement: "Chainlink 独立5秒価格" | "Polymarket基準価格 + 公開RTDS監査";
         };
         minimumAuditedPositions: number;
         minimumIndependentEvents: number;
@@ -490,7 +490,7 @@ type MonitoringSnapshot = {
       } | null;
       settlementResolution?: {
         status: "collecting" | "healthy" | "attention";
-        source: "CHAINLINK";
+        source: "CHAINLINK" | "POLYMARKET_CRYPTO_PRICE";
         rule: string;
         targetMarkets: number;
         resolvedObservedMarkets: number;
@@ -500,6 +500,13 @@ type MonitoringSnapshot = {
         mismatchedMarkets: number;
         coverage: number;
         matchRate: number | null;
+        reconstructedCompleteMarkets: number;
+        reconstructedMatchedMarkets: number;
+        reconstructedMismatchedMarkets: number;
+        reconstructionCoverage: number;
+        reconstructionMatchRate: number | null;
+        medianAbsoluteOpenPriceBasisBps: number | null;
+        medianAbsoluteClosePriceBasisBps: number | null;
         medianBoundaryErrorMs: number | null;
         maximumBoundaryErrorMs: number | null;
         allowedBoundaryErrorMs: number;
@@ -508,11 +515,12 @@ type MonitoringSnapshot = {
           completeMarkets: number;
           matchedMarkets: number;
           mismatchedMarkets: number;
+          reconstructedMismatchedMarkets: number;
         }>;
         passedGates: number;
         totalGates: number;
         gates: Array<{
-          id: "samples" | "coverage" | "agreement" | "timing";
+          id: "samples" | "coverage" | "agreement" | "reconstruction";
           label: string;
           passed: boolean;
         }>;
@@ -1402,10 +1410,12 @@ function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: Monitor
         />
         <ExecutiveGate
           label="公式決着"
-          value={settlementResolution?.completeMarkets
-            ? `${settlementResolution.completeMarkets}/${settlementResolution.resolvedObservedMarkets}取得`
+          value={settlementResolution?.reconstructedMismatchedMarkets
+            ? `Feed差 ${settlementResolution.reconstructedMismatchedMarkets}件`
+            : settlementResolution?.completeMarkets
+              ? `${settlementResolution.completeMarkets}/${settlementResolution.resolvedObservedMarkets}取得`
             : "収集中"}
-          tone={settlementReady ? "good" : settlementResolution?.mismatchedMarkets ? "bad" : "watch"}
+          tone={settlementReady ? "good" : settlementResolution?.mismatchedMarkets || settlementResolution?.reconstructedMismatchedMarkets ? "bad" : "watch"}
         />
         <ExecutiveGate label="独立枠" value={sampleReady ? "合格" : `${verifiedTrades}/${minimumTrades}`} tone={sampleReady ? "good" : "watch"} />
         <ExecutiveGate label="純損益" value={netPositive ? "合格" : trades ? "未合格" : "未判定"} tone={netPositive ? "good" : trades ? "bad" : "neutral"} />
@@ -1695,7 +1705,7 @@ function ShortTermDirectionPanel({ snapshot, downloadsAvailable }: { snapshot: M
               value={settlementResolution?.completeMarkets
                 ? `${settlementResolution.completeMarkets}/${settlementResolution.resolvedObservedMarkets}`
                 : "収集中"}
-              tone={settlementResolution?.status === "healthy" ? "good" : settlementResolution?.mismatchedMarkets ? "bad" : "watch"}
+              tone={settlementResolution?.status === "healthy" ? "good" : settlementResolution?.mismatchedMarkets || settlementResolution?.reconstructedMismatchedMarkets ? "bad" : "watch"}
             />
             <CompactMetric label="Poly側リターン" value={hasTrades ? formatSignedPct(audit?.polymarketNetReturnPct) : "未判定"} tone={signedMetricTone(audit?.polymarketNetReturnPct, hasTrades)} />
             <CompactMetric label="HL側リターン" value={hasTrades ? formatSignedPct(audit?.hyperliquidNetReturnPct) : "未判定"} tone={signedMetricTone(audit?.hyperliquidNetReturnPct, hasTrades)} />
@@ -1776,7 +1786,7 @@ function ShortTermDirectionPanel({ snapshot, downloadsAvailable }: { snapshot: M
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
         <span>{research
-          ? `暫定合格 ${provisionalPassingGates}/${evaluatedGates || audit?.totalReadinessGates || 10}・最終合格 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 10}・決着価格 ${settlementResolution?.completeMarkets ?? 0}/${settlementResolution?.resolvedObservedMarkets ?? 0}・不一致 ${settlementResolution?.mismatchedMarkets ?? 0}`
+          ? `暫定合格 ${provisionalPassingGates}/${evaluatedGates || audit?.totalReadinessGates || 10}・最終合格 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 10}・決着価格 ${settlementResolution?.completeMarkets ?? 0}/${settlementResolution?.resolvedObservedMarkets ?? 0}・Feed差 ${settlementResolution?.reconstructedMismatchedMarkets ?? 0}`
           : "発注後の最初の5秒板で約定を再現中"}</span>
         <span className="font-bold text-rose-700">実取引 OFF</span>
       </div>

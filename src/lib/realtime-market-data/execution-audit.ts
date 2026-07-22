@@ -276,7 +276,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     gate("significance" as const, "対照との差の95%下限がプラス", benchmark.excessConfidenceInterval95 !== null, (benchmark.excessConfidenceInterval95?.[0] ?? 0) > 0),
     gate("selection-bias" as const, "試行補正後の確信度95%以上", benchmark.deflatedSharpeProbability !== null, (benchmark.deflatedSharpeProbability ?? 0) >= minimumDeflatedSharpeProbability),
     gate("drawdown" as const, "最大下落5%以内", verifiedIndependentEvents > 0, maxDrawdown <= maximumDrawdownPct),
-    gate("settlement" as const, "Chainlink方向とPolymarket正式決着が一致", settlementStatus !== undefined && settlementStatus !== "collecting", settlementStatus === "healthy"),
+    gate("settlement" as const, "Polymarket基準価格と公開RTDSの差を監査", settlementStatus !== undefined && settlementStatus !== "collecting", settlementStatus === "healthy"),
   ];
   const readinessStatus = !enoughData
     ? "collecting" as const
@@ -290,7 +290,7 @@ export function evaluateExactExecutionAudit(input: ExactExecutionAuditInput) {
     priceSources: {
       entry: "Polymarket CLOB 5秒板" as const,
       exit: "Hyperliquid L2 独立5秒板" as const,
-      settlement: "Chainlink 独立5秒価格" as const,
+      settlement: "Polymarket基準価格 + 公開RTDS監査" as const,
     },
     collectionStartedAt: input.collectionStartedAt?.toISOString() ?? null,
     minimumAuditedPositions,

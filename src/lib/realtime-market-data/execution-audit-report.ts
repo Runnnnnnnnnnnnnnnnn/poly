@@ -57,6 +57,11 @@ export type ForwardExecutionAuditReportInput = {
     missingBoundaryMarkets: number;
     matchedMarkets: number;
     mismatchedMarkets: number;
+    reconstructedCompleteMarkets?: number;
+    reconstructedMismatchedMarkets?: number;
+    reconstructionMatchRate?: number | null;
+    medianAbsoluteOpenPriceBasisBps?: number | null;
+    medianAbsoluteClosePriceBasisBps?: number | null;
     coverage: number;
   } | null;
   synchronizedQuality: {
@@ -225,6 +230,11 @@ function metricsCsv(report: ForwardExecutionAuditReport) {
     ["settlement_complete_markets", settlement?.completeMarkets ?? null],
     ["settlement_missing_boundary_markets", settlement?.missingBoundaryMarkets ?? null],
     ["settlement_mismatched_markets", settlement?.mismatchedMarkets ?? null],
+    ["settlement_rtds_reconstructed_markets", settlement?.reconstructedCompleteMarkets ?? null],
+    ["settlement_rtds_direction_mismatches", settlement?.reconstructedMismatchedMarkets ?? null],
+    ["settlement_rtds_direction_match_rate", settlement?.reconstructionMatchRate ?? null],
+    ["settlement_rtds_open_basis_bps_median_abs", settlement?.medianAbsoluteOpenPriceBasisBps ?? null],
+    ["settlement_rtds_close_basis_bps_median_abs", settlement?.medianAbsoluteClosePriceBasisBps ?? null],
     ["settlement_coverage", settlement?.coverage ?? null],
     ["synchronized_duration_hours", quality?.durationHours ?? null],
     ["synchronized_coverage", quality?.coverage ?? null],

@@ -8,6 +8,9 @@ export type ReferenceSettlementBoundary = {
   marketId: string;
   asset: string;
   officialResult: number;
+  officialOpenPrice: number | null;
+  officialClosePrice: number | null;
+  officialReferenceStatus: string | null;
   startPrice: number | null;
   endPrice: number | null;
   startErrorMs: number | null;
@@ -29,6 +32,9 @@ export async function loadReferenceSettlementAudit(options: {
     marketId: string;
     asset: string;
     officialResult: number | bigint;
+    officialOpenPrice: number | null;
+    officialClosePrice: number | null;
+    officialReferenceStatus: string | null;
     startPrice: number | null;
     endPrice: number | null;
     startErrorMs: number | bigint | null;
@@ -129,6 +135,9 @@ export async function loadReferenceSettlementAudit(options: {
       market."id" AS "marketId",
       market."asset" AS "asset",
       market."result" AS "officialResult",
+      market."settlementOpenPrice" AS "officialOpenPrice",
+      market."settlementClosePrice" AS "officialClosePrice",
+      market."settlementReferenceStatus" AS "officialReferenceStatus",
       MAX(CASE WHEN ranked."boundary" = 'START' AND ranked."boundaryRank" = 1 THEN ranked."referencePrice" END) AS "startPrice",
       MAX(CASE WHEN ranked."boundary" = 'END' AND ranked."boundaryRank" = 1 THEN ranked."referencePrice" END) AS "endPrice",
       MAX(CASE WHEN ranked."boundary" = 'START' AND ranked."boundaryRank" = 1 THEN ranked."errorMs" END) AS "startErrorMs",
@@ -139,7 +148,8 @@ export async function loadReferenceSettlementAudit(options: {
       AND market."resolved" = 1
       AND market."result" IN (0, 1)
     LEFT JOIN ranked ON ranked."marketId" = market."id"
-    GROUP BY market."id", market."asset", market."result"
+    GROUP BY market."id", market."asset", market."result",
+      market."settlementOpenPrice", market."settlementClosePrice", market."settlementReferenceStatus"
     ORDER BY market."id" ASC
   `;
 
@@ -147,6 +157,9 @@ export async function loadReferenceSettlementAudit(options: {
     marketId: row.marketId,
     asset: row.asset,
     officialResult: finiteNumber(row.officialResult) ?? -1,
+    officialOpenPrice: finiteNumber(row.officialOpenPrice),
+    officialClosePrice: finiteNumber(row.officialClosePrice),
+    officialReferenceStatus: row.officialReferenceStatus,
     startPrice: finiteNumber(row.startPrice),
     endPrice: finiteNumber(row.endPrice),
     startErrorMs: finiteNumber(row.startErrorMs),
@@ -179,45 +192,68 @@ export function evaluateReferenceSettlementAudit(
   );
   const eligible = rows.filter((row) => row.officialResult === 0 || row.officialResult === 1);
   const complete = eligible.flatMap((row) => {
+    if (row.officialReferenceStatus !== "complete") return [];
+    if (!positiveNumber(row.officialOpenPrice) || !positiveNumber(row.officialClosePrice)) return [];
+    const derivedResult = row.officialClosePrice >= row.officialOpenPrice ? 1 : 0;
+    return [{
+      ...row,
+      officialOpenPrice: row.officialOpenPrice,
+      officialClosePrice: row.officialClosePrice,
+      derivedResult,
+      matched: derivedResult === row.officialResult,
+    }];
+  });
+  const reconstructed = complete.flatMap((row) => {
     if (!positiveNumber(row.startPrice) || !positiveNumber(row.endPrice)) return [];
     if (!nonNegativeNumber(row.startErrorMs) || !nonNegativeNumber(row.endErrorMs)) return [];
-    const derivedResult = row.endPrice >= row.startPrice ? 1 : 0;
+    const reconstructedResult = row.endPrice >= row.startPrice ? 1 : 0;
     return [{
       ...row,
       startPrice: row.startPrice,
       endPrice: row.endPrice,
       startErrorMs: row.startErrorMs,
       endErrorMs: row.endErrorMs,
-      derivedResult,
-      matched: derivedResult === row.officialResult,
-      maximumErrorMs: Math.max(row.startErrorMs, row.endErrorMs),
+      reconstructedResult,
+      matchedOfficialReference: reconstructedResult === row.derivedResult,
+      openPriceBasisBps: priceBasisBps(row.startPrice, row.officialOpenPrice),
+      closePriceBasisBps: priceBasisBps(row.endPrice, row.officialClosePrice),
     }];
   });
   const matchedMarkets = complete.filter((row) => row.matched).length;
   const mismatchedMarkets = complete.length - matchedMarkets;
   const coverage = eligible.length ? complete.length / eligible.length : 0;
   const matchRate = complete.length ? matchedMarkets / complete.length : null;
-  const boundaryErrors = complete.flatMap((row) => [row.startErrorMs, row.endErrorMs]);
+  const reconstructedMatchedMarkets = reconstructed.filter((row) => row.matchedOfficialReference).length;
+  const reconstructedMismatchedMarkets = reconstructed.length - reconstructedMatchedMarkets;
+  const reconstructionCoverage = complete.length ? reconstructed.length / complete.length : 0;
+  const reconstructionMatchRate = reconstructed.length ? reconstructedMatchedMarkets / reconstructed.length : null;
+  const boundaryErrors = reconstructed.flatMap((row) => [row.startErrorMs, row.endErrorMs]);
   const medianBoundaryErrorMs = median(boundaryErrors);
   const maximumObservedBoundaryErrorMs = boundaryErrors.length ? Math.max(...boundaryErrors) : null;
+  const medianAbsoluteOpenPriceBasisBps = median(reconstructed.map((row) => Math.abs(row.openPriceBasisBps)));
+  const medianAbsoluteClosePriceBasisBps = median(reconstructed.map((row) => Math.abs(row.closePriceBasisBps)));
   const byAsset = Array.from(new Set(eligible.map((row) => row.asset))).sort().map((asset) => {
     const assetRows = complete.filter((row) => row.asset === asset);
+    const reconstructedAssetRows = reconstructed.filter((row) => row.asset === asset);
     return {
       asset,
       completeMarkets: assetRows.length,
       matchedMarkets: assetRows.filter((row) => row.matched).length,
       mismatchedMarkets: assetRows.filter((row) => !row.matched).length,
+      reconstructedMismatchedMarkets: reconstructedAssetRows.filter((row) => !row.matchedOfficialReference).length,
     };
   });
   const enoughData = complete.length >= targetMarkets;
   const gates = [
     { id: "samples" as const, label: `公式決着${targetMarkets}市場以上`, passed: enoughData },
     { id: "coverage" as const, label: "開始・終了価格の取得率95%以上", passed: enoughData && coverage >= 0.95 },
-    { id: "agreement" as const, label: "Chainlink方向と正式決着の不一致0件", passed: enoughData && mismatchedMarkets === 0 },
+    { id: "agreement" as const, label: "Polymarket基準価格と正式決着の不一致0件", passed: enoughData && mismatchedMarkets === 0 },
     {
-      id: "timing" as const,
-      label: `境界価格の時刻誤差${Math.round(maximumBoundaryErrorMs / 1_000)}秒以内`,
+      id: "reconstruction" as const,
+      label: "公開RTDS再構成とPolymarket基準価格の不一致0件",
       passed: enoughData
+        && reconstructionCoverage >= 0.95
+        && reconstructedMismatchedMarkets === 0
         && maximumObservedBoundaryErrorMs !== null
         && maximumObservedBoundaryErrorMs <= maximumBoundaryErrorMs,
     },
@@ -230,7 +266,7 @@ export function evaluateReferenceSettlementAudit(
 
   return {
     status,
-    source: "CHAINLINK" as const,
+    source: "POLYMARKET_CRYPTO_PRICE" as const,
     rule: "終了価格が開始価格以上ならUp" as const,
     targetMarkets,
     resolvedObservedMarkets: eligible.length,
@@ -240,10 +276,17 @@ export function evaluateReferenceSettlementAudit(
     mismatchedMarkets,
     coverage,
     matchRate,
+    reconstructedCompleteMarkets: reconstructed.length,
+    reconstructedMatchedMarkets,
+    reconstructedMismatchedMarkets,
+    reconstructionCoverage,
+    reconstructionMatchRate,
+    medianAbsoluteOpenPriceBasisBps,
+    medianAbsoluteClosePriceBasisBps,
     medianBoundaryErrorMs,
     maximumBoundaryErrorMs: maximumObservedBoundaryErrorMs,
     allowedBoundaryErrorMs: maximumBoundaryErrorMs,
-    boundarySelection: "first-chainlink-update-at-or-after-boundary" as const,
+    boundarySelection: "polymarket-crypto-price-with-public-rtds-audit" as const,
     byAsset,
     passedGates: gates.filter((gate) => gate.passed).length,
     totalGates: gates.length,
@@ -269,6 +312,10 @@ function positiveNumber(value: number | null): value is number {
 
 function nonNegativeNumber(value: number | null): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function priceBasisBps(observed: number, reference: number) {
+  return (observed / reference - 1) * 10_000;
 }
 
 function median(values: number[]) {

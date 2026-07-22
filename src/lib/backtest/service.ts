@@ -2,7 +2,15 @@ import type { BacktestPoint, BacktestRun } from "@prisma/client";
 
 import { prisma } from "@/src/lib/server/prisma";
 import { calculateBacktestMetrics } from "@/src/lib/backtest/metrics";
-import { discoverActiveCryptoPriceMarkets, discoverCryptoMarkets, fetchCryptoMarketById, fetchCurrentBooks, fetchHistoricalProbability } from "@/src/lib/backtest/polymarket";
+import {
+  deriveCryptoReferenceWindow,
+  discoverActiveCryptoPriceMarkets,
+  discoverCryptoMarkets,
+  fetchCryptoMarketById,
+  fetchCurrentBooks,
+  fetchHistoricalProbability,
+  fetchPolymarketCryptoReferencePrice,
+} from "@/src/lib/backtest/polymarket";
 import type { BacktestMetrics, BacktestResult, CryptoAsset, CryptoForecast, CryptoMarket } from "@/src/lib/backtest/types";
 import {
   calculatePriceBasisPct,
@@ -146,10 +154,108 @@ export async function refreshPredictionMarketOutcomes(options: { now?: Date; lim
     });
     return { checked: true, resolved: market.resolved && market.result !== null };
   });
+  const references = await refreshPredictionMarketSettlementReferences({
+    now,
+    limit: Math.min(40, Math.max(8, options.limit ?? 40)),
+  });
   return {
     checked: refreshed.filter(Boolean).length,
     resolved: refreshed.filter((result) => result?.resolved).length,
     pending: pending.length,
+    references,
+  };
+}
+
+export async function refreshPredictionMarketSettlementReferences(options: { now?: Date; limit?: number } = {}) {
+  const now = options.now ?? new Date();
+  const openRetryBefore = new Date(now.getTime() - 45_000);
+  const errorRetryBefore = new Date(now.getTime() - 60_000);
+  const candidates = await prisma.predictionMarket.findMany({
+    where: {
+      AND: [
+        {
+          OR: [
+            { slug: { contains: "-updown-5m-" }, endDate: { lte: new Date(now.getTime() + 5 * 60_000) } },
+            { slug: { contains: "-updown-15m-" }, endDate: { lte: new Date(now.getTime() + 15 * 60_000) } },
+          ],
+        },
+        {
+          OR: [
+            { settlementReferenceStatus: null },
+            { settlementReferenceStatus: "open", settlementReferenceCheckedAt: { lt: openRetryBefore } },
+            { settlementReferenceStatus: "error", settlementReferenceCheckedAt: { lt: errorRetryBefore } },
+          ],
+        },
+      ],
+    },
+    orderBy: { endDate: "desc" },
+    take: Math.min(200, Math.max(1, options.limit ?? 40)),
+    select: {
+      id: true,
+      asset: true,
+      slug: true,
+      startDate: true,
+      endDate: true,
+    },
+  });
+  const refreshed = await mapWithConcurrency(candidates, 3, async (market) => {
+    const window = deriveCryptoReferenceWindow(market);
+    if (!window) return { status: "unsupported" as const };
+    try {
+      const reference = await fetchPolymarketCryptoReferencePrice(window);
+      const complete = reference.completed
+        && !reference.incomplete
+        && typeof reference.closePrice === "number";
+      await prisma.predictionMarket.update({
+        where: { id: market.id },
+        data: {
+          startDate: window.startAt,
+          settlementOpenPrice: reference.openPrice,
+          settlementClosePrice: complete ? reference.closePrice : null,
+          settlementReferenceSource: reference.source,
+          settlementReferenceStatus: complete ? "complete" : "open",
+          settlementReferenceError: null,
+          settlementReferenceAt: reference.timestamp ? new Date(reference.timestamp) : now,
+          settlementReferenceCheckedAt: now,
+        },
+      });
+      return { status: complete ? "complete" as const : "open" as const };
+    } catch (error) {
+      await prisma.predictionMarket.update({
+        where: { id: market.id },
+        data: {
+          startDate: window.startAt,
+          settlementReferenceStatus: "error",
+          settlementReferenceError: error instanceof Error ? error.message.slice(0, 500) : "unknown error",
+          settlementReferenceCheckedAt: now,
+        },
+      });
+      return { status: "error" as const };
+    }
+  });
+  return {
+    checked: refreshed.filter(Boolean).length,
+    complete: refreshed.filter((item) => item?.status === "complete").length,
+    open: refreshed.filter((item) => item?.status === "open").length,
+    errors: refreshed.filter((item) => item?.status === "error").length,
+    remaining: await prisma.predictionMarket.count({
+      where: {
+        AND: [
+          {
+            OR: [
+              { settlementReferenceStatus: null },
+              { settlementReferenceStatus: { not: "complete" } },
+            ],
+          },
+          {
+            OR: [
+              { slug: { contains: "-updown-5m-" }, endDate: { lte: new Date(now.getTime() + 5 * 60_000) } },
+              { slug: { contains: "-updown-15m-" }, endDate: { lte: new Date(now.getTime() + 15 * 60_000) } },
+            ],
+          },
+        ],
+      },
+    }),
   };
 }
 

@@ -18,34 +18,34 @@ model WatchlistItem {
 }
 
 model MarketSnapshot {
-  id                     String    @id
-  marketId               String
-  probability            Float
-  yesPrice               Float
-  noPrice                Float
-  volume                 Float
-  liquidity              Float
-  bestBid                Float?
-  bestAsk                Float?
-  spread                 Float?
-  clobCapturedAt         DateTime?
-  clobUpdatedAt          DateTime?
-  hyperliquidMidPrice    Float?
-  hyperliquidMarkPrice   Float?
-  hyperliquidOraclePrice Float?
-  hyperliquidFundingRate Float?
-  hyperliquidBestBid     Float?
-  hyperliquidBestAsk     Float?
-  hyperliquidSpread      Float?
+  id                       String    @id
+  marketId                 String
+  probability              Float
+  yesPrice                 Float
+  noPrice                  Float
+  volume                   Float
+  liquidity                Float
+  bestBid                  Float?
+  bestAsk                  Float?
+  spread                   Float?
+  clobCapturedAt           DateTime?
+  clobUpdatedAt            DateTime?
+  hyperliquidMidPrice      Float?
+  hyperliquidMarkPrice     Float?
+  hyperliquidOraclePrice   Float?
+  hyperliquidFundingRate   Float?
+  hyperliquidBestBid       Float?
+  hyperliquidBestAsk       Float?
+  hyperliquidSpread        Float?
   hyperliquidBookUpdatedAt DateTime?
-  hyperliquidCapturedAt  DateTime?
-  referencePrice         Float?
-  referenceSource        String?
-  referenceCapturedAt    DateTime?
-  priceBasisPct          Float?
-  captureSkewMs          Int?
-  synchronizationVersion String?
-  capturedAt             DateTime  @default(now())
+  hyperliquidCapturedAt    DateTime?
+  referencePrice           Float?
+  referenceSource          String?
+  referenceCapturedAt      DateTime?
+  priceBasisPct            Float?
+  captureSkewMs            Int?
+  synchronizationVersion   String?
+  capturedAt               DateTime  @default(now())
 
   @@index([marketId, capturedAt])
   @@index([capturedAt, captureSkewMs])
@@ -53,7 +53,7 @@ model MarketSnapshot {
 }
 
 model HyperliquidSnapshot {
-  id               String   @id
+  id               String    @id
   asset            String
   midPrice         Float
   markPrice        Float
@@ -66,59 +66,59 @@ model HyperliquidSnapshot {
   bestAsk          Float?
   spread           Float?
   bookUpdatedAt    DateTime?
-  capturedAt       DateTime @default(now())
+  capturedAt       DateTime  @default(now())
 
   @@index([asset, capturedAt])
   @@index([capturedAt])
 }
 
 model RealtimeMarketTick {
-  id                           String   @id
-  eventId                      String?
-  marketId                     String
-  positiveTokenId              String
-  negativeTokenId              String
-  asset                        String
-  marketStartAt                DateTime
-  marketEndAt                  DateTime
-  marketPhase                  String
-  probability                  Float
-  polymarketBestBid            Float
-  polymarketBestAsk            Float
-  polymarketBidSize            Float?
-  polymarketAskSize            Float?
-  polymarketSpread             Float
-  polymarketUpdatedAt          DateTime
-  negativeBestBid              Float
-  negativeBestAsk              Float
-  negativeBidSize              Float?
-  negativeAskSize              Float?
-  negativeSpread               Float
-  negativeUpdatedAt            DateTime
-  hyperliquidBestBid           Float
-  hyperliquidBestAsk           Float
-  hyperliquidBidSize           Float?
-  hyperliquidAskSize           Float?
-  hyperliquidSpread            Float
-  hyperliquidMidPrice          Float
-  hyperliquidMarkPrice         Float?
-  hyperliquidOraclePrice       Float?
-  hyperliquidFundingRate       Float?
-  hyperliquidUpdatedAt         DateTime
-  chainlinkPrice               Float?
-  chainlinkUpdatedAt           DateTime?
-  binancePrice                 Float?
-  binanceUpdatedAt             DateTime?
-  referencePrice               Float
-  referenceSource              String
-  referenceUpdatedAt           DateTime
-  priceBasisPct                Float
-  complementBidSum             Float
-  complementAskSum             Float
-  arbitrageViolation           Boolean  @default(false)
-  captureSkewMs                Int
-  synchronizationVersion       String
-  capturedAt                   DateTime @default(now())
+  id                     String    @id
+  eventId                String?
+  marketId               String
+  positiveTokenId        String
+  negativeTokenId        String
+  asset                  String
+  marketStartAt          DateTime
+  marketEndAt            DateTime
+  marketPhase            String
+  probability            Float
+  polymarketBestBid      Float
+  polymarketBestAsk      Float
+  polymarketBidSize      Float?
+  polymarketAskSize      Float?
+  polymarketSpread       Float
+  polymarketUpdatedAt    DateTime
+  negativeBestBid        Float
+  negativeBestAsk        Float
+  negativeBidSize        Float?
+  negativeAskSize        Float?
+  negativeSpread         Float
+  negativeUpdatedAt      DateTime
+  hyperliquidBestBid     Float
+  hyperliquidBestAsk     Float
+  hyperliquidBidSize     Float?
+  hyperliquidAskSize     Float?
+  hyperliquidSpread      Float
+  hyperliquidMidPrice    Float
+  hyperliquidMarkPrice   Float?
+  hyperliquidOraclePrice Float?
+  hyperliquidFundingRate Float?
+  hyperliquidUpdatedAt   DateTime
+  chainlinkPrice         Float?
+  chainlinkUpdatedAt     DateTime?
+  binancePrice           Float?
+  binanceUpdatedAt       DateTime?
+  referencePrice         Float
+  referenceSource        String
+  referenceUpdatedAt     DateTime
+  priceBasisPct          Float
+  complementBidSum       Float
+  complementAskSum       Float
+  arbitrageViolation     Boolean   @default(false)
+  captureSkewMs          Int
+  synchronizationVersion String
+  capturedAt             DateTime  @default(now())
 
   @@index([marketId, capturedAt])
   @@index([asset, capturedAt])
@@ -127,7 +127,7 @@ model RealtimeMarketTick {
 }
 
 model RealtimeAssetTick {
-  id                     String   @id
+  id                     String    @id
   asset                  String
   hyperliquidBestBid     Float
   hyperliquidBestAsk     Float
@@ -145,7 +145,7 @@ model RealtimeAssetTick {
   binanceUpdatedAt       DateTime?
   captureSkewMs          Int
   synchronizationVersion String
-  capturedAt             DateTime @default(now())
+  capturedAt             DateTime  @default(now())
 
   @@index([asset, capturedAt])
   @@index([capturedAt, captureSkewMs])
@@ -177,21 +177,30 @@ model ModelEvaluationRun {
 }
 
 model PredictionMarket {
-  id          String    @id
-  eventId     String?
-  asset       String
-  tokenId     String
-  title       String
-  slug        String?
-  endDate     DateTime?
-  resolved    Boolean   @default(false)
-  result      Int?
-  firstSeenAt DateTime  @default(now())
-  lastSeenAt  DateTime  @default(now())
+  id                           String    @id
+  eventId                      String?
+  asset                        String
+  tokenId                      String
+  title                        String
+  slug                         String?
+  startDate                    DateTime?
+  endDate                      DateTime?
+  resolved                     Boolean   @default(false)
+  result                       Int?
+  settlementOpenPrice          Float?
+  settlementClosePrice         Float?
+  settlementReferenceSource    String?
+  settlementReferenceStatus    String?
+  settlementReferenceError     String?
+  settlementReferenceAt        DateTime?
+  settlementReferenceCheckedAt DateTime?
+  firstSeenAt                  DateTime  @default(now())
+  lastSeenAt                   DateTime  @default(now())
 
   @@index([asset, endDate])
   @@index([eventId, endDate])
   @@index([resolved, endDate])
+  @@index([settlementReferenceStatus, endDate])
 }
 
 model BacktestRun {
@@ -390,79 +399,79 @@ model CombinedShadowRun {
 }
 
 model CombinedShadowPosition {
-  id             String                   @id
-  runId          String
-  eventId        String
-  marketId       String
-  asset          String
-  side           String
-  quantity       Float
-  entryPrice     Float
-  markPrice      Float
-  impliedTarget  Float
-  signalZ        Float
-  polymarketSide String?
-  entrySpotPrice Float?
-  entryTrendZ6h  Float?
-  entryFunding24h Float?
-  horizonHours   Int?
-  priceBasisPct  Float?
+  id                       String                   @id
+  runId                    String
+  eventId                  String
+  marketId                 String
+  asset                    String
+  side                     String
+  quantity                 Float
+  entryPrice               Float
+  markPrice                Float
+  impliedTarget            Float
+  signalZ                  Float
+  polymarketSide           String?
+  entrySpotPrice           Float?
+  entryTrendZ6h            Float?
+  entryFunding24h          Float?
+  horizonHours             Int?
+  priceBasisPct            Float?
   entryReferencePrice      Float?
   entryReferenceSource     String?
   entryReferenceCapturedAt DateTime?
   exitReferencePrice       Float?
   exitReferenceSource      String?
   exitReferenceCapturedAt  DateTime?
-  exitPriceBasisPct         Float?
-  entryFee       Float
-  accruedFunding Float                    @default(0)
-  realizedPnl    Float?
-  status         String
-  openedAt       DateTime                 @default(now())
-  exitAt         DateTime
-  closedAt       DateTime?
-  closeReason    String?
-  run            CombinedShadowRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
-  orders         CombinedExecutionOrder[]
+  exitPriceBasisPct        Float?
+  entryFee                 Float
+  accruedFunding           Float                    @default(0)
+  realizedPnl              Float?
+  status                   String
+  openedAt                 DateTime                 @default(now())
+  exitAt                   DateTime
+  closedAt                 DateTime?
+  closeReason              String?
+  run                      CombinedShadowRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  orders                   CombinedExecutionOrder[]
 
   @@index([runId, status])
   @@index([eventId, asset])
 }
 
 model CombinedShadowDecision {
-  id          String            @id
-  runId       String
-  eventId     String?
-  marketId    String?
-  asset       String?
-  action      String
-  reason      String
-  probability Float?
-  spotPrice   Float?
-  targetPrice Float?
-  signalZ     Float?
-  polymarketSide String?
-  strategySide String?
-  trendZ6h Float?
-  hyperliquidFunding24h Float?
-  threshold   Float
-  horizonHours            Int?
-  scannedMarkets          Int       @default(0)
-  structuredMarkets       Int       @default(0)
-  horizonEligibleMarkets  Int       @default(0)
-  groupedEvents           Int       @default(0)
-  priceReadyEvents        Int       @default(0)
-  marketBestBid           Float?
-  marketBestAsk           Float?
-  marketSpread            Float?
+  id                       String            @id
+  runId                    String
+  eventId                  String?
+  marketId                 String?
+  asset                    String?
+  action                   String
+  reason                   String
+  probability              Float?
+  spotPrice                Float?
+  targetPrice              Float?
+  signalZ                  Float?
+  polymarketSide           String?
+  strategySide             String?
+  trendZ6h                 Float?
+  hyperliquidFunding24h    Float?
+  threshold                Float
+  horizonHours             Int?
+  scannedMarkets           Int               @default(0)
+  structuredMarkets        Int               @default(0)
+  horizonEligibleMarkets   Int               @default(0)
+  groupedEvents            Int               @default(0)
+  priceReadyEvents         Int               @default(0)
+  marketBestBid            Float?
+  marketBestAsk            Float?
+  marketSpread             Float?
   polymarketReferencePrice Float?
-  referenceSource         String?
-  referenceCapturedAt     DateTime?
-  priceBasisPct           Float?
-  ladderViolations        Int?
-  nextWindowAt            DateTime?
-  observedAt  DateTime          @default(now())
-  run         CombinedShadowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  referenceSource          String?
+  referenceCapturedAt      DateTime?
+  priceBasisPct            Float?
+  ladderViolations         Int?
+  nextWindowAt             DateTime?
+  observedAt               DateTime          @default(now())
+  run                      CombinedShadowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId, observedAt])
   @@index([action, observedAt])
@@ -484,73 +493,73 @@ model CombinedShadowEquitySnapshot {
 }
 
 model CombinedExecutionOrder {
-  id             String                  @id
-  runId          String
-  positionId     String?
-  environment    String
-  clientOrderId  String                  @unique
-  exchangeOrderId String?
-  exchangeStatus String?
-  asset          String
-  side           String
-  action         String
-  quantity       Float
-  filledQuantity Float                   @default(0)
+  id               String                  @id
+  runId            String
+  positionId       String?
+  environment      String
+  clientOrderId    String                  @unique
+  exchangeOrderId  String?
+  exchangeStatus   String?
+  asset            String
+  side             String
+  action           String
+  quantity         Float
+  filledQuantity   Float                   @default(0)
   averageFillPrice Float?
-  feePaid        Float                   @default(0)
-  referencePrice Float?
-  status         String
-  reason         String?
-  responseJson   String?
+  feePaid          Float                   @default(0)
+  referencePrice   Float?
+  status           String
+  reason           String?
+  responseJson     String?
   lastReconciledAt DateTime?
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  run            CombinedShadowRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
-  position       CombinedShadowPosition? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  run              CombinedShadowRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  position         CombinedShadowPosition? @relation(fields: [positionId], references: [id], onDelete: SetNull)
 
+  @@unique([positionId, environment, action])
   @@index([runId, createdAt])
   @@index([environment, status])
-  @@unique([positionId, environment, action])
 }
 
 model CombinedExecutionAccountSnapshot {
-  id                   String   @id
-  environment          String
-  accountValue         Float
-  accountLossPct       Float?
-  openOrderCount       Int
-  positionCount        Int
-  orderMismatchCount   Int
+  id                    String   @id
+  environment           String
+  accountValue          Float
+  accountLossPct        Float?
+  openOrderCount        Int
+  positionCount         Int
+  orderMismatchCount    Int
   positionMismatchCount Int
-  healthy              Boolean
-  issuesJson           String
-  capturedAt           DateTime @default(now())
+  healthy               Boolean
+  issuesJson            String
+  capturedAt            DateTime @default(now())
 
   @@index([environment, capturedAt])
 }
 
 model HyperliquidTestnetVerificationRun {
-  id                       String    @id
-  status                   String
-  asset                    String?
-  requestedNotionalUsd     Float?
-  sdkVersion               String?
-  connectivityPassed       Boolean   @default(false)
-  openFillPassed           Boolean   @default(false)
-  closeFillPassed          Boolean   @default(false)
-  restingOrderPassed       Boolean   @default(false)
-  cancelPassed             Boolean   @default(false)
-  deadManSwitchPassed      Boolean   @default(false)
-  partialFillObserved      Boolean   @default(false)
-  reconnectPassed          Boolean   @default(false)
-  reconciliationPassed     Boolean   @default(false)
-  emergencyCleanupPassed   Boolean   @default(false)
-  orphanOrderCount         Int       @default(0)
-  positionMismatchCount    Int       @default(0)
-  resultJson               String?
-  error                    String?
-  startedAt                DateTime  @default(now())
-  completedAt              DateTime?
+  id                     String    @id
+  status                 String
+  asset                  String?
+  requestedNotionalUsd   Float?
+  sdkVersion             String?
+  connectivityPassed     Boolean   @default(false)
+  openFillPassed         Boolean   @default(false)
+  closeFillPassed        Boolean   @default(false)
+  restingOrderPassed     Boolean   @default(false)
+  cancelPassed           Boolean   @default(false)
+  deadManSwitchPassed    Boolean   @default(false)
+  partialFillObserved    Boolean   @default(false)
+  reconnectPassed        Boolean   @default(false)
+  reconciliationPassed   Boolean   @default(false)
+  emergencyCleanupPassed Boolean   @default(false)
+  orphanOrderCount       Int       @default(0)
+  positionMismatchCount  Int       @default(0)
+  resultJson             String?
+  error                  String?
+  startedAt              DateTime  @default(now())
+  completedAt            DateTime?
 
   @@index([status, startedAt])
   @@index([completedAt])
