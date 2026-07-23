@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { createConnection } from "node:net";
 import { dirname, join } from "node:path";
@@ -50,10 +50,12 @@ const buildRoot = mkdtempSync(join(tmpdir(), "polymarket-watch-pages-"));
 
 try {
   const repo = process.env.GITHUB_PAGES_REPO || "poly";
-  const runtimeDatabasePath = join(homedir(), ".polymarket-watch", "runtime", "prisma", "dev.db");
+  const postgresUrlPath = join(homedir(), ".polymarket-watch", "postgres", "database-url");
   const pagesDatabaseUrl = process.env.PAGES_DATABASE_URL
     || process.env.DATABASE_URL
-    || (existsSync(runtimeDatabasePath) ? `file:${runtimeDatabasePath}` : "file:./dev.db");
+    || (existsSync(postgresUrlPath)
+      ? readFileSync(postgresUrlPath, "utf8").trim()
+      : "postgresql://postgres:postgres@127.0.0.1:5432/polymarket_watch?schema=public");
   const env = {
     ...process.env,
     DATABASE_URL: pagesDatabaseUrl,

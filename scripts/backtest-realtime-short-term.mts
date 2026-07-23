@@ -304,12 +304,12 @@ function csvCell(value: unknown) {
 function loadCombinedReplayInput(now: Date): CombinedReplayInput | null {
   const stateRoot = resolve(process.env.POLYMARKET_STATE_DIR ?? resolve(homedir(), ".polymarket-watch"));
   const archiveRoot = resolve(process.env.COLUMNAR_ARCHIVE_ROOT ?? resolve(stateRoot, "parquet"));
-  const database = sqliteDatabasePath(process.env.DATABASE_URL);
+  const database = process.env.DATABASE_URL;
   const archivePresent = existsSync(resolve(archiveRoot, "table=realtime_market_tick"))
     || existsSync(resolve(archiveRoot, "table=realtime_asset_tick"));
   const python = analyticsPython(stateRoot);
-  if (!database || !existsSync(database)) {
-    if (archivePresent) throw new Error("Parquet履歴を統合するSQLiteデータベースが見つかりません");
+  if (!database || (database.startsWith("file:") && !existsSync(sqliteDatabasePath(database) ?? ""))) {
+    if (archivePresent) throw new Error("Parquet履歴を統合する運用データベースが見つかりません");
     return null;
   }
   if (!python || !existsSync(python)) {

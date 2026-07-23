@@ -12,6 +12,20 @@ export type PolymarketBookUpdate = RealtimeBookTop & {
 
 export type HyperliquidBookUpdate = RealtimeBookTop & {
   asset: string;
+  levels: {
+    bids: Array<{ price: number; size: number }>;
+    asks: Array<{ price: number; size: number }>;
+  };
+  exchangeTimeMs: number;
+};
+
+export type HyperliquidTradeUpdate = {
+  asset: string;
+  tradeId: string;
+  side: "BUY" | "SELL";
+  price: number;
+  size: number;
+  tradedAt: Date;
 };
 
 export type HyperliquidContextUpdate = {
@@ -42,40 +56,55 @@ export function normalizePolymarketWebSocketMessage(input: unknown): PolymarketB
   return messages.flatMap((message) => normalizePolymarketMessage(message));
 }
 
-export function normalizeHyperliquidWebSocketMessage(input: unknown): HyperliquidBookUpdate | HyperliquidContextUpdate | null {
+export function normalizeHyperliquidWebSocketMessages(
+  input: unknown,
+): Array<HyperliquidBookUpdate | HyperliquidContextUpdate | HyperliquidTradeUpdate> {
   const parsed = parseWireValue(input);
-  if (!isRecord(parsed) || !isRecord(parsed.data)) return null;
+  if (!isRecord(parsed)) return [];
+  if (parsed.channel === "trades" && Array.isArray(parsed.data)) {
+    return parsed.data.flatMap((trade) => normalizeHyperliquidTrade(trade));
+  }
+  if (!isRecord(parsed.data)) return [];
   if (parsed.channel === "l2Book") {
     const asset = stringValue(parsed.data.coin);
     const levels = Array.isArray(parsed.data.levels) ? parsed.data.levels : [];
-    const bids = Array.isArray(levels[0]) ? levels[0] : [];
-    const asks = Array.isArray(levels[1]) ? levels[1] : [];
-    const bid = bestHyperliquidLevel(bids, "bid");
-    const ask = bestHyperliquidLevel(asks, "ask");
+    const bids = normalizeHyperliquidLevels(Array.isArray(levels[0]) ? levels[0] : [], "bid").slice(0, 10);
+    const asks = normalizeHyperliquidLevels(Array.isArray(levels[1]) ? levels[1] : [], "ask").slice(0, 10);
+    const bid = bids[0];
+    const ask = asks[0];
     const updatedAt = dateValue(parsed.data.time);
-    if (!asset || !bid || !ask || !updatedAt || ask.price < bid.price) return null;
-    return {
+    if (!asset || !bid || !ask || !updatedAt || ask.price < bid.price) return [];
+    return [{
       asset,
       bestBid: bid.price,
       bestAsk: ask.price,
       bidSize: bid.size,
       askSize: ask.size,
       updatedAt,
-    };
+      levels: { bids, asks },
+      exchangeTimeMs: updatedAt.getTime(),
+    }];
   }
   if (parsed.channel === "activeAssetCtx" && isRecord(parsed.data.ctx)) {
     const asset = stringValue(parsed.data.coin);
     const markPrice = positiveNumber(parsed.data.ctx.markPx);
     const oraclePrice = positiveNumber(parsed.data.ctx.oraclePx);
     const fundingRate = finiteNumber(parsed.data.ctx.funding);
-    if (!asset || markPrice === null || oraclePrice === null || fundingRate === null) return null;
-    return {
+    if (!asset || markPrice === null || oraclePrice === null || fundingRate === null) return [];
+    return [{
       asset,
       markPrice,
       oraclePrice,
       fundingRate,
       updatedAt: new Date(),
-    };
+    }];
+  }
+  return [];
+}
+
+export function normalizeHyperliquidWebSocketMessage(input: unknown): HyperliquidBookUpdate | HyperliquidContextUpdate | null {
+  for (const update of normalizeHyperliquidWebSocketMessages(input)) {
+    if (!("tradeId" in update)) return update;
   }
   return null;
 }
@@ -153,19 +182,32 @@ function bestPolymarketLevel(levels: unknown[], side: "bid" | "ask") {
     if (!isRecord(level)) return [];
     const price = positiveNumber(level.price);
     const size = positiveNumber(level.size);
-    return price === null ? [] : [{ price, size }];
+    return price === null || size === null ? [] : [{ price, size }];
   });
   return normalized.sort((left, right) => side === "bid" ? right.price - left.price : left.price - right.price)[0] ?? null;
 }
 
-function bestHyperliquidLevel(levels: unknown[], side: "bid" | "ask") {
-  const normalized = levels.flatMap((level) => {
+function normalizeHyperliquidLevels(levels: unknown[], side: "bid" | "ask") {
+  return levels.flatMap((level) => {
     if (!isRecord(level)) return [];
     const price = positiveNumber(level.px);
     const size = positiveNumber(level.sz);
-    return price === null ? [] : [{ price, size }];
-  });
-  return normalized.sort((left, right) => side === "bid" ? right.price - left.price : left.price - right.price)[0] ?? null;
+    return price === null || size === null ? [] : [{ price, size }];
+  }).sort((left, right) => side === "bid" ? right.price - left.price : left.price - right.price);
+}
+
+function normalizeHyperliquidTrade(input: unknown): HyperliquidTradeUpdate[] {
+  if (!isRecord(input)) return [];
+  const asset = stringValue(input.coin);
+  const price = positiveNumber(input.px);
+  const size = positiveNumber(input.sz);
+  const tradedAt = dateValue(input.time);
+  const rawSide = stringValue(input.side)?.toUpperCase();
+  const side = rawSide === "B" || rawSide === "BUY" ? "BUY" : rawSide === "A" || rawSide === "SELL" ? "SELL" : null;
+  const tradeId = stringValue(input.tid) ?? stringValue(input.hash);
+  return asset && price !== null && size !== null && tradedAt && side && tradeId
+    ? [{ asset, price, size, tradedAt, side, tradeId }]
+    : [];
 }
 
 function parseWireValue(input: unknown): unknown {

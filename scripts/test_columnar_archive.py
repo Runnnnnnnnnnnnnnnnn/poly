@@ -87,10 +87,10 @@ def main():
         ]
         first = json.loads(subprocess.check_output(command, text=True))
         assert first["status"] == "healthy"
-        assert first["archivedThrough"] == "2026-07-01"
-        assert first["partitions"] == 2
-        assert first["rows"] == 2
-        market_file = archive / "table=realtime_market_tick/date=2026-07-01/data.parquet"
+        assert first["archivedThrough"] == "2026-07-02"
+        assert first["partitions"] == 4
+        assert first["rows"] == 4
+        market_file = archive / "table=realtime_market_tick/date=2026-07-01/hour=00/data.parquet"
         market_manifest = market_file.with_name("manifest.json")
         assert pq.ParquetFile(market_file).metadata.num_rows == 1
         table = pq.read_table(market_file)
@@ -98,7 +98,7 @@ def main():
         assert table.column("arbitrageViolation").to_pylist() == [False]
         initial_hash = file_sha256(market_file)
         second = json.loads(subprocess.check_output(command, text=True))
-        assert second["rows"] == 2
+        assert second["rows"] == 4
         assert file_sha256(market_file) == initial_hash
         market_file.write_bytes(market_file.read_bytes() + b"corrupt")
         assert file_sha256(market_file) != json.loads(market_manifest.read_text())["sha256"]
@@ -110,6 +110,13 @@ def main():
             "--archive", str(archive),
         ], text=True))
         expected_query = [{
+            "date": "2026-07-02",
+            "asset": "ETH",
+            "rows": 1,
+            "markets": 1,
+            "first_at": "2026-07-02 00:00:01+00:00",
+            "latest_at": "2026-07-02 00:00:01+00:00",
+        }, {
             "date": "2026-07-01",
             "asset": "BTC",
             "rows": 1,
@@ -131,7 +138,7 @@ def main():
         ]
         overlap = json.loads(subprocess.check_output(export_command, text=True))
         assert overlap["mode"] == "sqlite"
-        assert overlap["archivePartitions"] == 2
+        assert overlap["archivePartitions"] == 4
         assert overlap["marketTicks"]["mergedRows"] == 2
         assert overlap["assetTicks"]["mergedRows"] == 2
 

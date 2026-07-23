@@ -9,7 +9,7 @@ import { prisma } from "../src/lib/server/prisma";
 const root = process.env.POLYMARKET_PROJECT_ROOT ?? resolve(import.meta.dirname, "..");
 const stateRoot = resolve(process.env.POLYMARKET_STATE_DIR ?? resolve(homedir(), ".polymarket-watch"));
 const intervalMs = boundedNumber(process.env.COLUMNAR_ARCHIVE_INTERVAL_MS, 6 * 60 * 60_000, 60 * 60_000, 24 * 60 * 60_000);
-const databasePath = sqliteDatabasePath(process.env.DATABASE_URL);
+const databaseSource = process.env.DATABASE_URL;
 const archiveRoot = resolve(process.env.COLUMNAR_ARCHIVE_ROOT ?? resolve(stateRoot, "parquet"));
 const statusPath = resolve(process.env.COLUMNAR_ARCHIVE_STATUS_PATH ?? resolve(stateRoot, "columnar-archive-status.json"));
 const python = resolveAnalyticsPython(stateRoot);
@@ -18,7 +18,7 @@ let child: ReturnType<typeof spawn> | null = null;
 let timer: NodeJS.Timeout | null = null;
 let closing = false;
 
-if (!databasePath) throw new Error("columnar archive requires a SQLite DATABASE_URL");
+if (!databaseSource) throw new Error("columnar archive requires DATABASE_URL");
 
 async function archiveCycle() {
   if (running) return;
@@ -49,7 +49,7 @@ function executeArchive() {
   return new Promise<ArchiveStatus>((resolvePromise, reject) => {
     child = spawn(python, [
       resolve(root, "scripts/archive-realtime-data.py"),
-      "--database", databasePath as string,
+      "--database", databaseSource as string,
       "--output", archiveRoot,
       "--status", statusPath,
     ], {
@@ -106,11 +106,6 @@ function resolveAnalyticsPython(stateDirectory: string) {
     resolve(stateDirectory, "mlflow-venv/bin/python"),
   ].filter((value): value is string => Boolean(value));
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0] ?? "/usr/bin/python3";
-}
-
-function sqliteDatabasePath(value: string | undefined) {
-  if (!value?.startsWith("file:")) return null;
-  return resolve(root, value.slice("file:".length).replace(/^['"]|['"]$/g, ""));
 }
 
 function boundedNumber(value: string | undefined, fallback: number, minimum: number, maximum: number) {

@@ -20,7 +20,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: file:./dev.db
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/polymarket_watch?schema=public
       NEXT_PUBLIC_STATIC_EXPORT: "1"
       GITHUB_PAGES: "true"
       GITHUB_PAGES_REPO: poly
@@ -33,6 +33,20 @@ jobs:
       # リポジトリの Variables に AI_API_BASE として登録すると、公開サイトから
       # そのバックエンド経由でAIが動く（鍵は公開サイトに出ない）。未設定なら従来どおり案内表示。
       NEXT_PUBLIC_AI_API_BASE: ${{ vars.AI_API_BASE }}
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: polymarket_watch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d polymarket_watch"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout application
         uses: actions/checkout@v6
@@ -66,6 +80,9 @@ jobs:
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
+
+      - name: Initialize PostgreSQL schema
+        run: npm run db:migrate
 
       - name: Build static snapshot
         run: npm run build:pages

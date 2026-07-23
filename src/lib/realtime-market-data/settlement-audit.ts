@@ -61,14 +61,14 @@ export async function loadReferenceSettlementAudit(options: {
         tick."marketId" AS "marketId",
         'START' AS "boundary",
         tick."referencePrice" AS "referencePrice",
-        tick."referenceUpdatedAt" - tick."marketStartAt" AS "errorMs",
+        EXTRACT(EPOCH FROM (tick."referenceUpdatedAt" - tick."marketStartAt")) * 1000 AS "errorMs",
         tick."capturedAt" AS "capturedAt"
       FROM "RealtimeMarketTick" tick
       INNER JOIN observed ON observed."marketId" = tick."marketId"
       WHERE tick."synchronizationVersion" = ${realtimeSynchronizationVersion}
         AND tick."referenceSource" = 'CHAINLINK'
         AND tick."referenceUpdatedAt" >= tick."marketStartAt"
-        AND tick."referenceUpdatedAt" - tick."marketStartAt" <= ${maximumBoundaryErrorMs}
+        AND EXTRACT(EPOCH FROM (tick."referenceUpdatedAt" - tick."marketStartAt")) * 1000 <= ${maximumBoundaryErrorMs}
 
       UNION ALL
 
@@ -76,14 +76,14 @@ export async function loadReferenceSettlementAudit(options: {
         tick."marketId" AS "marketId",
         'END' AS "boundary",
         tick."referencePrice" AS "referencePrice",
-        tick."referenceUpdatedAt" - tick."marketEndAt" AS "errorMs",
+        EXTRACT(EPOCH FROM (tick."referenceUpdatedAt" - tick."marketEndAt")) * 1000 AS "errorMs",
         tick."capturedAt" AS "capturedAt"
       FROM "RealtimeMarketTick" tick
       INNER JOIN observed ON observed."marketId" = tick."marketId"
       WHERE tick."synchronizationVersion" = ${realtimeSynchronizationVersion}
         AND tick."referenceSource" = 'CHAINLINK'
         AND tick."referenceUpdatedAt" >= tick."marketEndAt"
-        AND tick."referenceUpdatedAt" - tick."marketEndAt" <= ${maximumBoundaryErrorMs}
+        AND EXTRACT(EPOCH FROM (tick."referenceUpdatedAt" - tick."marketEndAt")) * 1000 <= ${maximumBoundaryErrorMs}
 
       UNION ALL
 
@@ -91,7 +91,7 @@ export async function loadReferenceSettlementAudit(options: {
         observed."marketId" AS "marketId",
         'START' AS "boundary",
         asset_tick."chainlinkPrice" AS "referencePrice",
-        asset_tick."chainlinkUpdatedAt" - observed."marketStartAt" AS "errorMs",
+        EXTRACT(EPOCH FROM (asset_tick."chainlinkUpdatedAt" - observed."marketStartAt")) * 1000 AS "errorMs",
         asset_tick."capturedAt" AS "capturedAt"
       FROM observed
       INNER JOIN "RealtimeAssetTick" asset_tick
@@ -100,9 +100,9 @@ export async function loadReferenceSettlementAudit(options: {
         AND asset_tick."chainlinkPrice" IS NOT NULL
         AND asset_tick."chainlinkUpdatedAt" IS NOT NULL
         AND asset_tick."capturedAt" BETWEEN observed."marketStartAt"
-          AND observed."marketStartAt" + ${maximumBoundaryErrorMs + 15_000}
+          AND observed."marketStartAt" + (CAST(${maximumBoundaryErrorMs + 15_000} AS DOUBLE PRECISION) * INTERVAL '1 millisecond')
         AND asset_tick."chainlinkUpdatedAt" >= observed."marketStartAt"
-        AND asset_tick."chainlinkUpdatedAt" - observed."marketStartAt" <= ${maximumBoundaryErrorMs}
+        AND EXTRACT(EPOCH FROM (asset_tick."chainlinkUpdatedAt" - observed."marketStartAt")) * 1000 <= ${maximumBoundaryErrorMs}
 
       UNION ALL
 
@@ -110,7 +110,7 @@ export async function loadReferenceSettlementAudit(options: {
         observed."marketId" AS "marketId",
         'END' AS "boundary",
         asset_tick."chainlinkPrice" AS "referencePrice",
-        asset_tick."chainlinkUpdatedAt" - observed."marketEndAt" AS "errorMs",
+        EXTRACT(EPOCH FROM (asset_tick."chainlinkUpdatedAt" - observed."marketEndAt")) * 1000 AS "errorMs",
         asset_tick."capturedAt" AS "capturedAt"
       FROM observed
       INNER JOIN "RealtimeAssetTick" asset_tick
@@ -119,9 +119,9 @@ export async function loadReferenceSettlementAudit(options: {
         AND asset_tick."chainlinkPrice" IS NOT NULL
         AND asset_tick."chainlinkUpdatedAt" IS NOT NULL
         AND asset_tick."capturedAt" BETWEEN observed."marketEndAt"
-          AND observed."marketEndAt" + ${maximumBoundaryErrorMs + 15_000}
+          AND observed."marketEndAt" + (CAST(${maximumBoundaryErrorMs + 15_000} AS DOUBLE PRECISION) * INTERVAL '1 millisecond')
         AND asset_tick."chainlinkUpdatedAt" >= observed."marketEndAt"
-        AND asset_tick."chainlinkUpdatedAt" - observed."marketEndAt" <= ${maximumBoundaryErrorMs}
+        AND EXTRACT(EPOCH FROM (asset_tick."chainlinkUpdatedAt" - observed."marketEndAt")) * 1000 <= ${maximumBoundaryErrorMs}
     ), ranked AS (
       SELECT
         *,
@@ -145,7 +145,7 @@ export async function loadReferenceSettlementAudit(options: {
     FROM observed
     INNER JOIN "PredictionMarket" market
       ON market."id" = observed."marketId"
-      AND market."resolved" = 1
+      AND market."resolved" = TRUE
       AND market."result" IN (0, 1)
     LEFT JOIN ranked ON ranked."marketId" = market."id"
     GROUP BY market."id", market."asset", market."result",

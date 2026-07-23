@@ -64,14 +64,14 @@ export function summarizeModelEvaluation(
     selectedStrategy: selected?.selectedStrategy?.id ?? null,
     selectedFromValidation: selected?.selectedFromValidation ?? false,
     dataset: {
-      totalEvents: metrics?.dataset.totalEvents ?? 0,
-      testEvents: metrics?.dataset.testEvents ?? 0,
-      totalMarkets: metrics?.dataset.totalMarkets ?? 0,
-      testMarkets: metrics?.dataset.testMarkets ?? 0,
-      firstEndAt: metrics?.dataset.firstEndAt ?? null,
-      lastEndAt: metrics?.dataset.lastEndAt ?? null,
-      testExecutionFeatureCoverage: metrics?.dataset.testExecutionFeatureCoverage ?? null,
-      testSynchronizedExecutionCoverage: metrics?.dataset.testSynchronizedExecutionCoverage ?? null,
+      totalEvents: metrics?.dataset?.totalEvents ?? 0,
+      testEvents: metrics?.dataset?.testEvents ?? 0,
+      totalMarkets: metrics?.dataset?.totalMarkets ?? 0,
+      testMarkets: metrics?.dataset?.testMarkets ?? 0,
+      firstEndAt: metrics?.dataset?.firstEndAt ?? null,
+      lastEndAt: metrics?.dataset?.lastEndAt ?? null,
+      testExecutionFeatureCoverage: metrics?.dataset?.testExecutionFeatureCoverage ?? null,
+      testSynchronizedExecutionCoverage: metrics?.dataset?.testSynchronizedExecutionCoverage ?? null,
     },
     result: {
       source: useRejectedAudit

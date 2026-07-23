@@ -20,7 +20,10 @@ try {
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
   });
-  if (!health.ok) throw new Error(`health returned ${health.status}`);
+  if (!health.ok) {
+    const payload = await health.json().catch(() => null);
+    throw new Error(payload?.code || payload?.database?.code || `health returned ${health.status}`);
+  }
   healthOk = true;
   const dashboard = await fetch(`http://127.0.0.1:${port}/api/public-dashboard`, {
     cache: "no-store",
@@ -54,6 +57,12 @@ if (decision.action === "restart") {
   lastRestartAt = now.toISOString();
   restartCount += 1;
   consecutiveFailures = 0;
+} else if (decision.action === "halt") {
+  try {
+    execFileSync("/bin/launchctl", ["bootout", `gui/${process.getuid()}/${runtimeLabel}`], { stdio: "inherit" });
+  } catch {
+    // The runtime may already be unloaded.
+  }
 }
 
 mkdirSync(stateDir, { recursive: true });

@@ -17,10 +17,17 @@ export function evaluateRuntimeWatchdog(input) {
     : dataAgeMs === null
       ? "dashboard timestamp is missing"
       : `dashboard is ${Math.round(dataAgeMs / 1_000)}s old`;
+  if (isDatabaseIntegrityFailure(reason)) {
+    return { action: "halt", reason, consecutiveFailures, dataAgeMs };
+  }
   const lastRestartAtMs = Date.parse(input.lastRestartAt || "");
   const coolingDown = Number.isFinite(lastRestartAtMs) && nowMs - lastRestartAtMs < restartCooldownMs;
   const action = consecutiveFailures >= failureThreshold && !coolingDown ? "restart" : coolingDown ? "cooldown" : "waiting";
   return { action, reason, consecutiveFailures, dataAgeMs };
+}
+
+export function isDatabaseIntegrityFailure(message) {
+  return /DATABASE_CORRUPTION|database disk image is malformed|sqlite[_ ]corrupt|integrity check failed/i.test(message || "");
 }
 
 function positive(value, fallback) {

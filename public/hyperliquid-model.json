@@ -1,0 +1,576 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-23T09:34:24.919171Z",
+  "modelVersion": "hyperliquid-microstructure-v1",
+  "status": "collecting",
+  "edgeConfirmed": false,
+  "verdict": "優位性未確認",
+  "reason": "L2板と約定の前向き履歴を72時間以上収集中です",
+  "data": {
+    "l1Rows": 216364,
+    "l2Rows": 228,
+    "tradeRows": 738,
+    "walletSignals": 0,
+    "l2Coverage": 0.976201241316947,
+    "l2DurationHours": 0.08109666666666666,
+    "mode": "L1_BASELINE"
+  },
+  "selectedHorizonSeconds": 15,
+  "selected": {
+    "horizonSeconds": 15,
+    "status": "collecting",
+    "edgeConfirmed": false,
+    "selectedModel": "hist-gradient-depth6",
+    "selectedThreshold": 0.65,
+    "dataset": {
+      "samples": 71809,
+      "train": 43080,
+      "validation": 14359,
+      "holdout": 14362,
+      "firstAt": "2026-07-18T08:34:38.458000+00:00",
+      "lastAt": "2026-07-23T09:34:24.115000+00:00",
+      "sha256": "1c74f3208495bd31943497466c82d7a78e5936814d6f8efc3b483dffdf381abb"
+    },
+    "validation": {
+      "independentWindows": 14359,
+      "trades": 9048,
+      "longTrades": 224,
+      "shortTrades": 8824,
+      "winRate": 0.735632183908046,
+      "netReturnPct": -0.0005869938003391469,
+      "benchmarkLabel": "cash",
+      "benchmarkReturnPct": 0.0,
+      "excessReturnPct": -0.0005869938003391469,
+      "excessConfidenceInterval95": [
+        -0.0005952446435433038,
+        -0.0005790226081515425
+      ],
+      "deflatedSharpeProbability": 0.0,
+      "maxDrawdownPct": 0.9997824249050742
+    },
+    "holdout": {
+      "independentWindows": 14362,
+      "trades": 9766,
+      "longTrades": 128,
+      "shortTrades": 9638,
+      "winRate": 0.7747286504198239,
+      "netReturnPct": -0.0006307042639544315,
+      "benchmarkLabel": "cash",
+      "benchmarkReturnPct": 0.0,
+      "excessReturnPct": -0.0006307042639544315,
+      "excessConfidenceInterval95": [
+        -0.0006379392529760869,
+        -0.000622641249189738
+      ],
+      "deflatedSharpeProbability": 0.0,
+      "maxDrawdownPct": 0.9998840814787532
+    },
+    "gates": [
+      {
+        "id": "windows",
+        "label": "独立窓200件",
+        "passed": true,
+        "value": 14362,
+        "threshold": 200
+      },
+      {
+        "id": "both-sides",
+        "label": "ロング・ショート各20件",
+        "passed": true,
+        "value": 128,
+        "threshold": 20
+      },
+      {
+        "id": "profit",
+        "label": "手数料後プラス",
+        "passed": false,
+        "value": -0.0006307042639544315,
+        "threshold": 0
+      },
+      {
+        "id": "benchmark",
+        "label": "最良基準を上回る",
+        "passed": false,
+        "value": -0.0006307042639544315,
+        "threshold": 0
+      },
+      {
+        "id": "significance",
+        "label": "超過収益95%下限がプラス",
+        "passed": false,
+        "value": -0.0006379392529760869,
+        "threshold": 0
+      },
+      {
+        "id": "selection-bias",
+        "label": "選択バイアス補正95%以上",
+        "passed": false,
+        "value": 0.0,
+        "threshold": 0.95
+      },
+      {
+        "id": "drawdown",
+        "label": "最大下落5%以内",
+        "passed": false,
+        "value": 0.9998840814787532,
+        "threshold": 0.05
+      },
+      {
+        "id": "l2-history",
+        "label": "L2板72時間・80%網羅",
+        "passed": false,
+        "value": 0.976201241316947,
+        "threshold": 0.8
+      }
+    ]
+  },
+  "horizons": [
+    {
+      "horizonSeconds": 15,
+      "status": "collecting",
+      "edgeConfirmed": false,
+      "selectedModel": "hist-gradient-depth6",
+      "selectedThreshold": 0.65,
+      "dataset": {
+        "samples": 71809,
+        "train": 43080,
+        "validation": 14359,
+        "holdout": 14362,
+        "firstAt": "2026-07-18T08:34:38.458000+00:00",
+        "lastAt": "2026-07-23T09:34:24.115000+00:00",
+        "sha256": "1c74f3208495bd31943497466c82d7a78e5936814d6f8efc3b483dffdf381abb"
+      },
+      "validation": {
+        "independentWindows": 14359,
+        "trades": 9048,
+        "longTrades": 224,
+        "shortTrades": 8824,
+        "winRate": 0.735632183908046,
+        "netReturnPct": -0.0005869938003391469,
+        "benchmarkLabel": "cash",
+        "benchmarkReturnPct": 0.0,
+        "excessReturnPct": -0.0005869938003391469,
+        "excessConfidenceInterval95": [
+          -0.0005952446435433038,
+          -0.0005790226081515425
+        ],
+        "deflatedSharpeProbability": 0.0,
+        "maxDrawdownPct": 0.9997824249050742
+      },
+      "holdout": {
+        "independentWindows": 14362,
+        "trades": 9766,
+        "longTrades": 128,
+        "shortTrades": 9638,
+        "winRate": 0.7747286504198239,
+        "netReturnPct": -0.0006307042639544315,
+        "benchmarkLabel": "cash",
+        "benchmarkReturnPct": 0.0,
+        "excessReturnPct": -0.0006307042639544315,
+        "excessConfidenceInterval95": [
+          -0.0006379392529760869,
+          -0.000622641249189738
+        ],
+        "deflatedSharpeProbability": 0.0,
+        "maxDrawdownPct": 0.9998840814787532
+      },
+      "gates": [
+        {
+          "id": "windows",
+          "label": "独立窓200件",
+          "passed": true,
+          "value": 14362,
+          "threshold": 200
+        },
+        {
+          "id": "both-sides",
+          "label": "ロング・ショート各20件",
+          "passed": true,
+          "value": 128,
+          "threshold": 20
+        },
+        {
+          "id": "profit",
+          "label": "手数料後プラス",
+          "passed": false,
+          "value": -0.0006307042639544315,
+          "threshold": 0
+        },
+        {
+          "id": "benchmark",
+          "label": "最良基準を上回る",
+          "passed": false,
+          "value": -0.0006307042639544315,
+          "threshold": 0
+        },
+        {
+          "id": "significance",
+          "label": "超過収益95%下限がプラス",
+          "passed": false,
+          "value": -0.0006379392529760869,
+          "threshold": 0
+        },
+        {
+          "id": "selection-bias",
+          "label": "選択バイアス補正95%以上",
+          "passed": false,
+          "value": 0.0,
+          "threshold": 0.95
+        },
+        {
+          "id": "drawdown",
+          "label": "最大下落5%以内",
+          "passed": false,
+          "value": 0.9998840814787532,
+          "threshold": 0.05
+        },
+        {
+          "id": "l2-history",
+          "label": "L2板72時間・80%網羅",
+          "passed": false,
+          "value": 0.976201241316947,
+          "threshold": 0.8
+        }
+      ]
+    },
+    {
+      "horizonSeconds": 60,
+      "status": "collecting",
+      "edgeConfirmed": false,
+      "selectedModel": "hist-gradient-depth3",
+      "selectedThreshold": 0.65,
+      "dataset": {
+        "samples": 17929,
+        "train": 10752,
+        "validation": 3583,
+        "holdout": 3586,
+        "firstAt": "2026-07-18T08:34:38.458000+00:00",
+        "lastAt": "2026-07-23T09:33:54.112000+00:00",
+        "sha256": "39340b383b62e892901dd0231b54915c0c543e70ed85e255780592a8df6e804c"
+      },
+      "validation": {
+        "independentWindows": 3583,
+        "trades": 960,
+        "longTrades": 5,
+        "shortTrades": 955,
+        "winRate": 0.6395833333333333,
+        "netReturnPct": -0.00024810189042587163,
+        "benchmarkLabel": "cash",
+        "benchmarkReturnPct": 0.0,
+        "excessReturnPct": -0.00024810189042587163,
+        "excessConfidenceInterval95": [
+          -0.00026643947668109904,
+          -0.00023113178426798238
+        ],
+        "deflatedSharpeProbability": 0.0,
+        "maxDrawdownPct": 0.5891397530799165
+      },
+      "holdout": {
+        "independentWindows": 3586,
+        "trades": 1223,
+        "longTrades": 0,
+        "shortTrades": 1223,
+        "winRate": 0.6524938675388389,
+        "netReturnPct": -0.0003099468206815896,
+        "benchmarkLabel": "cash",
+        "benchmarkReturnPct": 0.0,
+        "excessReturnPct": -0.0003099468206815896,
+        "excessConfidenceInterval95": [
+          -0.00032652894341231417,
+          -0.0002942303134793346
+        ],
+        "deflatedSharpeProbability": 0.0,
+        "maxDrawdownPct": 0.6711272214371191
+      },
+      "gates": [
+        {
+          "id": "windows",
+          "label": "独立窓200件",
+          "passed": true,
+          "value": 3586,
+          "threshold": 200
+        },
+        {
+          "id": "both-sides",
+          "label": "ロング・ショート各20件",
+          "passed": false,
+          "value": 0,
+          "threshold": 20
+        },
+        {
+          "id": "profit",
+          "label": "手数料後プラス",
+          "passed": false,
+          "value": -0.0003099468206815896,
+          "threshold": 0
+        },
+        {
+          "id": "benchmark",
+          "label": "最良基準を上回る",
+          "passed": false,
+          "value": -0.0003099468206815896,
+          "threshold": 0
+        },
+        {
+          "id": "significance",
+          "label": "超過収益95%下限がプラス",
+          "passed": false,
+          "value": -0.00032652894341231417,
+          "threshold": 0
+        },
+        {
+          "id": "selection-bias",
+          "label": "選択バイアス補正95%以上",
+          "passed": false,
+          "value": 0.0,
+          "threshold": 0.95
+        },
+        {
+          "id": "drawdown",
+          "label": "最大下落5%以内",
+          "passed": false,
+          "value": 0.6711272214371191,
+          "threshold": 0.05
+        },
+        {
+          "id": "l2-history",
+          "label": "L2板72時間・80%網羅",
+          "passed": false,
+          "value": 0.976201241316947,
+          "threshold": 0.8
+        }
+      ]
+    },
+    {
+      "horizonSeconds": 300,
+      "status": "collecting",
+      "edgeConfirmed": false,
+      "selectedModel": "logistic-c0.1",
+      "selectedThreshold": 0.65,
+      "dataset": {
+        "samples": 3566,
+        "train": 2134,
+        "validation": 710,
+        "holdout": 714,
+        "firstAt": "2026-07-18T08:34:38.458000+00:00",
+        "lastAt": "2026-07-22T11:11:27.962000+00:00",
+        "sha256": "c0fc71e00087f05d2f90fb8b361c8abe937d65ff7abdd10ae87e576341b4ed8e"
+      },
+      "validation": {
+        "independentWindows": 710,
+        "trades": 65,
+        "longTrades": 5,
+        "shortTrades": 60,
+        "winRate": 0.6153846153846154,
+        "netReturnPct": -8.607369922700056e-05,
+        "benchmarkLabel": "cash",
+        "benchmarkReturnPct": 0.0,
+        "excessReturnPct": -8.607369922700056e-05,
+        "excessConfidenceInterval95": [
+          -0.0001289649944984277,
+          -5.082173686170637e-05
+        ],
+        "deflatedSharpeProbability": 1.3651413333093387e-11,
+        "maxDrawdownPct": 0.05978101274502557
+      },
+      "holdout": {
+        "independentWindows": 714,
+        "trades": 47,
+        "longTrades": 3,
+        "shortTrades": 44,
+        "winRate": 0.5319148936170213,
+        "netReturnPct": -6.336743762201869e-05,
+        "benchmarkLabel": "cash",
+        "benchmarkReturnPct": 0.0,
+        "excessReturnPct": -6.336743762201869e-05,
+        "excessConfidenceInterval95": [
+          -9.434868314458586e-05,
+          -3.5411111110164604e-05
+        ],
+        "deflatedSharpeProbability": 3.837058448752373e-11,
+        "maxDrawdownPct": 0.044290900003053024
+      },
+      "gates": [
+        {
+          "id": "windows",
+          "label": "独立窓200件",
+          "passed": true,
+          "value": 714,
+          "threshold": 200
+        },
+        {
+          "id": "both-sides",
+          "label": "ロング・ショート各20件",
+          "passed": false,
+          "value": 3,
+          "threshold": 20
+        },
+        {
+          "id": "profit",
+          "label": "手数料後プラス",
+          "passed": false,
+          "value": -6.336743762201869e-05,
+          "threshold": 0
+        },
+        {
+          "id": "benchmark",
+          "label": "最良基準を上回る",
+          "passed": false,
+          "value": -6.336743762201869e-05,
+          "threshold": 0
+        },
+        {
+          "id": "significance",
+          "label": "超過収益95%下限がプラス",
+          "passed": false,
+          "value": -9.434868314458586e-05,
+          "threshold": 0
+        },
+        {
+          "id": "selection-bias",
+          "label": "選択バイアス補正95%以上",
+          "passed": false,
+          "value": 3.837058448752373e-11,
+          "threshold": 0.95
+        },
+        {
+          "id": "drawdown",
+          "label": "最大下落5%以内",
+          "passed": true,
+          "value": 0.044290900003053024,
+          "threshold": 0.05
+        },
+        {
+          "id": "l2-history",
+          "label": "L2板72時間・80%網羅",
+          "passed": false,
+          "value": 0.976201241316947,
+          "threshold": 0.8
+        }
+      ]
+    },
+    {
+      "horizonSeconds": 900,
+      "status": "collecting",
+      "edgeConfirmed": false,
+      "selectedModel": "logistic-c0.1",
+      "selectedThreshold": 0.65,
+      "dataset": {
+        "samples": 1175,
+        "train": 700,
+        "validation": 232,
+        "holdout": 235,
+        "firstAt": "2026-07-18T08:34:38.458000+00:00",
+        "lastAt": "2026-07-22T11:11:27.962000+00:00",
+        "sha256": "fc34622ca64aa739a113a04e51c3adcbe9dfb2126a81412a776ab3e94cc2b139"
+      },
+      "validation": {
+        "independentWindows": 232,
+        "trades": 12,
+        "longTrades": 1,
+        "shortTrades": 11,
+        "winRate": 0.3333333333333333,
+        "netReturnPct": -0.00013589561708622505,
+        "benchmarkLabel": "cash",
+        "benchmarkReturnPct": 0.0,
+        "excessReturnPct": -0.00013589561708622505,
+        "excessConfidenceInterval95": [
+          -0.0003188998023768334,
+          -3.980597275044967e-06
+        ],
+        "deflatedSharpeProbability": 2.5560385468692548e-05,
+        "maxDrawdownPct": 0.031183348936209998
+      },
+      "holdout": {
+        "independentWindows": 235,
+        "trades": 16,
+        "longTrades": 3,
+        "shortTrades": 13,
+        "winRate": 0.625,
+        "netReturnPct": -6.424198558683236e-05,
+        "benchmarkLabel": "cash",
+        "benchmarkReturnPct": 0.0,
+        "excessReturnPct": -6.424198558683236e-05,
+        "excessConfidenceInterval95": [
+          -0.0001223473425665779,
+          -1.5876484539009795e-05
+        ],
+        "deflatedSharpeProbability": 2.5918993987184002e-06,
+        "maxDrawdownPct": 0.015004612095794623
+      },
+      "gates": [
+        {
+          "id": "windows",
+          "label": "独立窓200件",
+          "passed": true,
+          "value": 235,
+          "threshold": 200
+        },
+        {
+          "id": "both-sides",
+          "label": "ロング・ショート各20件",
+          "passed": false,
+          "value": 3,
+          "threshold": 20
+        },
+        {
+          "id": "profit",
+          "label": "手数料後プラス",
+          "passed": false,
+          "value": -6.424198558683236e-05,
+          "threshold": 0
+        },
+        {
+          "id": "benchmark",
+          "label": "最良基準を上回る",
+          "passed": false,
+          "value": -6.424198558683236e-05,
+          "threshold": 0
+        },
+        {
+          "id": "significance",
+          "label": "超過収益95%下限がプラス",
+          "passed": false,
+          "value": -0.0001223473425665779,
+          "threshold": 0
+        },
+        {
+          "id": "selection-bias",
+          "label": "選択バイアス補正95%以上",
+          "passed": false,
+          "value": 2.5918993987184002e-06,
+          "threshold": 0.95
+        },
+        {
+          "id": "drawdown",
+          "label": "最大下落5%以内",
+          "passed": true,
+          "value": 0.015004612095794623,
+          "threshold": 0.05
+        },
+        {
+          "id": "l2-history",
+          "label": "L2板72時間・80%網羅",
+          "passed": false,
+          "value": 0.976201241316947,
+          "threshold": 0.8
+        }
+      ]
+    }
+  ],
+  "nautilusValidation": {
+    "status": "not_run_no_qualified_candidate",
+    "reason": "合格候補だけを独立約定エンジンで再検証します"
+  },
+  "methodology": {
+    "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+    "purge": "labels crossing a split boundary are removed",
+    "independence": "samples are spaced by the forecast horizon",
+    "selection": "model and threshold selected on validation only",
+    "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+    "models": [
+      "regularized-logistic",
+      "hist-gradient-boosting"
+    ]
+  }
+}

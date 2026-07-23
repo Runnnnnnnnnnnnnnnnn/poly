@@ -1,3465 +1,1121 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
-  AlertCircle,
-  ArrowRight,
+  AlertTriangle,
   BarChart3,
-  BrainCircuit,
-  CheckCircle2,
+  Check,
   ChevronDown,
-  CircleDot,
+  CircleDollarSign,
   Clock3,
   Database,
-  Download,
-  FileJson,
-  Gauge,
-  History,
-  Layers3,
-  LockKeyhole,
-  MinusCircle,
-  Play,
   RefreshCw,
-  Server,
   ShieldCheck,
-  Square,
   Target,
   TrendingDown,
-  TrendingUp,
+  Users,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { discoverLiveApiBase, fetchLiveDashboardSnapshot, fetchLocalApi, getLocalApiToken, isSnapshotMode, localApiUrl } from "@/src/lib/localApiClient";
-import { deriveTestnetDisplayStatus } from "@/src/lib/monitoring/testnet-display";
-import type { ModelEvaluationSummary } from "@/src/lib/model-evaluation/types";
+import { cn } from "@/lib/utils";
+import {
+  discoverLiveApiBase,
+  fetchLiveDashboardSnapshot,
+  fetchLocalApi,
+} from "@/src/lib/localApiClient";
 
-type RunMetrics = {
-  totalReturnPct?: number;
-  totalReturn?: number;
-  orders?: number;
-  filledOrders?: number;
-  totalFees?: number;
-  maxDrawdownPct?: number;
-  winRate?: number | null;
-  brierScore?: number | null;
-  logLoss?: number | null;
-  sharpeLike?: number | null;
-};
+type DashboardView = "operations" | "wallets" | "hyperliquid";
 
-type Run = {
+type Gate = {
   id: string;
-  accountId: string;
-  asset: string;
-  mode: "historical" | "live";
-  strategy: string;
-  status: string;
-  initialCash: number;
-  finalCash: number | null;
-  metrics: RunMetrics | null;
-  startedAt: string;
-  completedAt: string | null;
-};
-
-type PaperRunDetail = Run & {
-  orders: Array<{ id: string; marketId: string; outcome: string; filledPrice: number | null; filledQuantity: number; status: string; submittedAt: string; reason: string | null }>;
-  positions: Array<{ id: string; marketId: string; outcome: string; quantity: number; avgEntryPrice: number; realizedPnl: number | null; status: string }>;
-  equitySnapshots: Array<{ capturedAt: string; cash: number; positionsValue: number; equity: number; unrealizedPnl: number }>;
-};
-
-type BacktestMetrics = {
-  markets: number;
-  observations: number;
-  accuracy: number | null;
-  brierScore: number | null;
-  logLoss: number | null;
-  calibration: Array<{ bucket: string; predicted: number; actual: number; count: number }>;
-  tradedMarkets: number;
-  totalPnl: number;
-  returnPct: number;
-};
-
-type BacktestRun = {
-  id: string;
-  asset: string;
-  status: string;
-  threshold: number;
-  initialCapital: number;
-  startedAt: string;
-  completedAt: string | null;
-  metrics: BacktestMetrics | null;
-  markets: Array<{ marketId: string; title: string; result: 0 | 1; observations: number; firstProbability: number | null; lastProbability: number | null }>;
-  error: string | null;
-};
-
-type CombinedSignalRule = "polymarket-only" | "trend-confirmed" | "contrarian" | "hyperliquid-momentum" | "hyperliquid-reversion" | "hyperliquid-funding-carry" | "hyperliquid-funding-momentum" | "polymarket-funding-consensus";
-
-type HoldoutSlice = {
-  key: string;
   label: string;
-  trades: number;
-  wins: number;
-  winRate: number | null;
-  netReturnPct: number;
-  averageNetTradeReturn: number | null;
+  passed: boolean;
+  value?: number | null;
+  threshold?: number | null;
 };
 
-type ResearchDiagnosisSlice = {
-  key: string;
-  label: string;
-  trades: number;
-  profitableTrades: number;
-  afterCostWinRate: number | null;
-  averageReturnPct: number | null;
-  netReturnPct: number;
-};
-
-type RealtimeReplayMetric = {
-  independentWindows: number;
-  longTrades: number;
-  shortTrades: number;
-  longIndependentWindows: number;
-  shortIndependentWindows: number;
-  trades: number;
-  correctTrades: number;
-  directionAccuracy: number | null;
-  equalWeightWinRate: number | null;
-  equalWeightAverageReturnPct: number | null;
-  equalWeightNetReturnPct: number;
-  equalWeightConfidenceInterval95: [number, number] | null;
-  deflatedSharpeProbability: number | null;
-  hyperliquidAverageReturnPct: number | null;
-  hyperliquidNetReturnPct: number;
-  polymarketAverageReturnPct: number | null;
-  polymarketNetReturnPct: number;
-  maximumDrawdownPct: number;
-  marketBrierScore: number | null;
-  modelBrierScore: number | null;
-  brierImprovement: number | null;
-  brierSkillScore: number | null;
-  brierImprovementConfidenceInterval95: [number, number] | null;
-  marketLogLoss: number | null;
-  modelLogLoss: number | null;
-  logLossImprovement: number | null;
-  logLossImprovementConfidenceInterval95: [number, number] | null;
-  probabilityEdgePassed: boolean;
-  bestBenchmarkId: "cash" | "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median" | null;
-  bestBenchmarkNetReturnPct: number | null;
-  excessReturnPct: number | null;
-  excessAverageReturnPct: number | null;
-  excessConfidenceInterval95: [number, number] | null;
-  excessDeflatedSharpeProbability: number | null;
-  benchmarks: {
-    cashNetReturnPct: number;
-    polymarketOnlyNetReturnPct: number;
-    hyperliquidOnlyNetReturnPct: number;
-    alwaysLongNetReturnPct: number;
-    alwaysShortNetReturnPct: number;
-    randomMedianNetReturnPct: number;
-  };
-};
-
-type RealtimeReplayInputSource = {
-  archiveRows: number;
-  sqliteRows: number;
-  mergedRows: number;
-  duplicatesRemoved: number;
-  firstCapturedAt: string | null;
-  latestCapturedAt: string | null;
-};
-
-type MonitoringSnapshot = {
-  status: "live" | "delayed" | "offline";
-  generatedAt: string;
-  collection: {
-    startedAt: string | null;
-    latestAt: string | null;
-    totalRecords: number;
-    last24Hours: number;
-    realtimePrices?: {
-      status: "healthy" | "waiting" | "error";
-      records: number;
-      last24Hours: number;
-      latestAt: string | null;
-      maximumSkewMs: number | null;
-      activeMarkets: number;
-      assets: string[];
-      arbitrageViolations: number;
-      targetCadenceSeconds: number;
-      synchronizationVersion: string;
-      executionRecords: number;
-      executionLast24Hours: number;
-      executionLatestAt: string | null;
-      executionMaximumSkewMs: number | null;
-      executionSynchronizationVersion: string;
+type PublicDashboard = {
+  generatedAt: string | null;
+  monitoring?: {
+    generatedAt?: string;
+    status?: string;
+    collection?: {
+      latestAt?: string | null;
+      totalRecords?: number;
     };
-    synchronizedPrices?: {
-      records: number;
-      last24Hours: number;
-      latestAt: string | null;
-      maximumSkewMs: number | null;
-      targetCadenceMinutes: number;
-      quality?: {
-        status: "collecting" | "healthy" | "attention";
-        collectionStartedAt: string | null;
-        records: number;
-        completeRecords: number;
-        totalRecords: number;
-        coverage: number;
-        durationHours: number;
-        continuousStartedAt: string | null;
-        medianSkewMs: number | null;
-        p95SkewMs: number | null;
-        medianSpread: number | null;
-        p95Spread: number | null;
-        medianAbsoluteBasisPct: number | null;
-        p95AbsoluteBasisPct: number | null;
-        passedGates: number;
-        totalGates: number;
-        assets: Array<{ asset: string; records: number }>;
-        gates: Array<{
-          id: "records" | "duration" | "coverage" | "timing" | "assets" | "basis";
-          label: string;
-          passed: boolean;
-        }>;
-      };
-      prospective?: {
-        methodology: "prospective-1m-orderbook-holdout";
-        collectionStartedAt: string | null;
-        latestSnapshotAt: string | null;
-        generatedAt: string;
-        completedEvents: number;
-        targetEvents: number;
-        horizons: Array<{
-          horizonHours: number;
-          scheduledMarkets: number;
-          upcomingMarkets: number;
-          observedMarkets: number;
-          missedMarkets: number;
-          awaitingExitMarkets: number;
-          awaitingResolutionMarkets: number;
-          completedMarkets: number;
-          completedEvents: number;
-          holdoutEvents: number;
-          eventGroupingCoverage: number;
-          observationCoverage: number;
-          targetEvents: number;
-          status: "collecting" | "inconclusive" | "underperforming" | "promising";
-          modelStatus: "inconclusive" | "underperforming" | "promising" | null;
-          trades: number;
-          netReturnPct: number | null;
-          excessReturnPct: number | null;
-        }>;
+    combinedShadow?: {
+      shortTermDirection?: {
+        status?: string;
+        netReturnPct?: number;
+        excessReturnPct?: number;
+        maxDrawdownPct?: number;
+        executionAudit?: {
+          verifiedIndependentEvents?: number;
+          predictionAccuracy?: number | null;
+          portfolioNetReturnPct?: number;
+          excessReturnPct?: number;
+          maxDrawdownPct?: number;
+          excessConfidenceInterval95?: [number, number] | null;
+          deflatedSharpeProbability?: number | null;
+          readinessGates?: Array<Gate & { state?: string }>;
+          passedReadinessGates?: number;
+          totalReadinessGates?: number;
+          collectionStartedAt?: string | null;
+          strategyTrials?: number;
+        };
       };
     };
   };
-  tradeReadiness: {
-    objective: string;
-    currentStage: "backtest" | "shadow";
-    realTradingEnabled: boolean;
-    combinedPaperRunning: boolean;
-    hyperliquidOrderConnection: "not_installed" | "connector_ready" | "testnet_ready" | "testnet_armed";
-    gates: Array<{
-      id: "data" | "edge" | "shadow" | "testnet" | "live";
-      label: string;
-      status: "ready" | "running" | "attention" | "blocked" | "not_started" | "locked";
-    }>;
-  };
-  combinedShadow: {
-    status: string;
-    startedAt: string | null;
-    updatedAt: string | null;
-    initialEquity: number | null;
-    equity: number | null;
-    returnPct: number | null;
-    cash: number | null;
-    realizedPnl: number | null;
-    openPositions: Array<{
-      asset: string;
-      side: "LONG" | "SHORT";
-      quantity: number;
-      entryPrice: number;
-      markPrice: number;
-      signalZ: number;
-      polymarketSide: string | null;
-      entryTrendZ6h: number | null;
-      entryFunding24h: number | null;
-      horizonHours: number | null;
-      priceBasisPct: number | null;
-      openedAt: string;
-      exitAt: string;
-    }>;
-    trades: number;
-    wins: number;
-    winRate: number | null;
-    maxDrawdownPct: number | null;
-    riskStatus: string;
-    emergencyStopped: boolean;
-    experimentKey: string | null;
-    experimentLabel: string | null;
-    forwardOnly: boolean;
-    minimumSignalZ: number | null;
-    minimumFunding24h: number | null;
-    signalRule: CombinedSignalRule;
-    modelVersion: string | null;
-    forwardEvaluation: {
-      status: "collecting" | "promising" | "underperforming";
-      trades: number;
-      independentEvents?: number;
-      wins: number;
-      winRate: number | null;
-      controlTrades: number;
-      comparableEvents: number;
-      minimumTrades: number;
-      minimumIndependentEvents?: number;
-      minimumComparableEvents: number;
-      progressPct: number;
-      activeHorizonHours?: number;
-      totalTrades?: number;
-      totalMinimumTrades?: number;
-      totalIndependentEvents?: number;
-      totalMinimumIndependentEvents?: number;
-      comparisonStartedAt: string | null;
-      netReturnPct: number | null;
-      benchmarkReturnPct: number | null;
-      benchmarkLabel: "Polymarket方向のみ" | "常時ロング" | "常時ショート" | "ランダム中央値" | null;
-      excessReturnPct: number | null;
-      excessConfidenceInterval95: [number, number] | null;
-      deflatedSharpeProbability: number | null;
-      randomBenchmarkTrials?: number;
-      maxDrawdownPct: number;
-      passedGates: number;
-      totalGates: number;
-      gates: Array<{
-        id: "trades" | "control" | "net-positive" | "benchmark" | "significance" | "selection-bias" | "drawdown" | "settlement";
-        label: string;
-        passed: boolean;
-      }>;
-      benchmarks: {
-        polymarketOnlyReturnPct: number | null;
-        alwaysLongReturnPct: number | null;
-        alwaysShortReturnPct: number | null;
-        randomMedianReturnPct?: number | null;
-      };
-      attribution: {
-        byAsset: Array<{
-          asset: string;
-          trades: number;
-          wins: number;
-          returnContributionPct: number;
-          averageTradeReturnPct: number | null;
-        }>;
-      };
-      horizons?: Array<{
-        horizonHours: number;
-        status: "collecting" | "promising" | "underperforming";
-        trades: number;
-        independentEvents?: number;
-        minimumTrades: number;
-        minimumIndependentEvents?: number;
-        progressPct: number;
-        netReturnPct: number | null;
-        excessReturnPct: number | null;
-        maxDrawdownPct: number;
-        passedGates: number;
-        totalGates: number;
-        horizonEligibleMarkets: number;
-        priceReadyEvents: number;
-        latestAction: string | null;
-        latestReason: string;
-        nextWindowAt: string | null;
-      }>;
-    } | null;
-    shortTermDirection?: {
-      status: "collecting" | "promising" | "underperforming" | "not_started";
-      running: boolean;
-      startedAt: string | null;
-      updatedAt: string | null;
-      trades: number;
-      controlTrades: number;
-      minimumTrades: number;
-      progressPct: number;
-      netReturnPct: number | null;
-      excessReturnPct: number | null;
-      confidenceLowerPct: number | null;
-      maxDrawdownPct: number | null;
-      passedGates: number;
-      totalGates: number;
-      openPositions: number;
-      scannedMarkets: number;
-      fifteenMinuteMarkets: number;
-      decisionWindowMarkets: number;
-      priceReadyMarkets: number;
-      thresholdSignals: number;
-      opened: number;
-      latestAction: string | null;
-      latestReason: string;
-      nextDecisionAt: string | null;
-      observedAt: string | null;
-      specificationHash: string | null;
-      executionAudit?: {
-        status: "collecting" | "healthy" | "attention";
-        readinessStatus: "collecting" | "promising" | "underperforming";
-        priceSources: {
-          entry: "Polymarket CLOB 5秒板";
-          exit: "Hyperliquid L2 独立5秒板";
-          settlement: "Chainlink 独立5秒価格" | "Polymarket基準価格 + 公開RTDS監査";
-        };
-        minimumAuditedPositions: number;
-        minimumIndependentEvents: number;
-        eligiblePositions: number;
-        auditedPositions: number;
-        coverage: number;
-        verifiedPositions: number;
-        verifiedIndependentEvents: number;
-        directionCoverage: {
-          minimumIndependentEventsPerSide: number;
-          longIndependentEvents: number;
-          shortIndependentEvents: number;
-          passed: boolean;
-        };
-        verifiedCoverage: number;
-        resolvedPredictions: number;
-        predictionAccuracy: number | null;
-        polymarketAuditedPositions: number;
-        polymarketNetReturnPct: number | null;
-        hyperliquidNetReturnPct: number | null;
-        storedNetReturnPct: number | null;
-        portfolioNetReturnPct: number | null;
-        storedPortfolioReturnPct: number | null;
-        meanTradeReturnConfidenceInterval95: [number, number] | null;
-        benchmarkReturnPct: number | null;
-        benchmarkLabel: "現金待機" | "Polymarket方向のみ" | "常時ロング" | "常時ショート" | "ランダム中央値" | null;
-        excessReturnPct: number | null;
-        excessConfidenceInterval95: [number, number] | null;
-        deflatedSharpeProbability: number | null;
-        strategyTrials: number;
-        randomBenchmarkTrials: number;
-        maxDrawdownPct: number;
-        attribution: {
-          byAsset: Array<{
-            asset: string;
-            trades: number;
-            wins: number;
-            netPnl: number;
-            returnContributionPct: number;
-          }>;
-          bySide: Array<{
-            side: string;
-            trades: number;
-            wins: number;
-            netPnl: number;
-            returnContributionPct: number;
-          }>;
-        };
-        controlComparablePositions: number;
-        comparableEvents: number;
-        comparableIndependentEvents: number;
-        controlCoverage: number;
-        benchmarks: {
-          cashReturnPct: number;
-          polymarketOnlyReturnPct: number;
-          alwaysLongReturnPct: number;
-          alwaysShortReturnPct: number;
-          randomMedianReturnPct: number;
-        };
-        passedReadinessGates: number;
-        currentlyPassingReadinessGates?: number;
-        evaluatedReadinessGates?: number;
-        totalReadinessGates: number;
-        settlementResolutionStatus: "collecting" | "healthy" | "attention";
-        readinessGates: Array<{
-          id: "trades" | "directions" | "execution" | "control" | "net-positive" | "benchmark" | "significance" | "selection-bias" | "drawdown" | "settlement";
-          label: string;
-          passed: boolean;
-          state?: "passing" | "failing" | "pending";
-        }>;
-        returnDifferencePct: number | null;
-        medianTimingErrorMs: number | null;
-        maximumTimingErrorMs: number | null;
-        medianPolymarketQuoteAgeMs: number | null;
-        maximumPolymarketQuoteAgeMs: number | null;
-        medianCloseDelayMs: number | null;
-        maximumCloseDelayMs: number | null;
-        allowedTimingErrorMs: number;
-        allowedPolymarketQuoteAgeMs: number;
-        missingEntry: number;
-        missingExit: number;
-        missingResolution: number;
-      } | null;
-      settlementResolution?: {
-        status: "collecting" | "healthy" | "attention";
-        source: "CHAINLINK" | "POLYMARKET_CRYPTO_PRICE";
-        rule: string;
-        targetMarkets: number;
-        resolvedObservedMarkets: number;
-        completeMarkets: number;
-        missingBoundaryMarkets: number;
-        matchedMarkets: number;
-        mismatchedMarkets: number;
-        coverage: number;
-        matchRate: number | null;
-        reconstructedCompleteMarkets: number;
-        reconstructedMatchedMarkets: number;
-        reconstructedMismatchedMarkets: number;
-        reconstructionCoverage: number;
-        reconstructionMatchRate: number | null;
-        medianAbsoluteOpenPriceBasisBps: number | null;
-        medianAbsoluteClosePriceBasisBps: number | null;
-        medianBoundaryErrorMs: number | null;
-        maximumBoundaryErrorMs: number | null;
-        allowedBoundaryErrorMs: number;
-        byAsset: Array<{
-          asset: string;
-          completeMarkets: number;
-          matchedMarkets: number;
-          mismatchedMarkets: number;
-          reconstructedMismatchedMarkets: number;
-        }>;
-        passedGates: number;
-        totalGates: number;
-        gates: Array<{
-          id: "samples" | "coverage" | "agreement" | "reconstruction";
-          label: string;
-          passed: boolean;
-        }>;
-      };
-      research?: {
-        generatedAt: string;
-        marketDuration: string;
-        executionMode: string;
-        lookbackHours: number;
-        completeMarkets: number;
-        walkForwardFolds: number;
-        minimumProfitableFolds: number;
-        acceptedCandidates: number;
-        totalCandidates: number;
-        currentCandidateId: string;
-        diagnosis: {
-          verdict: "no_remaining_move_edge" | "cost_barrier" | "positive_after_costs";
-          trades: number;
-          binaryOutcomeAccuracy: number | null;
-          afterCostWinRate: number | null;
-          estimatedBeforeCostWinRate: number | null;
-          averageNetReturnPct: number | null;
-          estimatedBeforeCostAverageReturnPct: number | null;
-          assumedRoundTripCostPct: number;
-          slices: {
-            byAsset: Array<ResearchDiagnosisSlice>;
-            bySide: Array<ResearchDiagnosisSlice>;
-            byProbability: Array<ResearchDiagnosisSlice>;
-            byTrendStrength: Array<ResearchDiagnosisSlice>;
-            byJstSession: Array<ResearchDiagnosisSlice>;
-          };
-        } | null;
-        sensitivity: {
-          purpose: "diagnostic_only";
-          selectionPolicy: "fixed_grid_not_used_for_promotion";
-          testedVariants: number;
-          calibrationPositiveVariants: number;
-          holdoutPositiveVariants: number;
-        } | null;
-        candidates: Array<{
-          id: string;
-          label: string;
-          status: "insufficient" | "promising" | "rejected";
-          trades: number;
-          netReturnPct: number;
-          averageReturnPct: number | null;
-          confidenceLowerPct: number | null;
-          excessReturnPct: number | null;
-          maxDrawdownPct: number;
-          profitableFolds: number;
-          totalFolds: number;
-          passedGates: number;
-          totalGates: number;
-        }>;
-        history: Array<{
-          generatedAt: string;
-          marketDuration: string;
-          lookbackHours: number;
-          executionMode: string;
-          completeMarkets: number;
-          status: "insufficient" | "promising" | "rejected";
-          trades: number;
-          netReturnPct: number;
-          averageReturnPct: number | null;
-          confidenceLowerPct: number | null;
-          excessReturnPct: number | null;
-          maxDrawdownPct: number;
-          profitableFolds: number;
-          totalFolds: number;
-          passedGates: number;
-          totalGates: number;
-        }>;
-      } | null;
-      realtimeResearch?: {
-        generatedAt: string;
-        status: "insufficient" | "promising" | "rejected";
-        promotionAllowed: false;
-        completeMarkets: number;
-        replayableMarkets: number;
-        independentWindows: number;
-        minimumHoldoutWindows: number;
-        minimumHoldoutWindowsPerSide: number;
-        selectedTrades: number;
-        strategyTrials: number;
-        holdoutCoverage: {
-          passed: boolean;
-          total: { observed: number; required: number; passed: boolean };
-          long: { observed: number; required: number; passed: boolean };
-          short: { observed: number; required: number; passed: boolean };
-        };
-        calibrationPositiveVariants: number;
-        holdoutPositiveVariants: number;
-        calibrationBenchmarkBeatingVariants: number;
-        holdoutBenchmarkBeatingVariants: number;
-        selectedCandidate: {
-          id: string;
-          strategy: "market_direction" | "trend_confirmed" | "fair_value" | "logit_pool";
-          entryOffsetSeconds: number;
-          calibration: RealtimeReplayMetric;
-          holdout: RealtimeReplayMetric;
-          profitableFolds: number;
-          benchmarkBeatingFolds: number;
-          totalFolds: number;
-        } | null;
-        inputProvenance: {
-          mode: "sqlite" | "parquet" | "hybrid";
-          archivePartitions: number;
-          lookbackDays: number;
-          sinceAt: string | null;
-          beforeAt: string;
-          marketTicks: RealtimeReplayInputSource;
-          assetTicks: RealtimeReplayInputSource;
-        } | null;
-        reproducibility: {
-          runId: string;
-          codeRevision: string | null;
-          specificationSha256: string;
-          datasetSha256: string;
-        };
-        history: Array<{
-          runId: string;
-          generatedAt: string;
-          status: "insufficient" | "promising" | "rejected";
-          selectedCandidateId: string | null;
-          completeMarkets: number;
-          replayableMarkets: number;
-          independentWindows: number;
-          holdoutWindows: number;
-          holdoutTrades: number;
-          holdoutLongWindows?: number;
-          holdoutShortWindows?: number;
-          holdoutEqualWeightNetReturnPct: number;
-          holdoutHyperliquidNetReturnPct: number;
-          holdoutPolymarketNetReturnPct: number;
-          holdoutBestBenchmarkId?: "cash" | "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median" | null;
-          holdoutBestBenchmarkNetReturnPct?: number | null;
-          holdoutExcessReturnPct?: number | null;
-          holdoutExcessConfidenceLowerPct?: number | null;
-          holdoutMarketBrierScore?: number | null;
-          holdoutModelBrierScore?: number | null;
-          holdoutBrierImprovement?: number | null;
-          holdoutBrierSkillScore?: number | null;
-          holdoutBrierImprovementConfidenceLower?: number | null;
-          holdoutMarketLogLoss?: number | null;
-          holdoutModelLogLoss?: number | null;
-          holdoutLogLossImprovement?: number | null;
-          holdoutProbabilityEdgePassed?: boolean;
-          profitableFolds: number;
-          benchmarkBeatingFolds?: number;
-          totalFolds: number;
-          inputMode?: "sqlite" | "parquet" | "hybrid";
-          archivePartitions?: number;
-          archiveRows?: number;
-          sqliteRows?: number;
-        }>;
-      } | null;
-      realTradingEnabled: false;
-    };
-    settlementBasis: {
-      status: "collecting" | "healthy" | "attention";
-      samples: number;
-      medianAbsolutePct: number | null;
-      maximumAbsolutePct: number | null;
-      medianReferenceCaptureLagSeconds: number | null;
-    };
-    funnel: {
-      scans: number;
-      scannedMarkets: number;
-      structuredMarkets: number;
-      horizonEligibleMarkets: number;
-      groupedEvents: number;
-      priceReadyEvents: number;
-      thresholdSignals: number;
-      opened: number;
-      closed: number;
-    };
-    latestDecision: {
-      action: string;
+  dataQuality?: {
+    status?: string;
+    source?: string;
+    code?: string;
+    gaps?: Array<{
+      startedAt: string;
+      endedAt?: string | null;
+      scope: string;
       reason: string;
-      asset: string | null;
-      signalZ: number | null;
-      spotPrice: number | null;
-      targetPrice: number | null;
-      polymarketSide: string | null;
-      strategySide: string | null;
-      trendZ6h: number | null;
-      hyperliquidFunding24h: number | null;
-      horizonHours: number | null;
-      marketBestBid: number | null;
-      marketBestAsk: number | null;
-      marketSpread: number | null;
-      polymarketReferencePrice: number | null;
-      referenceSource: string | null;
-      priceBasisPct: number | null;
-      ladderViolations: number | null;
-      nextWindowAt: string | null;
-      observedAt: string;
-    } | null;
-    testnet: {
-      installed: boolean;
-      accountConfigured: boolean;
-      apiWalletConfigured: boolean;
-      apiWalletKeySource: "environment" | "file" | null;
-      enabled: boolean;
-      autoMirrorEnabled: boolean;
-      ready: boolean;
-      verifiedReady: boolean;
-      maximumNotionalUsd: number;
-      mainnetSupported: false;
-      setupBlockers?: Array<"connector_not_installed" | "api_wallet_not_configured" | "master_account_not_configured" | "execution_not_enabled">;
-      nextStep?: string;
-      transport?: {
-        id: string;
-        label: string;
-        cadence: string;
-        status: "healthy" | "waiting" | "error";
-        lastSuccessAt: string | null;
-        records: number;
-      } | null;
-      verification: {
-        id: string;
-        status: string;
-        asset: string | null;
-        requestedNotionalUsd: number | null;
-        sdkVersion: string | null;
-        connectivityPassed: boolean;
-        openFillPassed: boolean;
-        closeFillPassed: boolean;
-        restingOrderPassed: boolean;
-        cancelPassed: boolean;
-        deadManSwitchPassed: boolean;
-        partialFillObserved: boolean;
-        reconnectPassed: boolean;
-        reconciliationPassed: boolean;
-        emergencyCleanupPassed: boolean;
-        orphanOrderCount: number;
-        positionMismatchCount: number;
-        startedAt: string;
-        completedAt: string | null;
-        error: string | null;
-        failedChecks: string[];
-      } | null;
-      reconciliation: {
-        status: string;
-        lastSuccessAt: string | null;
-        message: string | null;
-        accountValue: number | null;
-        accountLossPct: number | null;
-        healthy: boolean;
-        orderMismatchCount: number;
-        positionMismatchCount: number;
-        capturedAt: string | null;
-      };
-    };
+    }>;
   };
-  polymarket: { snapshots: number; markets: number; latestAt: string | null; backtestRuns: number; backtestPoints: number };
-  model: {
-    name: string;
-    selectedCandidate: string | null;
-    selectedCandidateKind: "market" | "logit-pool" | "ridge-logit-pool" | null;
-    combinedStrategy: string | null;
-    combinedMinimumSignalZ: number | null;
-    selectedFromValidation: boolean;
-    totalEligibleSignals: number;
-    validationEligibleSignals: number;
-    executionStartedAt: string | null;
-    executionEndedAt: string | null;
-    validationStartedAt: string | null;
-    validationEndedAt: string | null;
-    testStartedAt: string | null;
-    testEndedAt: string | null;
-    closestValidationCandidate: {
-      id: string;
-      minimumSignalZ: number;
-      signalRule: CombinedSignalRule;
-      minimumTrendZ: number;
-      minimumFunding24h: number;
-      positionPct: number;
-    } | null;
-    closestHoldoutAudit: {
-      strategy: {
-        id: string;
-        minimumSignalZ: number;
-        signalRule: CombinedSignalRule;
-        minimumTrendZ: number;
-        minimumFunding24h: number;
-        positionPct: number;
-      };
-      trades: number;
-      wins: number;
-      winRate: number | null;
-      netReturnPct: number;
-      benchmarkReturnPct: number;
-      excessReturnPct: number;
-      returnConfidenceInterval95: [number, number] | null;
-      statisticallyPositive: boolean;
-      deflatedSharpeProbability: number | null;
-      maxDrawdownPct: number;
-      attribution: {
-        byAsset: HoldoutSlice[];
-        bySide: HoldoutSlice[];
-        byFundingStrength: HoldoutSlice[];
-        byConsensus: HoldoutSlice[];
-      };
-    } | null;
-    candidateDiagnostics: Array<{
-      strategy: {
-        id: string;
-        minimumSignalZ: number;
-        signalRule: CombinedSignalRule;
-        minimumTrendZ: number;
-        minimumFunding24h: number;
-        positionPct: number;
-      };
-      validationSignals: number;
-      trades: number;
-      netReturnPct: number;
-      benchmarkReturnPct: number;
-      excessReturnPct: number;
-      profitableFolds: number;
-      deflatedSharpeProbability: number | null;
-      confidenceInterval95: [number, number] | null;
-      passed: boolean;
-      gates: Array<{ id: string; label: string; passed: boolean }>;
-    }>;
-    structuralFeatureCoverage: number | null;
-    fundingFeatureCoverage: number | null;
-    synchronizedExecutionCoverage: number;
-    testSynchronizedExecutionCoverage: number;
-    evaluationStatus: "promising" | "inconclusive" | "underperforming" | "building";
-    latestAsset: string | null;
-    latestBrierScore: number | null;
-    latestAccuracy: number | null;
-    latestReturnPct: number | null;
-    benchmarkReturnPct: number | null;
-    benchmarkReturns: {
-      alwaysLongReturnPct: number;
-      alwaysShortReturnPct: number;
-      polymarketDirectionReturnPct: number;
-      randomMedianReturnPct: number;
-      randomTrials: number;
-      bestReturnPct: number;
-      bestLabel: string;
-    } | null;
-    horizonStudies: Array<{
-      horizonHours: number;
-      status: "promising" | "inconclusive" | "underperforming" | "unavailable";
-      totalEvents: number;
-      testEvents: number;
-      eligibleSignals: number;
-      trades: number;
-      netReturnPct: number | null;
-      bestBenchmarkReturnPct: number | null;
-      excessReturnPct: number | null;
-      deflatedSharpeProbability: number | null;
-      testExecutionFeatureCoverage: number | null;
-      testSynchronizedExecutionCoverage: number | null;
-      maximumExecutionTimingErrorMinutes: number | null;
-      error?: string;
-    }>;
-    excessReturnPct: number | null;
-    eligibleSignals: number;
-    testedMarkets: number;
-    testedEvents: number;
-    observations: number;
-    brierImprovement: number | null;
-    previousBrierScore: number | null;
-    confidenceInterval95: [number, number] | null;
-    statisticallyPositive: boolean;
-    deflatedSharpeProbability: number | null;
-    strategyTrials: number;
-    walkForwardFolds: number;
-    profitableValidationFolds: number;
-    completedAt: string | null;
-    datasetStartedAt: string | null;
-    datasetEndedAt: string | null;
+};
+
+type WalletProfile = {
+  address: string;
+  displayName: string | null;
+  style: string;
+  copyabilityScore: number;
+  excluded: boolean;
+  exclusionReason: string | null;
+  scoredAt: string | null;
+  scores: Array<{
+    category: string;
+    realizedPnl: number;
+    independentEvents: number;
+    activeDays: number;
+    winRate: number | null;
+    riskAdjustedScore: number;
+    qualified: boolean;
+  }>;
+};
+
+type WalletSignal = {
+  id: string;
+  title?: string | null;
+  category: string;
+  outcome: string;
+  contributorCount: number;
+  status: string;
+  observedAt: string;
+};
+
+type WalletDashboard = {
+  generatedAt: string | null;
+  summary: {
+    trackedWallets: number;
+    qualifiedWallets: number;
+    readySignals: number;
+    status: string;
+    lastUpdatedAt: string | null;
+  };
+  profiles: WalletProfile[];
+  signals: WalletSignal[];
+};
+
+type BacktestReport = {
+  latencySeconds: number;
+  status: string;
+  edgeConfirmed: boolean;
+  reason: string;
+  signals: number;
+  independentEvents: number;
+  winRate: number | null;
+  meanReturnPct: number;
+  excessReturnPct: number;
+  excessConfidenceInterval95: [number, number] | null;
+  deflatedSharpeProbability: number | null;
+  maxDrawdownPct: number;
+  gates: Gate[];
+};
+
+type WalletBacktest = {
+  generatedAt: string | null;
+  status: string;
+  edgeConfirmed: boolean;
+  reason: string;
+  selectedLatencySeconds: number;
+  reports: BacktestReport[];
+};
+
+type HorizonResult = {
+  horizonSeconds: number;
+  selectedModel: string;
+  selectedThreshold: number;
+  edgeConfirmed: boolean;
+  dataset: {
+    samples: number;
+    train: number;
+    validation: number;
+    holdout: number;
+    firstAt: string | null;
+    lastAt: string | null;
+  };
+  holdout: {
+    independentWindows: number;
     trades: number;
     longTrades: number;
     shortTrades: number;
     winRate: number | null;
-    averageTradeReturn: number | null;
-    maxDrawdownPct: number | null;
-    medianObservationLagMinutes: number | null;
-    medianEntryLagMinutes: number | null;
-    medianExitLeadMinutes: number | null;
-    maximumExecutionTimingErrorMinutes: number | null;
-    probabilityLadderEvents: number;
-    probabilityLadderViolationEvents: number;
-    aiPredictions: number;
-    aiResolved: number;
-    aiBrierScore: number | null;
-    marketBrierScore: number | null;
-    aiImprovement: number | null;
-    paperRuns: number;
-    runningPaperRuns: number;
-    paperSnapshots: number;
-    paperOrders: number;
-    paperFills: number;
-    paperReturnPct: number | null;
+    netReturnPct: number;
+    excessReturnPct: number;
+    excessConfidenceInterval95: [number, number] | null;
+    deflatedSharpeProbability: number | null;
+    maxDrawdownPct: number;
   };
-  paperExperiment: {
-    label: string;
-    strategy: string | null;
-    status: string;
-    realMoney: false;
-    initialCash: number | null;
-    equity: number | null;
-    returnPct: number | null;
-    unrealizedPnl: number | null;
-    openPositions: number;
-    fills: number;
-    updatedAt: string | null;
-  };
-  backtestQuality: {
-    status: "promising" | "inconclusive" | "underperforming" | "building";
-    checks: Array<{ label: string; passed: boolean }>;
-  };
-  hyperliquid: {
-    snapshots: number;
-    latestAt: string | null;
-    assets: Array<{ asset: string; price: number; change24hPct: number | null; dayVolume: number; openInterestUsd: number; fundingRate: number; capturedAt: string }>;
-  };
-  operations?: {
-    alerts: { status: "healthy" | "waiting" | "error"; message: string; lastSuccessAt: string | null; webhookConfigured: boolean };
-    tunnel: { mode: string; status: "healthy" | "waiting" | "starting"; publicUrl: string | null; fixedUrl: boolean; fallback: boolean; publishedAt: string | null; updatedAt: string | null };
-    backup: { status: "healthy" | "waiting" | "error"; encrypted: boolean; copies: number; latestAt: string | null; verifiedAt: string | null; message: string };
-    columnarArchive: { status: "healthy" | "waiting" | "error"; archivedThrough: string | null; partitions: number; rows: number; sizeBytes: number; verifiedAt: string | null; message: string };
-  };
-  pipelines: Array<{ id: string; label: string; cadence: string; status: "healthy" | "waiting" | "error"; lastSuccessAt: string | null; records: number }>;
+  gates: Gate[];
 };
 
-type PublicDashboardResponse = {
-  generatedAt: string;
-  monitoring: MonitoringSnapshot;
-  runs: Run[];
-  backtests: BacktestRun[];
-  modelEvaluations: ModelEvaluationSummary[];
+type HyperliquidModel = {
+  generatedAt: string | null;
+  modelVersion?: string;
+  status: string;
+  edgeConfirmed: boolean;
+  verdict: string;
+  reason: string;
+  data?: {
+    l1Rows?: number;
+    l2Rows?: number;
+    tradeRows?: number;
+    walletSignals?: number;
+    l2Coverage?: number;
+    l2DurationHours?: number;
+    mode?: string;
+  };
+  selectedHorizonSeconds?: number;
+  selected?: HorizonResult;
+  horizons?: HorizonResult[];
+  methodology?: Record<string, unknown>;
 };
 
-const assets = ["BTC", "ETH", "SOL", "XRP"] as const;
-type Tone = "good" | "watch" | "bad" | "neutral";
-
-type Signal = {
-  label: string;
-  description: string;
-  tone: Tone;
-  icon: LucideIcon;
+const EMPTY_WALLETS: WalletDashboard = {
+  generatedAt: null,
+  summary: {
+    trackedWallets: 0,
+    qualifiedWallets: 0,
+    readySignals: 0,
+    status: "waiting",
+    lastUpdatedAt: null,
+  },
+  profiles: [],
+  signals: [],
 };
+
+const EMPTY_WALLET_BACKTEST: WalletBacktest = {
+  generatedAt: null,
+  status: "collecting",
+  edgeConfirmed: false,
+  reason: "検証データを収集中です",
+  selectedLatencySeconds: 30,
+  reports: [],
+};
+
+const EMPTY_HYPERLIQUID: HyperliquidModel = {
+  generatedAt: null,
+  status: "collecting",
+  edgeConfirmed: false,
+  verdict: "優位性未確認",
+  reason: "モデル検証を準備中です",
+};
+
+const views: Array<{ id: DashboardView; label: string; shortLabel: string; icon: LucideIcon }> = [
+  { id: "operations", label: "運用状況", shortLabel: "運用", icon: Activity },
+  { id: "wallets", label: "優良ウォレット", shortLabel: "ウォレット", icon: Users },
+  { id: "hyperliquid", label: "Hyperliquidモデル", shortLabel: "モデル", icon: BarChart3 },
+];
 
 export function PaperTradingDashboardClient() {
-  const [asset, setAsset] = useState<(typeof assets)[number]>("BTC");
-  const [initialCash, setInitialCash] = useState("10000");
-  const [entryEdge, setEntryEdge] = useState("0.03");
-  const [maxMarkets, setMaxMarkets] = useState("20");
-  const [runs, setRuns] = useState<Run[]>([]);
-  const [backtests, setBacktests] = useState<BacktestRun[]>([]);
-  const [modelEvaluations, setModelEvaluations] = useState<ModelEvaluationSummary[]>([]);
-  const [monitoring, setMonitoring] = useState<MonitoringSnapshot | null>(null);
-  const [selectedPaperRun, setSelectedPaperRun] = useState<PaperRunDetail | null>(null);
-  const [selectedBacktest, setSelectedBacktest] = useState<BacktestRun | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [message, setMessage] = useState("準備完了");
-  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
-  const [snapshot, setSnapshot] = useState(false);
-  const [readOnly, setReadOnly] = useState(true);
-  const refreshingRef = useRef(false);
+  const [view, setView] = useState<DashboardView>("operations");
+  const [dashboard, setDashboard] = useState<PublicDashboard | null>(null);
+  const [wallets, setWallets] = useState<WalletDashboard>(EMPTY_WALLETS);
+  const [walletBacktest, setWalletBacktest] = useState<WalletBacktest>(EMPTY_WALLET_BACKTEST);
+  const [hyperliquid, setHyperliquid] = useState<HyperliquidModel>(EMPTY_HYPERLIQUID);
+  const [source, setSource] = useState<"live" | "snapshot" | "loading">("loading");
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const activeRun = useMemo(() => runs.find((run) => run.asset === asset && run.status === "running") ?? null, [asset, runs]);
-  const refresh = useCallback(async () => {
-    if (refreshingRef.current) return;
-    refreshingRef.current = true;
-    try {
-      await discoverLiveApiBase();
-      const staticMode = isSnapshotMode();
-      const operatorAccess = Boolean(getLocalApiToken());
-      setSnapshot(staticMode);
-      setReadOnly(staticMode || !operatorAccess);
-      if (staticMode) {
-        const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-        const monitoringResponse = await fetch(`${base}/monitoring-snapshot.json`, { cache: "no-store" });
-        if (monitoringResponse.ok) setMonitoring(await monitoringResponse.json());
-        setMessage("保存時点の結果を表示しています");
-        setUpdatedAt(new Date().toISOString());
-        return;
-      }
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    setError(null);
+    await discoverLiveApiBase();
 
-      if (!operatorAccess) {
-        const payload = await fetchLocalApi<PublicDashboardResponse>("/api/public-dashboard");
-        setRuns(payload.runs ?? []);
-        setBacktests(payload.backtests ?? []);
-        setModelEvaluations(payload.modelEvaluations ?? []);
-        setMonitoring(payload.monitoring);
-        setUpdatedAt(payload.generatedAt);
-        setMessage("30秒ごとに自動更新");
-        return;
-      }
+    const live = await Promise.allSettled([
+      fetchLocalApi<PublicDashboard>("/api/public-dashboard"),
+      fetchLocalApi<WalletDashboard>("/api/wallets"),
+      fetchLocalApi<WalletBacktest>("/api/wallet-backtests/latest"),
+      fetchLocalApi<HyperliquidModel>("/api/hyperliquid-model/latest"),
+    ]);
 
-      const [runsPayload, backtestsPayload, monitoringPayload, modelEvaluationsPayload] = await Promise.all([
-        fetchLocalApi<{ items: Run[] }>("/api/paper-trading/runs"),
-        fetchLocalApi<{ items: BacktestRun[] }>("/api/backtests?limit=20"),
-        fetchLocalApi<MonitoringSnapshot>("/api/monitoring"),
-        fetchLocalApi<{ items: ModelEvaluationSummary[] }>("/api/model-evaluations?limit=12"),
-      ]);
-      setRuns(runsPayload.items ?? []);
-      setBacktests(backtestsPayload.items ?? []);
-      setMonitoring(monitoringPayload);
-      setModelEvaluations(modelEvaluationsPayload.items ?? []);
-      setUpdatedAt(new Date().toISOString());
-    } catch (error) {
-      let usingFallback = false;
-      if (process.env.NEXT_PUBLIC_STATIC_EXPORT === "1") {
-        const liveFallback = await fetchLiveDashboardSnapshot<PublicDashboardResponse>().catch(() => null);
-        if (liveFallback?.monitoring) {
-          setRuns(liveFallback.runs ?? []);
-          setBacktests(liveFallback.backtests ?? []);
-          setModelEvaluations(liveFallback.modelEvaluations ?? []);
-          setMonitoring(liveFallback.monitoring);
-          setSnapshot(true);
-          setReadOnly(true);
-          setUpdatedAt(liveFallback.generatedAt);
-          usingFallback = true;
-        } else {
-          const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-          const fallback = await fetch(`${base}/monitoring-snapshot.json`, { cache: "no-store" }).catch(() => null);
-          if (fallback?.ok) {
-            setMonitoring(await fallback.json());
-            setSnapshot(true);
-            setReadOnly(true);
-            setUpdatedAt(new Date().toISOString());
-            usingFallback = true;
-          }
-        }
-      }
-      setMessage(usingFallback
-        ? "接続確認中・保存時点の結果"
-        : error instanceof Error && /401/.test(error.message)
-          ? "管理用の接続キーを確認してください"
-          : "接続を確認しています");
-    } finally {
-      refreshingRef.current = false;
+    if (live[0].status === "fulfilled") {
+      setDashboard(live[0].value);
+      if (live[1].status === "fulfilled") setWallets(live[1].value);
+      if (live[2].status === "fulfilled") setWalletBacktest(live[2].value);
+      if (live[3].status === "fulfilled") setHyperliquid(live[3].value);
+      setSource("live");
+      setRefreshing(false);
+      return;
     }
+
+    const staticBase = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    const [published, walletArtifact, hyperArtifact] = await Promise.all([
+      fetchLiveDashboardSnapshot<PublicDashboard>().catch(() => fetchStatic<PublicDashboard>(`${staticBase}/monitoring-snapshot.json`).then((monitoring) => ({
+        generatedAt: monitoring.generatedAt ?? null,
+        monitoring: monitoring as PublicDashboard["monitoring"],
+        dataQuality: {
+          status: "stopped",
+          source: "static-snapshot",
+          gaps: [],
+        },
+      }))),
+      fetchStatic<WalletBacktest>(`${staticBase}/wallet-backtest.json`).catch(() => EMPTY_WALLET_BACKTEST),
+      fetchStatic<HyperliquidModel>(`${staticBase}/hyperliquid-model.json`).catch(() => EMPTY_HYPERLIQUID),
+    ]);
+    setDashboard(published);
+    setWalletBacktest(walletArtifact);
+    setHyperliquid(hyperArtifact);
+    setSource("snapshot");
+    setError("現在は保存済みの最新結果を表示しています");
+    setRefreshing(false);
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const initialize = async () => {
-      if (process.env.NEXT_PUBLIC_STATIC_EXPORT === "1") {
-        const publishedSnapshot = await fetchLiveDashboardSnapshot<PublicDashboardResponse>().catch(() => null);
-        if (!cancelled && publishedSnapshot?.monitoring) {
-          setRuns(publishedSnapshot.runs ?? []);
-          setBacktests(publishedSnapshot.backtests ?? []);
-          setModelEvaluations(publishedSnapshot.modelEvaluations ?? []);
-          setMonitoring(publishedSnapshot.monitoring);
-          setSnapshot(true);
-          setReadOnly(true);
-          setUpdatedAt(publishedSnapshot.generatedAt);
-          setMessage("接続確認中・保存時点の結果");
-        }
-      }
-
-      if (!cancelled) await refresh();
-    };
-
-    void initialize();
-    const timer = window.setInterval(() => void refresh(), 30_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [refresh]);
-
-  async function startRun(runMode: "historical" | "live") {
-    setLoading(true);
-    setMessage(runMode === "live" ? "継続観察を開始しています…" : "仮想売買を検証しています…");
-    try {
-      const result = await fetchLocalApi<PaperRunDetail>("/api/paper-trading/runs", {
-        method: "POST",
-        body: JSON.stringify({
-          asset,
-          mode: runMode,
-          config: {
-            initialCash: Number(initialCash),
-            entryEdge: Number(entryEdge),
-            maxMarkets: Number(maxMarkets),
-          },
-        }),
-      });
-      setMessage(runMode === "live" ? "継続観察を開始しました" : "仮想売買の検証が完了しました");
-      await refresh();
-      if (result?.id) await loadPaperRun(result.id);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "実行に失敗しました");
-    } finally {
-      setLoading(false);
+    const requested = new URLSearchParams(window.location.search).get("view");
+    if (requested === "wallets" || requested === "hyperliquid" || requested === "operations") {
+      setView(requested);
     }
-  }
+    void load();
+  }, [load]);
 
-  async function runBaselineBacktest() {
-    setLoading(true);
-    setMessage("市場価格を基準に過去検証しています…");
-    try {
-      const result = await fetchLocalApi<BacktestRun>("/api/backtests", {
-        method: "POST",
-        body: JSON.stringify({
-          asset,
-          threshold: Math.max(0.5, Math.min(0.99, Number(entryEdge) + 0.52)),
-          initialCapital: Number(initialCash) || 1000,
-          limit: Number(maxMarkets) || 40,
-        }),
-      });
-      setMessage("市場価格を基準に過去検証しました");
-      await refresh();
-      if (result?.id) await loadBacktest(result.id);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "backtestに失敗しました");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function runModelEvaluation() {
-    setLoading(true);
-    setMessage("最新の条件でモデルを再検証しています…");
-    try {
-      await fetchLocalApi("/api/model-evaluations", { method: "POST" });
-      setMessage("モデルの再検証が完了しました");
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "モデルの再検証に失敗しました");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function collectSnapshot() {
-    setLoading(true);
-    setMessage("最新の市場データを保存しています…");
-    try {
-      const result = await fetchLocalApi<{ saved?: number }>("/api/backtests/collect", {
-        method: "POST",
-        body: JSON.stringify({ assets: [asset], limit: Number(maxMarkets) || 40 }),
-      });
-      setMessage(`${result.saved ?? 0}件の市場データを保存しました`);
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "収集に失敗しました");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function controlCombinedShadow(action: "tick" | "emergency-stop" | "resume") {
-    setLoading(true);
-    setMessage(action === "tick" ? "組み合わせ仮想売買を更新しています…" : action === "resume" ? "仮想売買を再開しています…" : "仮想売買を緊急停止しています…");
-    try {
-      await fetchLocalApi("/api/combined-trading", { method: "POST", body: JSON.stringify({ action }) });
-      await refresh();
-      setMessage(action === "tick" ? "組み合わせ仮想売買を更新しました" : action === "resume" ? "仮想売買を再開しました" : "仮想売買を緊急停止しました");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "組み合わせ仮想売買の操作に失敗しました");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function tickRun() {
-    if (!activeRun) return;
-    setLoading(true);
-    setMessage("1回分の市場更新を実行しています…");
-    try {
-      await fetchLocalApi(`/api/paper-trading/runs/${activeRun.id}`, { method: "POST" });
-      await refresh();
-      await loadPaperRun(activeRun.id);
-      setMessage("1回分の更新を完了しました");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "市場更新に失敗しました");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function stopRun() {
-    if (!activeRun) return;
-    setLoading(true);
-    try {
-      await fetchLocalApi(`/api/paper-trading/runs/${activeRun.id}`, { method: "PATCH", body: JSON.stringify({ action: "stop" }) });
-      await refresh();
-      setMessage("継続観察を停止しました");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "継続観察の停止に失敗しました");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadPaperRun(id: string) {
-    setDetailLoading(true);
-    setSelectedBacktest(null);
-    try {
-      setSelectedPaperRun(await fetchLocalApi<PaperRunDetail>(`/api/paper-trading/runs/${id}`));
-    } finally {
-      setDetailLoading(false);
-    }
-  }
-
-  async function loadBacktest(id: string) {
-    setDetailLoading(true);
-    setSelectedPaperRun(null);
-    try {
-      setSelectedBacktest(await fetchLocalApi<BacktestRun>(`/api/backtests/${id}`));
-    } finally {
-      setDetailLoading(false);
-    }
-  }
+  const switchView = (next: DashboardView) => {
+    setView(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", next);
+    window.history.replaceState({}, "", url);
+  };
 
   return (
-    <div className="space-y-4 pb-24">
-      <section className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-5 md:space-y-7">
+      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-primary"><Activity className="h-4 w-4" />POLYMARKET → HYPERLIQUID</div>
-          <h1 className="mt-1 max-w-3xl text-2xl font-bold leading-tight text-slate-950 md:text-3xl">予測を売買につなげるモデルの検証</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Polymarketの15分予測を使い、Hyperliquidで売買した場合の成績を実資金なしで記録しています。</p>
+          <p className="mb-1 text-sm font-semibold text-emerald-700">モデル検証・模擬取引</p>
+          <h1 className="text-2xl font-bold tracking-normal text-slate-950 md:text-3xl">予測モデル監視</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">
+            Polymarketの取引行動とHyperliquidの板情報から、手数料後に利益が残るかを継続検証しています。
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${!snapshot && monitoring?.status === "live" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-            <span className={`h-2.5 w-2.5 rounded-full ${!snapshot && monitoring?.status === "live" ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
-            {snapshot ? "公開スナップショット" : monitoring?.status === "live" ? "稼働中" : monitoring?.status === "delayed" ? "更新遅延" : "接続確認中"}
-          </div>
-          <Button variant="outline" size="icon" onClick={() => void refresh()} disabled={loading} aria-label="最新情報に更新" title="最新情報に更新">
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        <div className="flex items-center gap-3">
+          <DataStatus source={source} generatedAt={dashboard?.generatedAt ?? hyperliquid.generatedAt} />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 shrink-0 bg-white"
+            onClick={() => void load()}
+            disabled={refreshing}
+            title="最新データに更新"
+            aria-label="最新データに更新"
+          >
+            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
           </Button>
         </div>
-      </section>
+      </header>
 
-      <ExecutiveModelOverview snapshot={monitoring} savedSnapshot={snapshot} />
-
-      <BacktestResultsPanel items={modelEvaluations} monitoring={monitoring} downloadsAvailable={!snapshot} />
-
-      <details className="group border-y border-border bg-white">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-1 py-4 text-sm font-bold text-slate-800 sm:px-2">
-          <span className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-primary" />検証と収集の詳細</span>
-          <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">必要なときだけ表示<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" /></span>
-        </summary>
-        <div className="grid gap-4 pb-4">
-          <ShortTermDirectionPanel snapshot={monitoring} downloadsAvailable={!snapshot} />
-          <CombinedShadowPanel snapshot={monitoring} />
-          <TradingPurposePanel snapshot={monitoring} />
-          <DevelopmentMonitor snapshot={monitoring} readOnly={snapshot} />
-          <MonitoringDetails snapshot={monitoring} />
-        </div>
-      </details>
-
-      {!readOnly ? <PaperExperimentPanel snapshot={monitoring} /> : null}
-
-      {!readOnly ? <details className="rounded-lg border border-border bg-white shadow-sm">
-        <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 sm:px-5">
-          <span className="flex items-center gap-2 text-sm font-bold text-slate-950"><Gauge className="h-4 w-4 text-primary" />管理者用の操作</span>
-          <span className="max-w-[60%] truncate text-xs text-muted-foreground">{readOnly ? message : "管理者用"}</span>
-        </summary>
-        <div className="grid gap-4 border-t p-4 sm:p-5">
-          <div className="grid gap-2 sm:grid-cols-3">
-            <Button onClick={() => void runModelEvaluation()} disabled={loading || readOnly}><Target className="h-4 w-4" />モデルを再検証</Button>
-            <Button variant="secondary" onClick={() => void collectSnapshot()} disabled={loading || readOnly}><Database className="h-4 w-4" />市場データを保存</Button>
-            <Button variant="outline" onClick={() => void refresh()} disabled={loading}><RefreshCw className="h-4 w-4" />画面を更新</Button>
-          </div>
-          <div className="flex flex-wrap gap-2 border-t pt-4">
-            <Button variant="secondary" size="sm" onClick={() => void controlCombinedShadow("tick")} disabled={loading || readOnly}><RefreshCw className="h-4 w-4" />組み合わせを今すぐ更新</Button>
-            {monitoring?.combinedShadow.emergencyStopped ? (
-              <Button variant="outline" size="sm" onClick={() => void controlCombinedShadow("resume")} disabled={loading || readOnly}><Play className="h-4 w-4" />仮想売買を再開</Button>
-            ) : (
-              <Button variant="outline" size="sm" onClick={() => void controlCombinedShadow("emergency-stop")} disabled={loading || readOnly}><Square className="h-4 w-4" />組み合わせを緊急停止</Button>
-            )}
-          </div>
-          <details className="border-t pt-4">
-            <summary className="cursor-pointer text-sm font-bold text-slate-700">銘柄別の検証</summary>
-            <div className="mt-4 grid gap-4">
-              <div className="grid grid-cols-4 gap-1 rounded-lg bg-slate-100 p-1 sm:max-w-80">
-                {assets.map((item) => (
-                  <button key={item} type="button" onClick={() => setAsset(item)} className={`h-9 rounded-md text-sm font-bold transition ${asset === item ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-slate-950"}`}>{item}</button>
-                ))}
-              </div>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <Button variant="outline" onClick={() => void runBaselineBacktest()} disabled={loading || readOnly}><BarChart3 className="h-4 w-4" />市場基準を確認</Button>
-                <Button variant="outline" onClick={() => void startRun("historical")} disabled={loading || readOnly || Boolean(activeRun)}><Play className="h-4 w-4" />Poly単体を検証</Button>
-                <Button variant="outline" onClick={() => void startRun("live")} disabled={loading || readOnly || Boolean(activeRun)}><Activity className="h-4 w-4" />Poly単体を観察</Button>
-              </div>
-              {activeRun ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => void tickRun()} disabled={loading || readOnly}><Target className="h-4 w-4" />今すぐ更新</Button>
-                  <Button variant="outline" size="sm" onClick={() => void stopRun()} disabled={loading || readOnly}><Square className="h-4 w-4" />停止</Button>
-                </div>
-              ) : null}
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="grid gap-1.5 text-xs font-semibold">初期資金<input disabled={readOnly} value={initialCash} onChange={(event) => setInitialCash(event.target.value)} inputMode="decimal" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
-                <label className="grid gap-1.5 text-xs font-semibold">売買に必要な差<input disabled={readOnly} value={entryEdge} onChange={(event) => setEntryEdge(event.target.value)} inputMode="decimal" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
-                <label className="grid gap-1.5 text-xs font-semibold">市場数<input disabled={readOnly} value={maxMarkets} onChange={(event) => setMaxMarkets(event.target.value)} inputMode="numeric" className="h-10 rounded-lg border bg-background px-2.5 font-normal disabled:opacity-50" /></label>
-              </div>
-            </div>
-          </details>
-        </div>
-      </details> : null}
-
-      {!readOnly ? <section className="grid gap-4 xl:grid-cols-2">
-        <ScoreboardCard asset={asset} backtests={backtests} onSelect={readOnly ? undefined : (id) => void loadBacktest(id)} />
-        <PaperRunsCard asset={asset} runs={runs} updatedAt={updatedAt} onSelect={readOnly ? undefined : (id) => void loadPaperRun(id)} />
-      </section> : null}
-
-      {!readOnly ? <DetailPanel paperRun={selectedPaperRun} backtest={selectedBacktest} loading={detailLoading} /> : null}
-    </div>
-  );
-}
-
-function ExecutiveModelOverview({ snapshot, savedSnapshot }: { snapshot: MonitoringSnapshot | null; savedSnapshot: boolean }) {
-  const model = snapshot?.combinedShadow.shortTermDirection;
-  const audit = model?.executionAudit;
-  const settlementResolution = model?.settlementResolution;
-  const research = model?.research;
-  const trades = model?.trades ?? 0;
-  const minimumTrades = audit?.minimumIndependentEvents ?? audit?.minimumAuditedPositions ?? model?.minimumTrades ?? 50;
-  const verifiedTrades = audit?.verifiedIndependentEvents ?? audit?.verifiedPositions ?? 0;
-  const auditedNetReturn = audit?.portfolioNetReturnPct ?? model?.netReturnPct ?? null;
-  const auditedExcessReturn = audit?.excessReturnPct ?? model?.excessReturnPct ?? null;
-  const auditedConfidenceLower = audit?.excessConfidenceInterval95?.[0] ?? model?.confidenceLowerPct ?? null;
-  const auditedDrawdown = audit?.maxDrawdownPct ?? model?.maxDrawdownPct ?? null;
-  const progress = minimumTrades > 0 ? verifiedTrades / minimumTrades : 0;
-  const sampleReady = verifiedTrades >= minimumTrades && audit?.status === "healthy";
-  const netPositive = sampleReady && (auditedNetReturn ?? 0) > 0;
-  const edgePositive = sampleReady && (auditedConfidenceLower ?? Number.NEGATIVE_INFINITY) > 0;
-  const drawdownReady = sampleReady && (auditedDrawdown ?? Number.POSITIVE_INFINITY) <= 0.05;
-  const collectorHealthy = snapshot?.collection.realtimePrices?.status === "healthy";
-  const synchronizedQuality = snapshot?.collection.synchronizedPrices?.quality;
-  const dataReady = snapshot?.tradeReadiness.gates.find((gate) => gate.id === "data")?.status === "ready";
-  const settlementReady = settlementResolution?.status === "healthy";
-  const testnet = snapshot?.combinedShadow.testnet;
-  const testnetReady = testnet?.verifiedReady === true;
-  const testnetDisplay = deriveTestnetDisplayStatus(testnet);
-  const liveEnabled = snapshot?.tradeReadiness.realTradingEnabled === true;
-  const promising = audit?.readinessStatus === "promising" && sampleReady && netPositive && edgePositive && drawdownReady;
-  const accuracyAndReturnNote = audit?.predictionAccuracy !== null && audit?.predictionAccuracy !== undefined && auditedNetReturn !== null
-    ? `方向正解 ${formatPct(audit.predictionAccuracy)}でも、コスト後損益は${formatSignedPct(auditedNetReturn)}。独立${verifiedTrades}/${minimumTrades}枠を監査中です。`
-    : null;
-  const verdict = liveEnabled
-    ? { label: "実取引中", note: "運用条件を満たし、実取引を監視しています。", tone: "good" as const, icon: CheckCircle2 }
-    : promising && testnetReady
-      ? { label: "実取引の最終確認", note: "成績基準を満たしました。テストネット照合の完了後に判断します。", tone: "watch" as const, icon: ShieldCheck }
-      : audit?.readinessStatus === "underperforming" && sampleReady
-        ? { label: "モデル改善が必要", note: "50件の検証で採用基準に届きませんでした。実取引には進みません。", tone: "bad" as const, icon: TrendingDown }
-        : { label: "検証中・実取引不可", note: trades > 0
-          ? accuracyAndReturnNote ?? `${trades}件決済、板と決着を確認した独立時間枠${verifiedTrades}件を合格判定に使用します。`
-          : "最初の決済結果を待っています。", tone: "watch" as const, icon: Clock3 };
-  const VerdictIcon = verdict.icon;
-  const pnlTone: Tone = verifiedTrades === 0 ? "neutral" : (auditedNetReturn ?? 0) > 0 ? "good" : "bad";
-  const edgeTone: Tone = verifiedTrades === 0 ? "neutral" : (auditedExcessReturn ?? 0) > 0 ? "good" : "bad";
-  const drawdownTone: Tone = verifiedTrades === 0 ? "neutral" : (auditedDrawdown ?? 0) <= 0.05 ? "good" : "bad";
-  const latestAt = snapshot?.collection.realtimePrices?.latestAt ?? snapshot?.generatedAt ?? null;
-
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="現在のモデル検証結果">
-      <div className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 border-b p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:gap-4 sm:p-6 ${toneSoftClass(verdict.tone)}`}>
-        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-md ${toneIconClass(verdict.tone)}`}><VerdictIcon className="h-6 w-6" /></span>
-        <div className="min-w-0">
-          <p className="text-xs font-bold text-muted-foreground">現在の運用判定</p>
-          <h2 className="mt-1 text-2xl font-bold leading-tight text-slate-950 sm:text-3xl">{verdict.label}</h2>
-          <p className="mt-1 text-sm font-semibold leading-6 text-slate-700">{verdict.note}</p>
-        </div>
-        <span className={`col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-md px-3 text-xs font-bold sm:col-span-1 ${liveEnabled ? "bg-emerald-700 text-white" : "bg-slate-950 text-white"}`}>
-          {liveEnabled ? <Activity className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />}
-          実取引 {liveEnabled ? "ON" : "OFF"}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
-        <ExecutiveMetric icon={Target} label="独立枠の監査" value={`${verifiedTrades} / ${minimumTrades}`} note={`決済 ${trades}件・あと${Math.max(0, minimumTrades - verifiedTrades)}枠`} tone={sampleReady ? "good" : "watch"} meter={progress * 100} />
-        <ExecutiveMetric icon={TrendingUp} label="実板純損益" value={verifiedTrades ? formatSignedPct(auditedNetReturn) : "未判定"} note="全コスト控除後" tone={pnlTone} />
-        <ExecutiveMetric icon={BarChart3} label="最良比較との差" value={verifiedTrades ? formatSignedPct(auditedExcessReturn) : "未判定"} note={audit?.benchmarkLabel ?? "同期間の対照比"} tone={edgeTone} />
-        <ExecutiveMetric icon={TrendingDown} label="最大下落" value={verifiedTrades ? formatPct(auditedDrawdown) : "未判定"} note="上限 5.00%" tone={drawdownTone} />
-        <ExecutiveMetric icon={LockKeyhole} label="運用可否" value={liveEnabled ? "運用中" : "不可"} note={testnetDisplay.note} tone={liveEnabled ? "good" : "bad"} />
-      </div>
-
-      <div className="grid grid-cols-2 border-t sm:grid-cols-6">
-        <ExecutiveGate
-          label="同期データ"
-          value={dataReady ? "合格" : synchronizedQuality ? `${synchronizedQuality.passedGates}/${synchronizedQuality.totalGates}` : "収集中"}
-          tone={dataReady ? "good" : synchronizedQuality?.status === "attention" ? "bad" : "watch"}
-        />
-        <ExecutiveGate
-          label="公式決着"
-          value={settlementResolution?.reconstructedMismatchedMarkets
-            ? `Feed差 ${settlementResolution.reconstructedMismatchedMarkets}件`
-            : settlementResolution?.completeMarkets
-              ? `${settlementResolution.completeMarkets}/${settlementResolution.resolvedObservedMarkets}取得`
-            : "収集中"}
-          tone={settlementReady ? "good" : settlementResolution?.mismatchedMarkets || settlementResolution?.reconstructedMismatchedMarkets ? "bad" : "watch"}
-        />
-        <ExecutiveGate label="独立枠" value={sampleReady ? "合格" : `${verifiedTrades}/${minimumTrades}`} tone={sampleReady ? "good" : "watch"} />
-        <ExecutiveGate label="純損益" value={netPositive ? "合格" : trades ? "未合格" : "未判定"} tone={netPositive ? "good" : trades ? "bad" : "neutral"} />
-        <ExecutiveGate label="95%下限" value={edgePositive ? "合格" : auditedConfidenceLower === null ? "未判定" : sampleReady ? "未合格" : formatSignedPct(auditedConfidenceLower)} tone={edgePositive ? "good" : auditedConfidenceLower === null ? "neutral" : sampleReady ? "bad" : "watch"} />
-        <ExecutiveGate label="テストネット" value={testnetDisplay.label} tone={testnetDisplay.tone} />
-      </div>
-
-      <div className="grid grid-cols-3 items-stretch border-t md:grid-cols-[minmax(0,1fr)_28px_minmax(0,1fr)_28px_minmax(0,1fr)]">
-        <ExecutiveFlowStep icon={Database} title="Polymarket" value="15分市場の5秒板" state={collectorHealthy ? "収集中" : "確認中"} tone={collectorHealthy ? "good" : "watch"} />
-        <ArrowRight className="hidden h-4 w-4 self-center justify-self-center text-slate-300 md:block" />
-        <ExecutiveFlowStep icon={BrainCircuit} title="固定モデル" value="買い・売り・見送り" state="検証中" tone="watch" />
-        <ArrowRight className="hidden h-4 w-4 self-center justify-self-center text-slate-300 md:block" />
-        <ExecutiveFlowStep icon={TrendingUp} title="Hyperliquid" value="独立5秒板で仮想約定" state="実資金なし" tone="neutral" />
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-        <span className="inline-flex items-center gap-1.5"><Server className={`h-3.5 w-3.5 ${collectorHealthy ? "text-emerald-600" : "text-amber-600"}`} />市場板 {formatCompact(snapshot?.collection.realtimePrices?.records)}・決済板 {formatCompact(snapshot?.collection.realtimePrices?.executionRecords)}・同期品質 {synchronizedQuality?.passedGates ?? 0}/{synchronizedQuality?.totalGates ?? 6}・独立枠 {verifiedTrades}/{minimumTrades}{research ? `・採用 ${research.acceptedCandidates}/${research.totalCandidates}・順次 ${research.walkForwardFolds}期間` : ""}</span>
-        <span>{savedSnapshot ? "公開保存値" : "自動更新"}・{latestAt ? `${relativeTime(latestAt)}に更新` : "更新待ち"}</span>
-      </div>
-    </section>
-  );
-}
-
-function ExecutiveFlowStep({ icon: Icon, title, value, state, tone }: { icon: LucideIcon; title: string; value: string; state: string; tone: Tone }) {
-  return (
-    <div className="flex min-w-0 flex-col items-start gap-2 border-r px-3 py-3 last:border-r-0 md:flex-row md:items-center md:gap-3 md:px-5 md:py-4">
-      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${toneIconClass(tone)}`}><Icon className="h-4 w-4" /></span>
-      <div className="min-w-0 flex-1">
-        <div className="grid gap-1 md:flex md:items-center md:justify-between md:gap-2">
-          <p className="break-words text-[11px] font-bold text-slate-950 md:text-xs">{title}</p>
-          <span className={`rounded-sm px-1.5 py-0.5 text-[9px] font-bold ${tonePillClass(tone)}`}>{state}</span>
-        </div>
-        <p className="mt-1 line-clamp-2 min-h-8 break-words text-[10px] font-semibold leading-4 text-muted-foreground md:min-h-0 md:truncate md:text-[11px]">{value}</p>
-      </div>
-    </div>
-  );
-}
-
-function ExecutiveMetric({ icon: Icon, label, value, note, tone, meter }: { icon: LucideIcon; label: string; value: string; note: string; tone: Tone; meter?: number }) {
-  const valueClass = tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-700" : tone === "watch" ? "text-amber-800" : "text-slate-950";
-  return (
-    <div className="min-w-0 p-4 last:col-span-2 lg:last:col-span-1 sm:p-5">
-      <div className="flex items-center gap-2 text-[11px] font-bold text-muted-foreground"><Icon className="h-3.5 w-3.5" />{label}</div>
-      <p className={`mt-3 break-words text-2xl font-bold leading-none tabular-nums sm:text-3xl ${valueClass}`}>{value}</p>
-      {meter === undefined ? null : <VisualMeter tone={tone} value={meter} className="mt-3" />}
-      <p className="mt-2 text-[10px] font-semibold text-muted-foreground sm:text-[11px]">{note}</p>
-    </div>
-  );
-}
-
-function ExecutiveGate({ label, value, tone }: { label: string; value: string; tone: Tone }) {
-  const dotClass = tone === "good" ? "bg-emerald-500" : tone === "bad" ? "bg-rose-500" : tone === "watch" ? "bg-amber-400" : "bg-slate-300";
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-2 border-b border-r px-3 py-2.5 last:col-span-2 last:border-r-0 sm:border-b-0 sm:last:col-span-1 sm:px-4">
-      <span className="flex min-w-0 items-center gap-2 text-[10px] font-bold text-slate-600 sm:text-[11px]"><span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} />{label}</span>
-      <span className="shrink-0 text-[10px] font-bold text-slate-950 sm:text-[11px]">{value}</span>
-    </div>
-  );
-}
-
-function TradingPurposePanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
-  const gates = snapshot?.tradeReadiness?.gates ?? fallbackReadinessGates;
-  const shadowRunning = snapshot?.tradeReadiness.currentStage === "shadow";
-  const edgeReady = gates.find((gate) => gate.id === "edge")?.status === "ready";
-  const improving = shadowRunning && !edgeReady;
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="取引モデルの仕組みと現在地">
-      <div className={`grid gap-3 border-b px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5 ${shadowRunning ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
-        <div className="flex min-w-0 items-start gap-3">
-          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${shadowRunning ? "bg-sky-100 text-sky-700" : "bg-amber-100 text-amber-800"}`}>{shadowRunning ? <Activity className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}</span>
-          <div>
-            <p className={`text-xs font-bold ${shadowRunning ? "text-sky-700" : "text-amber-800"}`}>現在地: {improving ? "2. 次期モデル検証" : shadowRunning ? "3. シャドー検証" : "2. バックテスト"}</p>
-            <p className="mt-1 text-base font-bold text-slate-950">{improving ? "現行モデルは不採用。次期候補を実資金なしで検証中" : shadowRunning ? "実資金なしで市場確認と判断を継続記録中" : "優位性が確認できるまで、実取引は行いません"}</p>
-            <p className="mt-1 text-xs leading-5 text-slate-600">{improving ? "開始後に発生した取引だけを採点し、過去データへの合わせ込みを防いでいます。" : shadowRunning ? "2市場の情報を組み合わせた売買を仮想実行。採用条件を満たすまでは実注文を止めます。" : "未使用期間のテストで採用条件に届かず、Hyperliquidへの注文は停止しています。"}</p>
-          </div>
-        </div>
-        <span className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 text-xs font-bold text-white"><LockKeyhole className="h-4 w-4" />実取引 OFF</span>
-      </div>
-      <div className="p-4 sm:p-5">
-        <p className="text-xs font-bold text-muted-foreground">やっていること</p>
-        <div className="mt-4 grid items-stretch gap-2 md:grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)_24px_minmax(0,1fr)] md:gap-3">
-          <FlowStep icon={Database} number="1" title="予測を読む" source="Polymarket" detail="将来価格の確率" state="収集中" tone="good" />
-          <ArrowRight className="h-5 w-5 rotate-90 self-center justify-self-center text-slate-300 md:rotate-0" />
-          <FlowStep icon={BrainCircuit} number="2" title="方向を決める" source="予測モデル" detail="買い・売り・見送り" state="検証中" tone="watch" />
-          <ArrowRight className="h-5 w-5 rotate-90 self-center justify-self-center text-slate-300 md:rotate-0" />
-          <FlowStep icon={TrendingUp} number="3" title="注文する" source="Hyperliquid" detail="ロング・ショート" state={shadowRunning ? "仮想稼働" : "未開始"} tone={shadowRunning ? "watch" : "neutral"} />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 border-t sm:grid-cols-5">
-        {gates.map((gate, index) => (
-          <div key={gate.id} className="flex min-w-0 items-center gap-2 border-b border-r p-3 last:border-r-0 sm:border-b-0 sm:p-4">
-            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${readinessStepClass(gate.status)}`}>{gate.status === "ready" ? <CheckCircle2 className="h-4 w-4" /> : index + 1}</span>
-            <div className="min-w-0">
-              <p className="break-words text-xs font-bold leading-4 text-slate-800">{gate.label}</p>
-              <p className="mt-0.5 text-[10px] font-semibold text-muted-foreground">{readinessStatusLabel(gate.status)}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function FlowStep({ icon: Icon, number, title, source, detail, state, tone }: { icon: LucideIcon; number: string; title: string; source: string; detail: string; state: string; tone: Tone }) {
-  return (
-    <div className="flex min-h-24 items-center gap-3 rounded-md border border-border p-3 sm:p-4">
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${toneIconClass(tone)}`}><Icon className="h-5 w-5" /></span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-bold text-muted-foreground">STEP {number}</p>
-          <span className={`rounded-sm px-1.5 py-0.5 text-[10px] font-bold ${tonePillClass(tone)}`}>{state}</span>
-        </div>
-        <p className="mt-1 text-sm font-bold text-slate-950">{title}</p>
-        <p className="mt-0.5 truncate text-xs font-semibold text-slate-600">{source} / {detail}</p>
-      </div>
-    </div>
-  );
-}
-
-function CombinedShadowPanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
-  const shadow = snapshot?.combinedShadow;
-  const forward = shadow?.forwardEvaluation;
-  const running = shadow?.status === "running" && !shadow.emergencyStopped;
-  const displayedReturn = forward ? forward.netReturnPct : shadow?.returnPct;
-  const pnlSignal = getProfitSignal(displayedReturn);
-  const DecisionIcon = running ? Activity : AlertCircle;
-  const position = shadow?.openPositions[0];
-  const latest = shadow?.latestDecision;
-  const decisionLabel = formatShadowAction(latest?.action);
-  const hasClosedTrades = (forward?.trades ?? shadow?.trades ?? 0) > 0;
-  const forwardOnly = shadow?.forwardOnly === true;
-  const progressEvents = forward?.independentEvents ?? forward?.trades ?? shadow?.trades ?? 0;
-  const requiredEvents = forward?.minimumIndependentEvents ?? forward?.minimumTrades ?? 50;
-  const allHorizonEvents = forward?.totalIndependentEvents ?? forward?.totalTrades ?? progressEvents;
-  const remainingEvents = Math.max(0, requiredEvents - progressEvents);
-  const totalProgress = requiredEvents > 0 ? progressEvents / requiredEvents : 0;
-  const evaluationMeta = forward?.status === "promising"
-    ? { label: "基準達成", tone: "good" as const }
-    : forward?.status === "underperforming"
-      ? { label: "改善が必要", tone: "bad" as const }
-      : { label: "収集中", tone: "neutral" as const };
-
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="組み合わせ仮想売買の現在成績">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
-        <div className="flex items-center gap-2">
-          <DecisionIcon className={`h-4 w-4 ${running ? "text-emerald-600" : "text-amber-600"}`} />
-          <h2 className="text-sm font-bold text-slate-950">{forward?.horizons?.length ? "4時間軸の固定フォワード検証" : forwardOnly ? "次期モデルのフォワード検証" : "リアルタイム検証"}</h2>
-          <span className={`rounded-sm px-2 py-0.5 text-[10px] font-bold ${tonePillClass(evaluationMeta.tone)}`}>{forwardOnly ? evaluationMeta.label : "候補収集"}</span>
-        </div>
-        <span className={`rounded-sm px-2 py-1 text-[11px] font-bold ${running ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{running ? "5分ごとに市場を確認" : shadow?.emergencyStopped ? "緊急停止中" : "開始待ち"}</span>
-      </div>
-      <div className="grid lg:grid-cols-[minmax(250px,0.8fr)_minmax(0,1.5fr)]">
-        <div className={`border-b p-5 lg:border-b-0 lg:border-r sm:p-6 ${toneSoftClass(pnlSignal.tone)}`}>
-          <p className="text-xs font-bold text-muted-foreground">{forward?.activeHorizonHours ? `先行中の${forward.activeHorizonHours}時間モデル` : "コスト控除後の累計損益"}</p>
-          <p className={`mt-3 text-4xl font-bold leading-none sm:text-5xl ${pnlSignal.tone === "good" ? "text-emerald-700" : pnlSignal.tone === "bad" ? "text-rose-700" : "text-slate-950"}`}>{hasClosedTrades ? formatSignedPct(displayedReturn) : "未判定"}</p>
-          <div className="mt-5 flex items-center justify-between gap-3 text-xs font-bold text-slate-700">
-            <span>{progressEvents} / {requiredEvents}独立イベント</span>
-            <span>{forward?.status === "collecting" || !forward ? `あと${remainingEvents}件` : `${forward.passedGates} / ${forward.totalGates}条件`}</span>
-          </div>
-          <VisualMeter tone={evaluationMeta.tone} value={Math.min(100, totalProgress * 100)} className="mt-2" />
-          <p className="mt-3 text-xs font-semibold leading-5 text-slate-600">{forward?.status === "promising" ? "優位性の基準をすべて満たしました。次はテストネット検証です。" : forward?.status === "underperforming" ? "十分な件数で基準を満たさず、実取引には進みません。" : forward?.horizons?.length ? "4つを混ぜず、各時間軸50件まで固定条件で収集します。" : "50件までは結果を確定せず、固定条件のまま収集します。"}</p>
-        </div>
-        <div className="grid min-w-0">
-          <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
-            <CompactMetric label="全時間軸の独立イベント" value={`${allHorizonEvents}件`} />
-            <CompactMetric label="単純戦略との差" value={hasClosedTrades ? formatSignedPct(forward?.excessReturnPct) : "未判定"} />
-            <CompactMetric label="95%下限" value={forward?.status !== "collecting" ? formatSignedPct(forward?.excessConfidenceInterval95?.[0]) : "50件後"} />
-            <CompactMetric label="最大下落" value={hasClosedTrades ? formatPct(forward?.maxDrawdownPct ?? shadow?.maxDrawdownPct) : "未判定"} />
-          </div>
-          <div className="grid gap-3 border-t bg-slate-50 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-sm bg-white px-2 py-1 text-[10px] font-bold text-slate-700 ring-1 ring-border">直近の判断</span>
-                <span className="text-sm font-bold text-slate-950">{decisionLabel}</span>
-              </div>
-              <p className="mt-2 break-words text-xs leading-5 text-slate-600">{latest?.reason ?? "最初の市場確認を待っています"}</p>
-              {latest?.nextWindowAt ? <p className="mt-1 text-[11px] font-semibold text-sky-700">次の観測帯 {formatJapanDateTime(latest.nextWindowAt)}</p> : null}
-            </div>
-            <div className="text-left sm:text-right">
-              <p className="text-[10px] font-bold text-muted-foreground">現在の保有</p>
-              <p className="mt-1 text-sm font-bold text-slate-950">{position ? `${position.asset} ${position.side === "LONG" ? "ロング" : "ショート"}` : "なし"}</p>
-              <p className="mt-0.5 text-[10px] font-semibold text-muted-foreground">{latest?.observedAt ? relativeTime(latest.observedAt) : "更新待ち"}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-      {forward?.horizons?.length ? <ForwardHorizonProgress horizons={forward.horizons} /> : null}
-      <ScanFunnel funnel={shadow?.funnel} />
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-[11px] font-bold text-slate-600 sm:px-5">
-        <span>比較対象: {forward?.benchmarkLabel ?? "Polymarket・固定方向・ランダムを同時収集中"}</span>
-        <span className="text-rose-700">実取引 OFF</span>
-      </div>
-      <details className="group border-t">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-800 sm:px-5">
-          <span>評価条件と資産別成績</span>
-          <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="border-t bg-slate-50 px-4 py-4 sm:px-5">
-          <p className="text-xs leading-5 text-slate-600">開始後のデータだけを使い、Polymarket単体・常時ロング・常時ショート・ランダム200試行の中央値と同期間で比較します。</p>
-          <div className="mt-4 grid gap-x-6 sm:grid-cols-2">
-            {(forward?.gates ?? []).map((gate) => (
-              <div key={gate.id} className="flex items-center gap-2 border-b py-2.5 text-xs font-semibold text-slate-700">
-                {gate.passed ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <MinusCircle className="h-4 w-4 shrink-0 text-slate-400" />}
-                <span>{gate.label}</span>
-              </div>
-            ))}
-          </div>
-          {(forward?.attribution.byAsset.length ?? 0) > 0 ? (
-            <div className="mt-5">
-              <p className="text-xs font-bold text-slate-800">資産別</p>
-              <div className="mt-2 divide-y border-y">
-                {forward?.attribution.byAsset.map((asset) => (
-                  <div key={asset.asset} className="grid grid-cols-[48px_1fr_auto] items-center gap-3 py-2.5 text-xs">
-                    <span className="font-bold text-slate-950">{asset.asset}</span>
-                    <span className="font-semibold text-slate-600">{asset.trades}取引 / 勝率 {formatPct(asset.trades ? asset.wins / asset.trades : null)}</span>
-                    <span className={`font-bold ${asset.returnContributionPct >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(asset.returnContributionPct)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[11px] font-semibold text-slate-500">
-            <span>同期間比較 {forward?.comparableEvents ?? 0}件</span>
-            <span>参照価格差 {shadow?.settlementBasis.samples ?? 0}件 / 中央 {formatBasisBps(shadow?.settlementBasis.medianAbsolutePct)}</span>
-            <span>固定ルール {formatShadowRule(shadow?.signalRule)}</span>
-            <span>{shadow?.testnet.verifiedReady ? "テストネット照合済み" : "テストネット照合待ち"}</span>
-          </div>
-        </div>
-      </details>
-    </section>
-  );
-}
-
-function ShortTermDirectionPanel({ snapshot, downloadsAvailable }: { snapshot: MonitoringSnapshot | null; downloadsAvailable: boolean }) {
-  const model = snapshot?.combinedShadow.shortTermDirection;
-  const audit = model?.executionAudit;
-  const settlementResolution = model?.settlementResolution;
-  const research = model?.research;
-  const hasTrades = (audit?.verifiedIndependentEvents ?? audit?.verifiedPositions ?? 0) > 0;
-  const requiredAudits = audit?.minimumIndependentEvents ?? audit?.minimumAuditedPositions ?? 50;
-  const verifiedTrades = audit?.verifiedIndependentEvents ?? audit?.verifiedPositions ?? 0;
-  const auditReady = audit?.status === "healthy" && verifiedTrades >= requiredAudits;
-  const tone: Tone = auditReady && audit?.readinessStatus === "promising" ? "good" : auditReady && audit?.readinessStatus === "underperforming" ? "bad" : "neutral";
-  const remaining = Math.max(0, requiredAudits - verifiedTrades);
-  const provisionalPassingGates = audit?.currentlyPassingReadinessGates ?? 0;
-  const evaluatedGates = audit?.evaluatedReadinessGates ?? 0;
-  const directionCoverage = audit?.directionCoverage;
-  const steps = [
-    { label: "15分市場", value: model?.fifteenMinuteMarkets ?? 0, note: "対象" },
-    { label: "開始2分後", value: model?.decisionWindowMarkets ?? 0, note: "直近" },
-    { label: "板を取得", value: model?.priceReadyMarkets ?? 0, note: "直近" },
-    { label: "仮想発注", value: model?.opened ?? 0, note: "累計" },
-  ];
-  const attributionGroups = [
-    {
-      title: "資産別",
-      items: audit?.attribution.byAsset.map((item) => ({ ...item, label: item.asset })) ?? [],
-    },
-    {
-      title: "売買方向別",
-      items: audit?.attribution.bySide.map((item) => ({ ...item, label: item.side === "LONG" ? "ロング" : item.side === "SHORT" ? "ショート" : item.side })) ?? [],
-    },
-  ];
-
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="15分方向モデルの前向き検証">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
-        <div className="flex items-center gap-2">
-          <Clock3 className="h-4 w-4 text-sky-700" />
-          <h2 className="text-sm font-bold text-slate-950">15分モデルでサンプルを蓄積</h2>
-          <span className={`rounded-sm px-2 py-0.5 text-[10px] font-bold ${tonePillClass(tone)}`}>{model?.status === "promising" ? "基準達成" : model?.status === "underperforming" ? "改善が必要" : "前向き収集"}</span>
-        </div>
-        <span className={`rounded-sm px-2 py-1 text-[11px] font-bold ${model?.running ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{model?.running ? "1分ごとに確認" : "起動待ち"}</span>
-      </div>
-      <div className="grid lg:grid-cols-[minmax(240px,0.8fr)_minmax(0,1.5fr)]">
-        <div className={`border-b p-5 lg:border-b-0 lg:border-r sm:p-6 ${toneSoftClass(tone)}`}>
-          <p className="text-xs font-bold text-muted-foreground">独立した15分枠の完全監査</p>
-          <p className="mt-2 text-4xl font-bold leading-none tabular-nums text-slate-950 sm:text-5xl">{verifiedTrades}<span className="ml-2 text-base font-bold text-slate-500">/ {requiredAudits}</span></p>
-          <VisualMeter tone={tone} value={(verifiedTrades / requiredAudits) * 100} className="mt-4" />
-          <p className="mt-2 text-xs font-semibold text-slate-600">決済 {model?.trades ?? 0}件・あと{remaining}枠で成績を判定</p>
-        </div>
-        <div className="grid min-w-0">
-          <div className="grid grid-cols-3 divide-x divide-border">
-            <CompactMetric
-              label="決着価格の取得"
-              value={settlementResolution?.completeMarkets
-                ? `${settlementResolution.completeMarkets}/${settlementResolution.resolvedObservedMarkets}`
-                : "収集中"}
-              tone={settlementResolution?.status === "healthy" ? "good" : settlementResolution?.mismatchedMarkets || settlementResolution?.reconstructedMismatchedMarkets ? "bad" : "watch"}
-            />
-            <CompactMetric label="Poly側リターン" value={hasTrades ? formatSignedPct(audit?.polymarketNetReturnPct) : "未判定"} tone={signedMetricTone(audit?.polymarketNetReturnPct, hasTrades)} />
-            <CompactMetric label="HL側リターン" value={hasTrades ? formatSignedPct(audit?.hyperliquidNetReturnPct) : "未判定"} tone={signedMetricTone(audit?.hyperliquidNetReturnPct, hasTrades)} />
-          </div>
-          <div className="grid grid-cols-4 border-t bg-slate-50">
-            {steps.map((step, index) => (
-              <div key={step.label} className={`min-w-0 px-2 py-3 text-center sm:px-4 ${index < steps.length - 1 ? "border-r" : ""}`}>
-                <p className="truncate text-[9px] font-bold text-slate-500 sm:text-[10px]">{step.label}</p>
-                <p className="mt-1 text-xl font-bold tabular-nums text-slate-950 sm:text-2xl">{step.value}</p>
-                <p className="text-[9px] font-semibold text-slate-400">{step.note}</p>
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 divide-x border-t px-3 py-3 sm:grid-cols-4 sm:px-4">
-            <CompactMetric
-              label="方向別の監査"
-              value={`上 ${directionCoverage?.longIndependentEvents ?? 0} / 下 ${directionCoverage?.shortIndependentEvents ?? 0}`}
-              tone={directionCoverage?.passed ? "good" : "watch"}
-            />
-            <CompactMetric
-              label="実板監査率（95%必要）"
-              value={audit?.eligiblePositions ? formatPct(audit.coverage) : "収集中"}
-              tone={!audit?.eligiblePositions ? "neutral" : audit.coverage >= 0.95 ? "good" : "bad"}
-            />
-            <CompactMetric label="95%下限" value={(audit?.verifiedIndependentEvents ?? audit?.verifiedPositions ?? 0) > 0 ? formatSignedPct(audit?.excessConfidenceInterval95?.[0]) : "収集中"} />
-            <CompactMetric label="方向の正解" value={audit?.resolvedPredictions ? formatPct(audit.predictionAccuracy) : "収集中"} tone="neutral" />
-          </div>
-        </div>
-      </div>
-      <div className="grid gap-2 border-t px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold text-slate-950">直近: {formatShadowAction(model?.latestAction)}</span>
-            <span className="text-[10px] font-semibold text-slate-500">対照 {model?.controlTrades ?? 0}決済 / 保有 {model?.openPositions ?? 0}</span>
-          </div>
-          <p className="mt-1 break-words text-[11px] font-semibold leading-5 text-slate-600">{model?.latestReason ?? "15分市場を確認しています"}</p>
-        </div>
-        <div className="text-left sm:text-right">
-          <p className="text-[10px] font-bold text-slate-500">Up 58%以上 / Down 58%以上 / トレンド一致</p>
-          <p className="mt-1 text-[10px] font-semibold text-sky-700">{model?.nextDecisionAt ? `次回 ${formatJapanDateTime(model.nextDecisionAt)}` : model?.observedAt ? relativeTime(model.observedAt) : "開始待ち"}</p>
-        </div>
-      </div>
-      {attributionGroups.some((group) => group.items.length) ? (
-        <details className="group border-t">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-800 sm:px-5">
-            <span>資産別・方向別の成績</span>
-            <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="grid border-t bg-slate-50 sm:grid-cols-2 sm:divide-x">
-            {attributionGroups.map((group) => (
-              <div key={group.title} className="min-w-0 px-4 py-3 sm:px-5">
-                <p className="text-[10px] font-bold text-slate-500">{group.title}</p>
-                <div className="mt-1 divide-y">
-                  {group.items.map((item) => (
-                    <div key={item.label} className="grid grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-2 py-2 text-[11px]">
-                      <span className="font-bold text-slate-950">{item.label}</span>
-                      <span className="truncate font-semibold text-slate-500">{item.trades}件・勝率 {formatPct(item.trades ? item.wins / item.trades : null)}</span>
-                      <span className={`text-right font-bold ${item.returnContributionPct >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                        {formatSignedPct(item.returnContributionPct)}<span className="ml-1 text-[9px] text-slate-400">{formatUsd(item.netPnl)}</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </details>
-      ) : null}
-      {downloadsAvailable && hasTrades ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 sm:px-5">
-          <span className="flex items-center gap-2 text-xs font-bold text-slate-700"><History className="h-4 w-4" />前向き監査の保存結果</span>
-          <div className="flex flex-wrap gap-2">
-            <a className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-[10px] font-bold text-slate-700 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/forward-execution-audits/latest")}><FileJson className="h-3.5 w-3.5" />最新レポート</a>
-            <a className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-[10px] font-bold text-slate-700 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/forward-execution-audits/latest?format=metrics")}><Download className="h-3.5 w-3.5" />指標CSV</a>
-            <a className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-[10px] font-bold text-slate-700 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/forward-execution-audits/latest?format=history")}><History className="h-3.5 w-3.5" />履歴</a>
-          </div>
-        </div>
-      ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[10px] font-semibold text-slate-500 sm:px-5">
-        <span>{research
-          ? `暫定合格 ${provisionalPassingGates}/${evaluatedGates || audit?.totalReadinessGates || 10}・最終合格 ${audit?.passedReadinessGates ?? 0}/${audit?.totalReadinessGates ?? 10}・決着価格 ${settlementResolution?.completeMarkets ?? 0}/${settlementResolution?.resolvedObservedMarkets ?? 0}・Feed差 ${settlementResolution?.reconstructedMismatchedMarkets ?? 0}`
-          : "発注後の最初の5秒板で約定を再現中"}</span>
-        <span className="font-bold text-rose-700">実取引 OFF</span>
-      </div>
-    </section>
-  );
-}
-
-function ForwardHorizonProgress({ horizons }: {
-  horizons: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["forwardEvaluation"]>["horizons"]>;
-}) {
-  return (
-    <div className="border-t bg-slate-50" aria-label="時間軸別のフォワード検証進捗">
-      <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
-        <p className="text-xs font-bold text-slate-800">時間軸別</p>
-        <p className="text-[10px] font-semibold text-muted-foreground">各50独立イベントを評価</p>
-      </div>
-      <div className="grid grid-cols-2 border-t sm:grid-cols-4">
-        {horizons.map((horizon, index) => {
-          const tone = horizon.status === "promising" ? "good" : horizon.status === "underperforming" ? "bad" : "neutral";
+      <nav
+        className="grid grid-cols-3 rounded-md border border-slate-200 bg-white p-1"
+        aria-label="モデル監視画面"
+      >
+        {views.map((item) => {
+          const Icon = item.icon;
+          const active = view === item.id;
           return (
-            <div key={horizon.horizonHours} className={`min-w-0 p-3 sm:p-4 ${index % 2 === 0 ? "border-r" : ""} ${index < 2 ? "border-b sm:border-b-0" : ""} sm:border-r sm:last:border-r-0`}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-base font-bold tabular-nums text-slate-950">{horizon.horizonHours}時間</p>
-                <span className={`rounded-sm px-1.5 py-0.5 text-[9px] font-bold ${tonePillClass(tone)}`}>{horizon.status === "promising" ? "合格" : horizon.status === "underperforming" ? "不合格" : "収集中"}</span>
-              </div>
-              <p className="mt-2 text-xl font-bold tabular-nums text-slate-950">{horizon.independentEvents ?? horizon.trades}<span className="ml-1 text-xs font-semibold text-slate-500">/ {horizon.minimumIndependentEvents ?? horizon.minimumTrades}</span></p>
-              <VisualMeter tone={tone} value={horizon.progressPct * 100} className="mt-2" />
-              <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500">対象 {horizon.horizonEligibleMarkets}件 / 計算可能 {horizon.priceReadyEvents}件</p>
-              <p className="mt-1 line-clamp-2 min-h-8 text-[10px] font-semibold leading-4 text-slate-600">{horizon.latestReason}</p>
-              {horizon.nextWindowAt ? <p className="mt-1 text-[10px] font-bold text-sky-700">次回 {formatJapanDateTime(horizon.nextWindowAt)}</p> : null}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ScanFunnel({ funnel }: { funnel: MonitoringSnapshot["combinedShadow"]["funnel"] | undefined }) {
-  const steps = [
-    { label: "市場を確認", value: funnel?.scannedMarkets ?? 0, note: "直近" },
-    { label: "価格型", value: funnel?.structuredMarkets ?? 0, note: "直近" },
-    { label: "時間が一致", value: funnel?.horizonEligibleMarkets ?? 0, note: "直近" },
-    { label: "計算可能", value: funnel?.priceReadyEvents ?? 0, note: "直近" },
-    { label: "基準を通過", value: funnel?.thresholdSignals ?? 0, note: "累計" },
-    { label: "仮想発注", value: funnel?.opened ?? 0, note: "累計" },
-  ];
-  return (
-    <div className="border-t bg-white px-4 py-4 sm:px-5" aria-label="市場確認から仮想発注までの件数">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-xs font-bold text-slate-800">判断の流れ</p>
-        <p className="text-[10px] font-semibold text-muted-foreground">確認 {funnel?.scans ?? 0}回</p>
-      </div>
-      <div className="grid grid-cols-3 overflow-hidden rounded-md border border-border sm:grid-cols-6">
-        {steps.map((step, index) => (
-          <div key={step.label} className="relative min-w-0 border-b border-r p-2.5 last:border-r-0 sm:border-b-0 sm:p-3">
-            <p className="truncate text-[9px] font-bold text-muted-foreground sm:text-[10px]">{step.label}</p>
-            <p className="mt-1 text-xl font-bold tabular-nums text-slate-950 sm:text-2xl">{step.value}</p>
-            <p className="text-[9px] font-semibold text-slate-400">{step.note}</p>
-            {index < steps.length - 1 ? <ArrowRight className="absolute right-0 top-1/2 z-10 hidden h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-white text-slate-300 sm:block" /> : null}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PaperExperimentPanel({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
-  const paper = snapshot?.paperExperiment;
-  const signal = getProfitSignal(paper?.returnPct);
-  const ProfitIcon = signal.icon;
-  return (
-    <details className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="参考用のPolymarket単体実験">
-      <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 sm:px-5">
-        <span className="flex min-w-0 items-center gap-2 text-sm font-bold text-slate-950"><Activity className="h-4 w-4 text-sky-700" />参考実験: Polymarket単体</span>
-        <span className="shrink-0 text-xs font-bold text-muted-foreground">{formatSignedPct(paper?.returnPct)}</span>
-      </summary>
-      <div className="border-t">
-      <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] sm:p-5">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-sky-100 text-sky-700"><Activity className="h-5 w-5" /></span>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs font-bold text-muted-foreground">現在動いている別実験</p>
-              <span className="rounded-sm bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">仮想資金</span>
-            </div>
-            <h2 className="mt-1 text-base font-bold text-slate-950">主モデルとは別の比較データ</h2>
-            <p className="mt-1 max-w-xl text-xs leading-5 text-slate-600">実資金もHyperliquid注文も使わないため、主な運用判定には含めません。</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-3 divide-x divide-border border-t pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-          <CompactMetric label="仮想残高" value={formatUsd(paper?.equity)} />
-          <CompactMetric label="現在損益" value={formatSignedPct(paper?.returnPct)} />
-          <CompactMetric label="保有中" value={`${paper?.openPositions ?? 0}件`} />
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-5">
-        <span className="inline-flex items-center gap-1.5"><ProfitIcon className={`h-3.5 w-3.5 ${signal.tone === "good" ? "text-emerald-600" : signal.tone === "bad" ? "text-rose-600" : "text-slate-500"}`} />含み損益 {formatUsd(paper?.unrealizedPnl)} / 仮想約定 {paper?.fills ?? 0}件</span>
-        <span>{paper?.updatedAt ? `${relativeTime(paper.updatedAt)}に更新` : "データ待ち"}</span>
-      </div>
-      </div>
-    </details>
-  );
-}
-
-function DevelopmentMonitor({ snapshot, readOnly }: { snapshot: MonitoringSnapshot | null; readOnly: boolean }) {
-  const healthyPipelines = snapshot?.pipelines.filter((pipeline) => pipeline.status === "healthy").length ?? 0;
-  const realtimePrices = snapshot?.collection.realtimePrices;
-  const synchronizedPrices = snapshot?.collection.synchronizedPrices;
-  const synchronizedQuality = synchronizedPrices?.quality;
-  const prospective = synchronizedPrices?.prospective;
-  const observedProspective = Math.max(0, ...(prospective?.horizons.map((horizon) => horizon.observedMarkets) ?? [0]));
-  const awaitingProspective = Math.max(0, ...(prospective?.horizons.map((horizon) => horizon.awaitingExitMarkets + horizon.awaitingResolutionMarkets) ?? [0]));
-  const operationRows = [
-    {
-      label: "異常通知",
-      value: snapshot?.operations?.alerts.status === "healthy" ? "監視中" : snapshot?.operations?.alerts.status === "error" ? "要確認" : "起動待ち",
-      status: snapshot?.operations?.alerts.status ?? "waiting",
-    },
-    {
-      label: "公開接続",
-      value: snapshot?.operations?.tunnel.fixedUrl ? "固定URL" : snapshot?.operations?.tunnel.status === "healthy" ? "自動接続" : "確認中",
-      status: snapshot?.operations?.tunnel.status === "healthy" ? "healthy" : "waiting",
-    },
-    {
-      label: "暗号化保管",
-      value: snapshot?.operations?.backup.status === "healthy" ? `復元確認 ${snapshot.operations.backup.copies}世代` : snapshot?.operations?.backup.status === "error" ? "要確認" : "確認中",
-      status: snapshot?.operations?.backup.status ?? "waiting",
-    },
-    {
-      label: "検証データ保管",
-      value: snapshot?.operations?.columnarArchive?.status === "healthy"
-        ? `${snapshot.operations.columnarArchive.archivedThrough}まで`
-        : snapshot?.operations?.columnarArchive?.status === "error" ? "要確認" : "保存中",
-      status: snapshot?.operations?.columnarArchive?.status ?? "waiting",
-    },
-  ] as const;
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="開発稼働状況">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
-        <div className="flex items-center gap-2">
-          <Server className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-bold text-slate-950">データ収集・検証基盤</h2>
-        </div>
-        <span className="text-xs font-bold text-muted-foreground">{readOnly ? "公開時点" : `${healthyPipelines}/${snapshot?.pipelines.length ?? 6} 稼働`}</span>
-      </div>
-      <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
-        <MonitorMetric
-          label="5秒板価格同期"
-          value={formatCompact(realtimePrices?.records)}
-          note={realtimePrices?.records
-            ? `稼働 ${realtimePrices.activeMarkets}市場・最大ずれ ${formatMilliseconds(realtimePrices.maximumSkewMs)}`
-            : "WebSocketの記録を開始"}
-        />
-        <MonitorMetric
-          label="1分板価格同期"
-          value={formatCompact(synchronizedPrices?.records)}
-          note={synchronizedQuality
-            ? `同期 ${Math.round(synchronizedQuality.coverage * 100)}%・ずれ ${formatMilliseconds(synchronizedQuality.p95SkewMs)}`
-            : synchronizedPrices?.records ? `最大ずれ ${formatMilliseconds(synchronizedPrices.maximumSkewMs)}` : "新しい記録を収集中"}
-        />
-        <MonitorMetric
-          label="1分板の答え合わせ"
-          value={`${prospective?.completedEvents ?? 0}/${prospective?.targetEvents ?? 50}件`}
-          note={`観測 ${observedProspective}・決着待ち ${awaitingProspective}`}
-        />
-        <MonitorMetric
-          label={synchronizedQuality ? "連続稼働" : "連続蓄積"}
-          value={synchronizedQuality ? formatDurationHours(synchronizedQuality.durationHours) : formatElapsed(snapshot?.collection.startedAt)}
-          note={synchronizedQuality ? "最後の5分超欠損から・48時間で判定" : relativeTime(snapshot?.collection.latestAt)}
-        />
-      </div>
-      <div className="grid grid-cols-2 border-t sm:grid-cols-3 lg:grid-cols-6 lg:divide-x lg:divide-border">
-        {(snapshot?.pipelines ?? fallbackPipelines).map((pipeline) => (
-          <div key={pipeline.id} className="flex items-center justify-between gap-2 border-b px-3 py-2.5 odd:border-r sm:border-b-0 sm:border-r-0 sm:px-4 sm:py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${readOnly ? "bg-slate-300" : pipeline.status === "healthy" ? "bg-emerald-500" : pipeline.status === "error" ? "bg-rose-500" : "bg-amber-400"}`} />
-              <span className="break-words text-[11px] font-bold leading-4 text-slate-800">{pipeline.label}</span>
-            </div>
-            <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">{pipeline.cadence}</span>
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-2 divide-x divide-y divide-border border-t bg-slate-50/70 sm:grid-cols-4 sm:divide-y-0">
-        {operationRows.map((row) => (
-          <div key={row.label} className="flex min-w-0 items-start justify-center gap-2 px-2 py-2.5 sm:items-center sm:px-4">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${row.status === "healthy" ? "bg-emerald-500" : row.status === "error" ? "bg-rose-500" : "bg-amber-400"}`} />
-            <span className="min-w-0 text-[10px] font-bold leading-4 text-slate-700 sm:text-xs">
-              <span className="block truncate sm:inline">{row.label}</span>
-              <span className="block truncate text-slate-500 sm:ml-1 sm:inline">{row.value}</span>
-            </span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function MonitorMetric({ label, value, note }: { label: string; value: string; note: string }) {
-  return (
-    <div className="min-w-0 p-4 sm:p-5">
-      <p className="text-[11px] font-bold text-muted-foreground sm:text-xs">{label}</p>
-      <p className="mt-2 break-words text-2xl font-bold leading-none text-slate-950 sm:text-3xl">{value}</p>
-      <p className="mt-2 truncate text-[10px] font-semibold text-muted-foreground sm:text-xs">{note}</p>
-    </div>
-  );
-}
-
-function MonitoringDetails({ snapshot }: { snapshot: MonitoringSnapshot | null }) {
-  const model = snapshot?.model;
-  const synchronizedQuality = snapshot?.collection.synchronizedPrices?.quality;
-  const prospective = snapshot?.collection.synchronizedPrices?.prospective;
-  const holdoutAudit = model?.closestHoldoutAudit;
-  const auditedReturn = holdoutAudit?.netReturnPct ?? model?.latestReturnPct;
-  const auditedBenchmark = holdoutAudit?.benchmarkReturnPct ?? model?.benchmarkReturnPct;
-  const auditedDrawdown = holdoutAudit?.maxDrawdownPct ?? model?.maxDrawdownPct;
-  const passedChecks = snapshot?.backtestQuality.checks.filter((check) => check.passed).length ?? 0;
-  const qualitySignal = getEvaluationSignal(snapshot?.backtestQuality.status);
-  const synchronizedTone: Tone = synchronizedQuality?.status === "healthy"
-    ? "good"
-    : synchronizedQuality?.status === "attention" ? "bad" : "watch";
-  return (
-    <details className="rounded-lg border border-border bg-white shadow-sm">
-      <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 sm:px-5">
-        <span className="flex items-center gap-2 text-sm font-bold text-slate-950"><Layers3 className="h-4 w-4 text-primary" />詳しい収集・検証データ</span>
-        <span className="text-xs font-semibold text-muted-foreground">必要なときだけ表示</span>
-      </summary>
-      <div className="grid gap-4 border-t bg-slate-50/60 p-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] sm:p-4">
-      <div className="rounded-md border border-border bg-white p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-primary" />
-            <h2 className="text-base font-bold text-slate-950">バックテスト品質</h2>
-          </div>
-          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${tonePillClass(qualitySignal.tone)}`}>
-            {passedChecks}/{snapshot?.backtestQuality.checks.length ?? 4} 合格
-          </span>
-        </div>
-        <div className="mt-5 grid grid-cols-3 divide-x divide-border">
-          <CompactMetric label={holdoutAudit ? "候補の最終損益" : "戦略損益"} value={formatSignedPct(auditedReturn)} />
-          <CompactMetric label="最良の単純戦略" value={formatSignedPct(auditedBenchmark)} />
-          <CompactMetric label="最大下落" value={formatPct(auditedDrawdown)} />
-        </div>
-        <div className="mt-5 flex flex-wrap gap-2 border-t pt-4">
-          {(snapshot?.backtestQuality.checks ?? []).map((check) => (
-            <span key={check.label} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold ${check.passed ? "bg-emerald-50 text-emerald-700" : snapshot?.backtestQuality.status === "underperforming" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-800"}`}>
-              {check.passed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleDot className="h-3.5 w-3.5" />}
-              {check.label}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-md border border-border bg-white p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Layers3 className="h-5 w-5 text-primary" />
-            <h2 className="text-base font-bold text-slate-950">同期価格の品質</h2>
-          </div>
-          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${tonePillClass(synchronizedTone)}`}>
-            {synchronizedQuality?.status === "healthy" ? "基準合格" : synchronizedQuality?.status === "attention" ? "要改善" : "48時間を確認中"}
-          </span>
-        </div>
-        <div className="mt-5 grid grid-cols-3 divide-x divide-border">
-          <CompactMetric label="同期率" value={formatPct(synchronizedQuality?.coverage)} />
-          <CompactMetric label="時刻ずれ 95%" value={formatMilliseconds(synchronizedQuality?.p95SkewMs)} />
-          <CompactMetric label="価格差 95%" value={formatBasisBps(synchronizedQuality?.p95AbsoluteBasisPct)} />
-        </div>
-        <div className="mt-4 rounded-md border border-border bg-slate-50 px-3 py-3">
-          <div className="flex items-center justify-between gap-3 text-xs font-bold">
-            <span className="text-slate-700">1分板で観測後に答え合わせ</span>
-            <span className="tabular-nums text-slate-950">{prospective?.completedEvents ?? 0}/{prospective?.targetEvents ?? 50}件</span>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {(prospective?.horizons ?? [6, 12, 24, 48].map((horizonHours) => ({ horizonHours, completedEvents: 0, observedMarkets: 0, awaitingExitMarkets: 0, awaitingResolutionMarkets: 0, missedMarkets: 0, targetEvents: 50 }))).map((horizon) => (
-              <div key={horizon.horizonHours} className="rounded-sm border border-border bg-white px-2.5 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-bold text-muted-foreground">{horizon.horizonHours}時間</span>
-                  <span className="text-xs font-bold tabular-nums text-slate-950">{horizon.completedEvents}/{horizon.targetEvents}</span>
-                </div>
-                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-200">
-                  <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, horizon.completedEvents / Math.max(1, horizon.targetEvents) * 100)}%` }} />
-                </div>
-                <p className="mt-1.5 truncate text-[9px] font-semibold text-muted-foreground">観測 {horizon.observedMarkets}・待ち {horizon.awaitingExitMarkets + horizon.awaitingResolutionMarkets}・欠測 {horizon.missedMarkets}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="mt-5 flex flex-wrap gap-2 border-t pt-4">
-          {(synchronizedQuality?.gates ?? []).map((gate) => (
-            <span key={gate.id} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold ${gate.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
-              {gate.passed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleDot className="h-3.5 w-3.5" />}
-              {gate.label}
-            </span>
-          ))}
-        </div>
-        <div className="mt-4 divide-y divide-border">
-          {(snapshot?.hyperliquid.assets ?? []).map((item) => (
-            <div key={item.asset} className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-3 py-3">
-              <span className="text-sm font-bold text-slate-950">{item.asset}</span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold text-slate-950">{formatMarketPrice(item.price)}</p>
-                <p className="truncate text-[10px] font-semibold text-muted-foreground">24h出来高 {formatUsdCompact(item.dayVolume)}</p>
-              </div>
-              <span className={`text-sm font-bold ${(item.change24hPct ?? 0) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.change24hPct)}</span>
-            </div>
-          ))}
-          {!snapshot?.hyperliquid.assets.length ? <p className="py-6 text-center text-sm text-muted-foreground">主要銘柄の収集を開始しています</p> : null}
-        </div>
-        <p className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
-          15分市場はUp/Down両板・Chainlink・Binance・Hyperliquid板を5秒ごとに保存します。長期市場の1分板とは分離し、どちらも収集開始後に実際に観測できた市場だけを評価します。
-        </p>
-      </div>
-      </div>
-    </details>
-  );
-}
-
-function CompactMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: Tone }) {
-  const valueClass = tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-700" : tone === "watch" ? "text-amber-800" : "text-slate-950";
-  return (
-    <div className="min-w-0 px-3 first:pl-0 last:pr-0 sm:px-4">
-      <p className="text-[10px] font-bold text-muted-foreground sm:text-xs">{label}</p>
-      <p className={`mt-2 break-words text-xl font-bold sm:text-2xl ${valueClass}`}>{value}</p>
-    </div>
-  );
-}
-
-function signedMetricTone(value: number | null | undefined, ready: boolean): Tone {
-  if (!ready || value === null || value === undefined) return "neutral";
-  return value > 0 ? "good" : value < 0 ? "bad" : "neutral";
-}
-
-const fallbackPipelines = [
-  { id: "polymarket", label: "価格同期収集", cadence: "1分ごと", status: "waiting" as const },
-  { id: "hyperliquid", label: "相場データ収集", cadence: "1分ごと", status: "waiting" as const },
-  { id: "realtime-market-data", label: "秒単位の板収集", cadence: "5秒ごと", status: "waiting" as const },
-  { id: "backtest", label: "モデル再検証", cadence: "6時間ごと", status: "waiting" as const },
-  { id: "short-term-backtest", label: "15分モデル過去検証", cadence: "6時間ごと", status: "waiting" as const },
-  { id: "realtime-short-term-backtest", label: "5秒板リプレイ", cadence: "30分ごと", status: "waiting" as const },
-  { id: "columnar-archive", label: "検証データ保存", cadence: "6時間ごと", status: "waiting" as const },
-  { id: "forward-experiment", label: "固定フォワード検証", cadence: "5分ごと", status: "waiting" as const },
-  { id: "short-term-direction", label: "15分モデル検証", cadence: "1分ごと", status: "waiting" as const },
-];
-
-const fallbackReadinessGates: MonitoringSnapshot["tradeReadiness"]["gates"] = [
-  { id: "data", label: "データ収集", status: "attention" },
-  { id: "edge", label: "優位性確認", status: "blocked" },
-  { id: "shadow", label: "シャドー検証", status: "not_started" },
-  { id: "testnet", label: "テストネット", status: "not_started" },
-  { id: "live", label: "実取引", status: "locked" },
-];
-
-function BacktestResultsPanel({
-  items,
-  monitoring,
-  downloadsAvailable,
-}: {
-  items: ModelEvaluationSummary[];
-  monitoring: MonitoringSnapshot | null;
-  downloadsAvailable: boolean;
-}) {
-  const [requestedId, setRequestedId] = useState<string | null>(null);
-  const [requestedItem, setRequestedItem] = useState<ModelEvaluationSummary | null>(null);
-
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("backtest");
-    setRequestedId(id);
-    if (!id || items.some((item) => item.id === id) || !downloadsAvailable) return;
-    void fetchLocalApi<{ summary: ModelEvaluationSummary }>(`/api/model-evaluations/${encodeURIComponent(id)}`)
-      .then((report) => setRequestedItem(report.summary))
-      .catch(() => setRequestedItem(null));
-  }, [downloadsAvailable, items]);
-
-  const latest = items.find((item) => item.status === "completed") ?? items[0] ?? null;
-  const selected = requestedItem ?? items.find((item) => item.id === requestedId) ?? latest;
-  const signal = backtestResultSignal(selected);
-  const ResultIcon = signal.icon;
-  const isRejectedAudit = selected?.result.source === "closest-rejected-candidate";
-  const synchronizedHoldoutReady = (selected?.dataset.testSynchronizedExecutionCoverage ?? 0) >= 0.9;
-  const backtestPipeline = monitoring?.pipelines.find((pipeline) => pipeline.id === "backtest");
-  const research = monitoring?.combinedShadow.shortTermDirection?.research ?? null;
-  const realtimeResearch = monitoring?.combinedShadow.shortTermDirection?.realtimeResearch ?? null;
-  const publicBase = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="バックテスト結果">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
-        <div className="flex min-w-0 items-center gap-2">
-          <BarChart3 className="h-4 w-4 shrink-0 text-primary" />
-          <h2 className="text-sm font-bold text-slate-950">現行モデルのバックテスト</h2>
-          {requestedId && selected?.id === requestedId ? <span className="rounded-sm bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700">指定した実行</span> : null}
-        </div>
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500"><Clock3 className="h-3.5 w-3.5" />6時間ごとに自動実行</span>
-      </div>
-
-      {research ? <ShortTermHistoricalBacktest research={research} downloadsAvailable={downloadsAvailable} /> : null}
-      {realtimeResearch ? <RealtimeShortTermBacktest research={realtimeResearch} downloadsAvailable={downloadsAvailable} /> : null}
-
-      <details className={research || realtimeResearch ? "border-t" : ""} open={requestedId || (!research && !realtimeResearch) ? true : undefined}>
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
-          <span className="flex items-center gap-2"><Layers3 className="h-4 w-4" />6・12・24・48時間モデル</span>
-          <span className="text-[10px] font-semibold text-slate-500">比較研究と全実行履歴</span>
-        </summary>
-        <div className="border-t">
-      {!selected ? (
-        <div className="flex items-center gap-3 px-5 py-8 text-sm font-semibold text-slate-600">
-          <Clock3 className="h-5 w-5 text-amber-500" />最初のバックテストを実行中です
-        </div>
-      ) : (
-        <>
-          <div className={`grid gap-4 border-b p-5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-6 ${toneSoftClass(signal.tone)}`}>
-            <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${toneIconClass(signal.tone)}`}><ResultIcon className="h-6 w-6" /></span>
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold text-slate-500">モデル採用判定</p>
-              <p className="mt-1 text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{signal.label}</p>
-              <p className="mt-1 text-xs font-semibold text-slate-600">{isRejectedAudit ? "最有力候補も採用基準を満たしていません" : signal.description}</p>
-            </div>
-            <div className="text-left text-[11px] font-semibold leading-5 text-slate-600 sm:text-right">
-              <p>{formatJapanDateTime(selected.completedAt ?? selected.startedAt)} 実行</p>
-              <p>未使用テスト {selected.dataset.testEvents}件</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-4 lg:divide-y-0">
-            <BacktestMetric label={isRejectedAudit ? "最有力候補の取引" : "最終テストの取引"} value={`${selected.result.trades}件`} tone={selected.result.trades >= 50 ? "good" : "watch"} />
-            <BacktestMetric label="コスト後損益" value={selected.result.trades ? formatSignedPct(selected.result.netReturnPct) : synchronizedHoldoutReady ? "見送り" : "同期板待ち"} tone={selected.result.trades ? signedMetricTone(selected.result.netReturnPct, true) : synchronizedHoldoutReady ? "neutral" : "watch"} />
-            <BacktestMetric label="最良の単純戦略" value={formatSignedPct(selected.result.benchmarkReturnPct)} tone="neutral" />
-            <BacktestMetric label="単純戦略との差" value={selected.result.trades ? formatSignedPct(selected.result.excessReturnPct) : "未判定"} tone={signedMetricTone(selected.result.excessReturnPct, selected.result.trades > 0)} />
-          </div>
-
-          <div className="border-t px-4 py-4 sm:px-5">
-            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4" aria-label="時間軸別バックテスト">
-              {normalizedBacktestHorizons(selected).map((horizon) => (
-                <div className="min-w-0 bg-white p-3" key={horizon.horizonHours}>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-bold text-slate-950">{horizon.horizonHours}時間前</span>
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${horizonStatusClass(horizon.status)}`} />
-                  </div>
-                  <p className={`mt-2 text-xl font-bold leading-none ${horizon.trades > 0 && (horizon.netReturnPct ?? 0) < 0 ? "text-rose-700" : "text-slate-950"}`}>{horizon.trades > 0 ? formatSignedPct(horizon.netReturnPct) : (horizon.testSynchronizedExecutionCoverage ?? 0) < 0.9 ? "同期板待ち" : "見送り"}</p>
-                  <p className="mt-2 text-[10px] font-semibold text-slate-500">取引 {horizon.trades}件 / テスト {horizon.testEvents}件</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              <span>{selected.validation.walkForwardFolds > 0 ? `順次検証 ${selected.validation.profitableValidationFolds}/${selected.validation.walkForwardFolds}期間でプラス` : "順次検証 対象なし"}</span>
-              <span>補正後確信度 {selected.result.deflatedSharpeProbability === null ? "未判定" : formatPct(selected.result.deflatedSharpeProbability)}</span>
-              <span>最大下落 {selected.result.trades > 0 ? formatPct(selected.result.maxDrawdownPct) : "未判定"}</span>
-            </div>
-            <span>{backtestPipeline?.lastSuccessAt ? `最終成功 ${formatJapanDateTime(backtestPipeline.lastSuccessAt)}` : "実行状況を確認中"}</span>
-          </div>
-
-          <details className="border-t" key={requestedId ?? "backtest-history"} open={requestedId ? true : undefined}>
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
-              <span className="flex items-center gap-2"><History className="h-4 w-4" />実行履歴と再現情報</span>
-              <span className="text-[10px] font-semibold text-slate-500">{items.length}回分</span>
-            </summary>
-            <div className="border-t">
-              <div className="grid gap-1 border-b bg-slate-50 px-4 py-3 text-[10px] font-semibold text-slate-500 sm:grid-cols-2 sm:px-5">
-                <span>実行ID {shortHash(selected.id, 12)} / データ {shortHash(selected.datasetHash)} / 設定 {shortHash(selected.configHash)}</span>
-                <span className="sm:text-right">実装 {shortHash(selected.codeRevision)} / {formatCompactPeriod(selected.dataset.firstEndAt, selected.dataset.lastEndAt)}</span>
-              </div>
-              <div className="divide-y">
-                {items.map((item) => {
-                  const itemSignal = backtestResultSignal(item);
-                  return (
-                    <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[132px_minmax(0,1fr)_80px_80px_auto] sm:px-5 ${item.id === selected.id ? "bg-sky-50/50" : ""}`} id={`backtest-${item.id}`} key={item.id}>
-                      <a className="text-xs font-bold text-slate-800 hover:text-primary" href={`${publicBase}/paper-trading/?backtest=${encodeURIComponent(item.id)}#backtest-${item.id}`}>{formatJapanDateTime(item.completedAt ?? item.startedAt)}</a>
-                      <div className="min-w-0">
-                        <p className={`text-xs font-bold ${itemSignal.tone === "good" ? "text-emerald-700" : itemSignal.tone === "bad" ? "text-rose-700" : "text-amber-800"}`}>{itemSignal.label}</p>
-                        <p className="truncate text-[10px] font-semibold text-slate-500">{shortHash(item.id, 12)} / data {shortHash(item.datasetHash)}</p>
-                      </div>
-                      <span className="hidden text-right text-xs font-bold tabular-nums text-slate-700 sm:block">{item.result.trades}件</span>
-                      <span className={`hidden text-right text-xs font-bold tabular-nums sm:block ${(item.result.netReturnPct ?? 0) < 0 ? "text-rose-700" : "text-slate-800"}`}>{item.result.trades ? formatSignedPct(item.result.netReturnPct) : "見送り"}</span>
-                      <div className="flex items-center justify-end gap-1">
-                        {downloadsAvailable ? <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl(`/api/model-evaluations/${encodeURIComponent(item.id)}`)} title="JSONレポート" aria-label="JSONレポート"><FileJson className="h-4 w-4" /></a> : null}
-                        {downloadsAvailable ? <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl(`/api/model-evaluations/${encodeURIComponent(item.id)}?format=csv`)} title="CSV結果" aria-label="CSV結果"><Download className="h-4 w-4" /></a> : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {downloadsAvailable ? (
-                <div className="flex justify-end border-t px-4 py-3 sm:px-5">
-                  <a className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-xs font-bold text-slate-700 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/model-evaluations?limit=100&format=csv")}><Download className="h-4 w-4" />履歴をCSVで保存</a>
-                </div>
-              ) : null}
-            </div>
-          </details>
-        </>
-      )}
-        </div>
-      </details>
-    </section>
-  );
-}
-
-function ShortTermHistoricalBacktest({
-  research,
-  downloadsAvailable,
-}: {
-  research: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["shortTermDirection"]>["research"]>;
-  downloadsAvailable: boolean;
-}) {
-  const current = research.candidates.find((candidate) => candidate.id === research.currentCandidateId)
-    ?? research.candidates[0];
-  if (!current) return null;
-  const tone: Tone = current.status === "promising" ? "good" : current.status === "rejected" ? "bad" : "watch";
-  const label = current.status === "promising" ? "採用候補" : current.status === "rejected" ? "基準未達" : "データ不足";
-  const Icon = current.status === "promising" ? CheckCircle2 : current.status === "rejected" ? TrendingDown : Clock3;
-
-  return (
-    <div>
-      <div className={`grid gap-4 border-b p-5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-6 ${toneSoftClass(tone)}`}>
-        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-md ${toneIconClass(tone)}`}><Icon className="h-6 w-6" /></span>
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold text-slate-500">15分固定モデル</p>
-          <p className="mt-1 text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{label}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-600">Polymarket方向 + Hyperliquidトレンド一致 / 1取引5% / 同時3件まで</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-left text-[11px] font-semibold leading-5 text-slate-600 sm:justify-end sm:text-right">
-          <div>
-          <p>過去 {research.lookbackHours}時間・{formatCompact(research.completeMarkets)}市場</p>
-          <p>{formatJapanDateTime(research.generatedAt)} 実行</p>
-          </div>
-          {downloadsAvailable ? (
-            <div className="flex gap-1">
-              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/short-term-backtests/latest")} title="最新レポート" aria-label="最新レポート"><FileJson className="h-4 w-4" /></a>
-              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/short-term-backtests/latest?format=metrics")} title="指標一覧" aria-label="指標一覧"><Download className="h-4 w-4" /></a>
-              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/short-term-backtests/latest?format=observations")} title="約定観測一覧" aria-label="約定観測一覧"><History className="h-4 w-4" /></a>
-              <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/short-term-backtests/latest?format=samples")} title="判断時点サンプル" aria-label="判断時点サンプル"><Database className="h-4 w-4" /></a>
-            </div>
-          ) : null}
-        </div>
-      </div>
-      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
-        <BacktestMetric label="未使用期間の取引" value={`${current.trades}件`} tone={current.trades >= 50 ? "good" : "watch"} />
-        <BacktestMetric label="資金配分後の損益" value={current.trades ? formatSignedPct(current.netReturnPct) : "見送り"} tone={signedMetricTone(current.netReturnPct, current.trades > 0)} />
-        <BacktestMetric label="1取引の平均" value={current.averageReturnPct === null ? "未判定" : formatSignedPct(current.averageReturnPct)} tone={signedMetricTone(current.averageReturnPct, current.averageReturnPct !== null)} />
-        <BacktestMetric label="単純戦略との差" value={current.excessReturnPct === null ? "未判定" : formatSignedPct(current.excessReturnPct)} tone={signedMetricTone(current.excessReturnPct, current.excessReturnPct !== null)} />
-        <BacktestMetric label="最大下落" value={current.trades ? formatPct(current.maxDrawdownPct) : "未判定"} tone={current.maxDrawdownPct <= 0.05 ? "good" : "bad"} />
-      </div>
-      {research.diagnosis ? <ShortTermBacktestDiagnosis diagnosis={research.diagnosis} sensitivity={research.sensitivity} /> : null}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <span>順次検証 {current.profitableFolds}/{current.totalFolds}期間でプラス</span>
-          <span>15分枠の95%下限 {formatSignedPct(current.confidenceLowerPct)}</span>
-          <span>採用条件 {current.passedGates}/{current.totalGates}</span>
-        </div>
-        <span>集約履歴足による一次判定</span>
-      </div>
-      {research.history.length ? (
-        <details className="border-t">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
-            <span className="flex items-center gap-2"><History className="h-4 w-4" />15分モデルの実行履歴</span>
-            <span className="text-[10px] font-semibold text-slate-500">{research.history.length}回分</span>
-          </summary>
-          <div className="divide-y border-t">
-            {research.history.slice(0, 12).map((item) => (
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 text-xs sm:px-5" key={item.generatedAt}>
-                <div className="min-w-0">
-                  <p className="font-bold text-slate-800">{formatJapanDateTime(item.generatedAt)}</p>
-                  <p className="truncate text-[10px] font-semibold text-slate-500">{formatCompact(item.completeMarkets)}市場・{item.trades}取引・{item.profitableFolds}/{item.totalFolds}期間</p>
-                </div>
-                <span className={`font-bold ${item.netReturnPct >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.netReturnPct)}</span>
-                <span className={`rounded-sm px-2 py-1 text-[10px] font-bold ${tonePillClass(item.status === "promising" ? "good" : item.status === "rejected" ? "bad" : "watch")}`}>{item.status === "promising" ? "候補" : item.status === "rejected" ? "未達" : "不足"}</span>
-              </div>
-            ))}
-          </div>
-        </details>
-      ) : null}
-    </div>
-  );
-}
-
-function RealtimeShortTermBacktest({
-  research,
-  downloadsAvailable,
-}: {
-  research: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["shortTermDirection"]>["realtimeResearch"]>;
-  downloadsAvailable: boolean;
-}) {
-  const selected = research.selectedCandidate;
-  const holdout = selected?.holdout ?? null;
-  const sampleReady = research.holdoutCoverage.passed;
-  const directionReady = research.holdoutCoverage.long.passed && research.holdoutCoverage.short.passed;
-  const promising = research.status === "promising" && sampleReady;
-  const probabilityEdgePassed = holdout?.probabilityEdgePassed ?? false;
-  const input = research.inputProvenance;
-  const archivedInputRows = (input?.marketTicks.archiveRows ?? 0) + (input?.assetTicks.archiveRows ?? 0);
-  const sqliteInputRows = (input?.marketTicks.sqliteRows ?? 0) + (input?.assetTicks.sqliteRows ?? 0);
-  const mergedInputRows = (input?.marketTicks.mergedRows ?? 0) + (input?.assetTicks.mergedRows ?? 0);
-  const tone: Tone = research.status === "rejected" ? "bad" : "watch";
-  const Icon = research.status === "rejected" ? TrendingDown : Clock3;
-  const statusLabel = promising ? "次期検証候補" : research.status === "insufficient" ? "検証中" : "採用不可";
-  const publicBase = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-  const reportHref = downloadsAvailable
-    ? localApiUrl("/api/realtime-short-term-backtests/latest")
-    : `${publicBase}/realtime-short-term-research.json`;
-
-  return (
-    <div className="border-t" aria-label="5秒板を使った実約定リプレイ">
-      <div className={`grid gap-4 border-b p-5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-6 ${toneSoftClass(tone)}`}>
-        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-md ${toneIconClass(tone)}`}><Icon className="h-6 w-6" /></span>
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold text-slate-500">5秒板の実約定リプレイ</p>
-          <p className="mt-1 text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{statusLabel}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-600">
-            {selected
-              ? `${realtimeStrategyLabel(selected.strategy)}・開始${selected.entryOffsetSeconds}秒後 / 50枠の前向き検証とは別管理`
-              : "再生可能な売買を収集中 / 50枠の前向き検証とは別管理"}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-left text-[11px] font-semibold leading-5 text-slate-600 sm:justify-end sm:text-right">
-          <div>
-            <p>{formatCompact(research.replayableMarkets)}市場・独立{research.independentWindows}枠</p>
-            <p>{formatJapanDateTime(research.generatedAt)} 実行</p>
-          </div>
-          <div className="flex gap-1">
-            <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={reportHref} title="実板リプレイの最新レポート" aria-label="実板リプレイの最新レポート"><FileJson className="h-4 w-4" /></a>
-            {downloadsAvailable ? <a className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white text-slate-600 hover:border-primary/40 hover:text-primary" href={localApiUrl("/api/realtime-short-term-backtests/latest?format=trades")} title="実板リプレイの全取引" aria-label="実板リプレイの全取引"><Download className="h-4 w-4" /></a> : null}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-6 lg:divide-y-0">
-        <BacktestMetric label="収集済み" value={`${research.independentWindows}枠`} tone="neutral" />
-        <BacktestMetric label="直近40%診断" value={`${holdout?.independentWindows ?? 0} / ${research.minimumHoldoutWindows}`} tone={sampleReady ? "good" : "bad"} />
-        <BacktestMetric label="上昇・下落の検証" value={`上 ${holdout?.longIndependentWindows ?? 0} / 下 ${holdout?.shortIndependentWindows ?? 0}`} tone={directionReady ? "good" : "bad"} />
-        <BacktestMetric label="市場確率より改善" value={formatProbabilitySkill(holdout?.brierSkillScore)} tone={sampleReady ? probabilityEdgePassed ? "good" : "bad" : "watch"} />
-        <BacktestMetric label="候補モデル損益" value={holdout?.trades ? formatSignedPct(holdout.equalWeightNetReturnPct) : "未判定"} tone={sampleReady ? signedMetricTone(holdout?.equalWeightNetReturnPct, true) : "watch"} />
-        <BacktestMetric label="最良単純との差" value={holdout?.excessReturnPct === null || holdout?.excessReturnPct === undefined ? "未判定" : formatSignedPct(holdout.excessReturnPct)} tone={signedMetricTone(holdout?.excessReturnPct, Boolean(holdout))} />
-      </div>
-
-      <div className="grid grid-cols-2 divide-x border-t bg-white sm:grid-cols-4">
-        <BacktestMetric label={holdout?.bestBenchmarkId ? `最良単純・${realtimeBenchmarkLabel(holdout.bestBenchmarkId)}` : "最良単純戦略"} value={holdout?.bestBenchmarkNetReturnPct === null || holdout?.bestBenchmarkNetReturnPct === undefined ? "未判定" : formatSignedPct(holdout.bestBenchmarkNetReturnPct)} tone="neutral" />
-        <BacktestMetric label="Polymarket単体" value={holdout?.trades ? formatSignedPct(holdout.benchmarks.polymarketOnlyNetReturnPct) : "未判定"} tone="neutral" />
-        <BacktestMetric label="Hyperliquid単体" value={holdout?.trades ? formatSignedPct(holdout.benchmarks.hyperliquidOnlyNetReturnPct) : "未判定"} tone="neutral" />
-        <BacktestMetric label="順次選定で単純超え" value={selected ? `${selected.benchmarkBeatingFolds} / ${selected.totalFolds}` : "未判定"} tone={selected && selected.benchmarkBeatingFolds >= 3 ? "good" : "bad"} />
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-[11px] font-semibold text-slate-600 sm:px-5">
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {input ? <span className="inline-flex items-center gap-1.5"><Database className="h-3.5 w-3.5" />入力 {formatCompact(mergedInputRows)}件・Parquet {formatCompact(archivedInputRows)} / SQLite {formatCompact(sqliteInputRows)}・{input.archivePartitions}区画確認</span> : null}
-          <span>Brier誤差 モデル {formatScore(holdout?.modelBrierScore)} / 市場 {formatScore(holdout?.marketBrierScore)}</span>
-          <span>改善幅の95%下限 {formatSignedScore(holdout?.brierImprovementConfidenceInterval95?.[0])}</span>
-          <span>損益差の95%下限 {holdout?.excessConfidenceInterval95 ? formatSignedPct(holdout.excessConfidenceInterval95[0]) : "-"}</span>
-        </div>
-        <span className="font-bold text-rose-700">{sampleReady ? "診断通過後も新しい50枠検証が必要" : `診断あと${Math.max(0, research.minimumHoldoutWindows - (holdout?.independentWindows ?? 0))}枠・上昇/下落を各${research.minimumHoldoutWindowsPerSide}枠必要`}</span>
-      </div>
-
-      {research.history.length ? (
-        <details className="border-t">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
-            <span className="flex items-center gap-2"><History className="h-4 w-4" />5秒板リプレイの実行履歴</span>
-            <span className="text-[10px] font-semibold text-slate-500">{research.history.length}回分</span>
-          </summary>
-          <div className="divide-y border-t">
-            {research.history.slice(0, 12).map((item) => (
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 text-xs sm:px-5" key={item.runId}>
-                <div className="min-w-0">
-                  <p className="font-bold text-slate-800">{formatJapanDateTime(item.generatedAt)}</p>
-                  <p className="truncate text-[10px] font-semibold text-slate-500">独立{item.independentWindows}枠・直近{item.holdoutWindows}枠（上{item.holdoutLongWindows ?? 0}/下{item.holdoutShortWindows ?? 0}）・確率改善 {formatProbabilitySkill(item.holdoutBrierSkillScore)}</p>
-                </div>
-                <span className={`font-bold ${(item.holdoutExcessReturnPct ?? item.holdoutEqualWeightNetReturnPct) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.holdoutExcessReturnPct ?? item.holdoutEqualWeightNetReturnPct)}</span>
-                <span className={`rounded-sm px-2 py-1 text-[10px] font-bold ${tonePillClass(item.status === "promising" ? "watch" : "bad")}`}>{item.status === "promising" ? "探索通過" : item.status === "rejected" ? "未達" : "不足"}</span>
-              </div>
-            ))}
-          </div>
-        </details>
-      ) : null}
-    </div>
-  );
-}
-
-function realtimeStrategyLabel(strategy: "market_direction" | "trend_confirmed" | "fair_value" | "logit_pool") {
-  if (strategy === "trend_confirmed") return "市場方向 + 値動き一致";
-  if (strategy === "fair_value") return "理論確率との差";
-  if (strategy === "logit_pool") return "市場確率 + 実価格確率";
-  return "Polymarketの市場方向";
-}
-
-function realtimeBenchmarkLabel(benchmark: "cash" | "polymarket_only" | "hyperliquid_only" | "always_long" | "always_short" | "random_median") {
-  if (benchmark === "cash") return "現金待機";
-  if (benchmark === "polymarket_only") return "Polymarket";
-  if (benchmark === "hyperliquid_only") return "Hyperliquid";
-  if (benchmark === "always_long") return "常時ロング";
-  if (benchmark === "always_short") return "常時ショート";
-  return "ランダム";
-}
-
-function ShortTermBacktestDiagnosis({
-  diagnosis,
-  sensitivity,
-}: {
-  diagnosis: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["shortTermDirection"]>["research"]>["diagnosis"];
-  sensitivity: NonNullable<NonNullable<MonitoringSnapshot["combinedShadow"]["shortTermDirection"]>["research"]>["sensitivity"];
-}) {
-  if (!diagnosis) return null;
-  const verdict = diagnosis.verdict === "positive_after_costs"
-    ? { label: "コスト後もプラス", tone: "good" as Tone }
-    : diagnosis.verdict === "cost_barrier"
-      ? { label: "コストを超えない", tone: "bad" as Tone }
-      : { label: "判定後の値動きに優位性なし", tone: "bad" as Tone };
-  const accuracy = clamp((diagnosis.binaryOutcomeAccuracy ?? 0) * 100, 0, 100);
-  const profitable = clamp((diagnosis.afterCostWinRate ?? 0) * 100, 0, 100);
-
-  return (
-    <div className="border-t" aria-label="15分モデルの損失原因">
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-4 py-3 sm:px-5">
-        <p className="text-xs font-bold text-slate-800">結果が伸びない理由</p>
-        <span className={`rounded-sm px-2 py-1 text-[10px] font-bold ${tonePillClass(verdict.tone)}`}>{verdict.label}</span>
-      </div>
-      <div className="grid divide-y border-t sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        <BacktestRatio label="方向の正解" value={diagnosis.binaryOutcomeAccuracy} meter={accuracy} tone="neutral" />
-        <BacktestRatio label="利益になった取引" value={diagnosis.afterCostWinRate} meter={profitable} tone={profitable >= 50 ? "good" : "bad"} />
-        <div className="min-w-0 px-4 py-4 sm:px-5">
-          <p className="text-[10px] font-bold text-slate-500">固定した閾値の再確認</p>
-          <p className={`mt-2 text-2xl font-bold ${sensitivity && sensitivity.holdoutPositiveVariants > 0 ? "text-emerald-700" : "text-rose-700"}`}>
-            {sensitivity ? `${sensitivity.holdoutPositiveVariants} / ${sensitivity.testedVariants}` : "未集計"}
-          </p>
-          <p className="mt-1 text-[10px] font-semibold text-slate-500">最終期間でプラス</p>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 divide-x border-t bg-white">
-        <div className="px-4 py-3 sm:px-5">
-          <p className="text-[10px] font-bold text-slate-500">予測後の平均値幅（コスト前）</p>
-          <p className={`mt-1 text-lg font-bold ${signedMetricTone(diagnosis.estimatedBeforeCostAverageReturnPct, true) === "good" ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedBasisBps(diagnosis.estimatedBeforeCostAverageReturnPct)}</p>
-        </div>
-        <div className="px-4 py-3 sm:px-5">
-          <p className="text-[10px] font-bold text-slate-500">想定する往復コスト</p>
-          <p className="mt-1 text-lg font-bold text-slate-800">{formatBasisBps(diagnosis.assumedRoundTripCostPct)}</p>
-        </div>
-      </div>
-      <details className="border-t">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">
-          <span>どこで負けたか</span>
-          <span className="text-[10px] font-semibold text-slate-500">銘柄・売買方向</span>
-        </summary>
-        <div className="grid border-t sm:grid-cols-2 sm:divide-x">
-          <ResearchDiagnosisList label="銘柄別" items={diagnosis.slices.byAsset} />
-          <ResearchDiagnosisList label="方向別" items={diagnosis.slices.bySide} />
-        </div>
-      </details>
-    </div>
-  );
-}
-
-function BacktestRatio({ label, value, meter, tone }: { label: string; value: number | null; meter: number; tone: Tone }) {
-  return (
-    <div className="min-w-0 px-4 py-4 sm:px-5">
-      <p className="text-[10px] font-bold text-slate-500">{label}</p>
-      <p className={`mt-2 text-2xl font-bold ${tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-700" : "text-slate-950"}`}>{formatPct(value)}</p>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
-        <div className={`h-full rounded-full ${tone === "good" ? "bg-emerald-500" : tone === "bad" ? "bg-rose-500" : "bg-slate-500"}`} style={{ width: `${meter}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function ResearchDiagnosisList({ label, items }: { label: string; items: ResearchDiagnosisSlice[] }) {
-  return (
-    <div className="min-w-0 px-4 py-3 sm:px-5">
-      <p className="mb-1 text-[10px] font-bold text-slate-500">{label}</p>
-      {items.map((item) => (
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-t border-slate-100 py-2 text-xs" key={item.key}>
-          <span className="truncate font-semibold text-slate-700">{item.label === "LONG" ? "買い" : item.label === "SHORT" ? "売り" : item.label}</span>
-          <span className="tabular-nums text-slate-500">{item.trades}件</span>
-          <span className={`min-w-16 text-right font-bold tabular-nums ${(item.averageReturnPct ?? 0) > 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.averageReturnPct)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BacktestMetric({ label, value, tone }: { label: string; value: string; tone: Tone }) {
-  return (
-    <div className="min-w-0 p-4 sm:p-5">
-      <p className="text-[10px] font-bold leading-4 text-slate-500 sm:text-xs">{label}</p>
-      <p className={`mt-2 break-words text-xl font-bold leading-tight sm:text-2xl ${tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-700" : tone === "watch" ? "text-amber-800" : "text-slate-950"}`}>{value}</p>
-    </div>
-  );
-}
-
-function backtestResultSignal(item: ModelEvaluationSummary | null): Signal {
-  if (!item || item.status === "running") return { label: "検証中", description: "結果を計算しています", tone: "watch", icon: Clock3 };
-  if (item.status === "failed" || item.qualityStatus === "failed") return { label: "実行エラー", description: "再実行が必要です", tone: "bad", icon: AlertCircle };
-  if (item.qualityStatus === "promising") return { label: "候補あり", description: "採用条件を満たす候補があります", tone: "good", icon: CheckCircle2 };
-  if (item.qualityStatus === "underperforming") return { label: "基準未達", description: "未使用期間で優位性を確認できません", tone: "bad", icon: TrendingDown };
-  if ((item.dataset.testSynchronizedExecutionCoverage ?? 0) < 0.9) return { label: "同期板を収集中", description: "集約履歴は参考値です。売買判定には前向きの同期板が必要です", tone: "watch", icon: Clock3 };
-  return { label: "データ不足", description: "採用判断に必要な取引数が不足しています", tone: "watch", icon: Clock3 };
-}
-
-function normalizedBacktestHorizons(item: ModelEvaluationSummary) {
-  return [6, 12, 24, 48].map((horizonHours) => item.horizons.find((horizon) => horizon.horizonHours === horizonHours) ?? {
-    horizonHours,
-    status: "unavailable" as const,
-    totalEvents: 0,
-    testEvents: 0,
-    eligibleSignals: 0,
-    trades: 0,
-    netReturnPct: null,
-    bestBenchmarkReturnPct: null,
-    excessReturnPct: null,
-    deflatedSharpeProbability: null,
-    testExecutionFeatureCoverage: null,
-    testSynchronizedExecutionCoverage: null,
-    maximumExecutionTimingErrorMinutes: null,
-  });
-}
-
-function horizonStatusClass(status: ModelEvaluationSummary["horizons"][number]["status"]) {
-  if (status === "promising") return "bg-emerald-500";
-  if (status === "underperforming") return "bg-rose-500";
-  return "bg-amber-400";
-}
-
-function shortHash(value: string | null | undefined, length = 8) {
-  return value ? value.slice(0, length) : "-";
-}
-
-export function ModelSummaryPanel({ monitoring }: { monitoring: MonitoringSnapshot | null }) {
-  const model = monitoring?.model;
-  const decision = getEvaluationSignal(model?.evaluationStatus, model?.combinedStrategy, model?.testSynchronizedExecutionCoverage);
-  const DecisionIcon = decision.icon;
-  const hasTrades = (model?.trades ?? 0) > 0;
-  const leadingCandidate = selectLeadingCandidate(model?.candidateDiagnostics);
-  const holdoutAudit = model?.closestHoldoutAudit;
-  const isAuditingRejectedCandidate = model?.combinedStrategy === "no-trade guard" && Boolean(holdoutAudit);
-  const displayedTrades = isAuditingRejectedCandidate ? holdoutAudit?.trades ?? 0 : model?.trades ?? 0;
-  const displayedReturn = isAuditingRejectedCandidate ? holdoutAudit?.netReturnPct : model?.latestReturnPct;
-  const displayedDrawdown = isAuditingRejectedCandidate ? holdoutAudit?.maxDrawdownPct : model?.maxDrawdownPct;
-  const sampleReady = displayedTrades >= 50;
-  const leadingPassedGates = leadingCandidate?.gates.filter((gate) => gate.passed).length ?? 0;
-  const edgeConfidence = model?.deflatedSharpeProbability
-    ?? holdoutAudit?.deflatedSharpeProbability
-    ?? leadingCandidate?.deflatedSharpeProbability;
-  const edgeReady = holdoutAudit
-    ? (holdoutAudit.deflatedSharpeProbability ?? 0) >= 0.95 && holdoutAudit.statisticallyPositive
-    : (edgeConfidence ?? 0) >= 0.95
-      && (model?.statisticallyPositive === true
-        || leadingCandidate?.gates.some((gate) => gate.id === "significance" && gate.passed) === true);
-
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-white shadow-sm" aria-label="組み合わせ戦略の検証結果">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5">
-        <h2 className="text-sm font-bold text-slate-950">Polymarket → Hyperliquid の検証結果</h2>
-        <span className="inline-flex items-center gap-1.5 rounded-sm bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700"><LockKeyhole className="h-3.5 w-3.5" />実取引 OFF</span>
-      </div>
-      <div className={`grid gap-4 border-b p-5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center sm:p-6 ${toneSoftClass(decision.tone)}`}>
-        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${toneIconClass(decision.tone)}`}>
-          <DecisionIcon className="h-6 w-6" />
-        </span>
-        <div>
-          <p className="text-xs font-bold text-muted-foreground">現在の運用判定</p>
-          <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <p className="text-3xl font-bold leading-tight text-slate-950 sm:text-4xl">{decision.label}</p>
-            <p className="text-sm font-semibold text-slate-700">{decision.description}</p>
-          </div>
-        </div>
-      </div>
-      {leadingCandidate && model?.combinedStrategy === "no-trade guard" ? (
-        <div className={`flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${(holdoutAudit?.netReturnPct ?? 0) > 0 ? "bg-slate-50" : "bg-rose-50"}`}>
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold text-slate-500">最有力候補 / 選定に使わない最終期間で監査</p>
-            <p className="mt-1 text-sm font-bold text-slate-950">{formatCombinedStrategy(leadingCandidate.strategy.id)}</p>
-          </div>
-          <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
-            <span className="rounded-sm bg-white px-2 py-1 text-slate-700">選定時 {leadingPassedGates}/{leadingCandidate.gates.length} 条件</span>
-            <span className="rounded-sm bg-white px-2 py-1 text-slate-700">最終 {holdoutAudit?.trades ?? 0}取引</span>
-            <span className={`rounded-sm bg-white px-2 py-1 ${(holdoutAudit?.netReturnPct ?? 0) > 0 ? "text-emerald-700" : "text-rose-700"}`}>最終損益 {formatSignedPct(holdoutAudit?.netReturnPct)}</span>
-            <span className="rounded-sm bg-white px-2 py-1 text-amber-800">確信度 {formatPct(edgeConfidence)}</span>
-          </div>
-        </div>
-      ) : null}
-      <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-5 lg:divide-y-0">
-        <ResultMetric
-          icon={Database}
-          label="最終テスト"
-          value={`${model?.testedEvents ?? 0}件`}
-          note="学習に未使用"
-          tone={(model?.testedEvents ?? 0) >= 30 ? "good" : "watch"}
-        />
-        <ResultMetric
-          icon={Target}
-          label={isAuditingRejectedCandidate ? "候補の最終取引" : "決済取引"}
-          value={`${displayedTrades} / 50`}
-          note={sampleReady ? "必要数に到達" : `あと${Math.max(0, 50 - displayedTrades)}件`}
-          tone={sampleReady ? "good" : "watch"}
-          meter={clamp((displayedTrades / 50) * 100, 0, 100)}
-        />
-        <ResultMetric
-          icon={TrendingUp}
-          label={isAuditingRejectedCandidate ? "候補の最終損益" : "純損益"}
-          value={displayedTrades > 0 ? formatSignedPct(displayedReturn) : "未判定"}
-          note={displayedTrades > 0 ? "全コスト控除後" : "取引0件"}
-          tone={displayedTrades > 0 ? getProfitSignal(displayedReturn).tone : "neutral"}
-        />
-        <ResultMetric
-          icon={ShieldCheck}
-          label="優位性の確信度"
-          value={edgeConfidence === null || edgeConfidence === undefined ? "未判定" : formatPct(edgeConfidence)}
-          note={edgeReady ? "補正後95%以上" : "95%以上が必要"}
-          tone={edgeReady ? "good" : "watch"}
-          meter={edgeConfidence === null || edgeConfidence === undefined ? 0 : edgeConfidence * 100}
-        />
-        <ResultMetric
-          icon={TrendingDown}
-          label={isAuditingRejectedCandidate ? "候補の最大下落" : "最大下落"}
-          value={displayedTrades > 0 ? formatPct(displayedDrawdown) : "未判定"}
-          note="上限5.00%"
-          tone={displayedTrades > 0 && (displayedDrawdown ?? 0) <= 0.05 ? "good" : "neutral"}
-        />
-      </div>
-      <details className="border-t">
-        <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-slate-700 sm:px-5">詳しい検証数値を見る</summary>
-        <div className="border-t">
-          {!hasTrades ? <p className="px-5 py-4 text-sm leading-6 text-slate-600">{(model?.testSynchronizedExecutionCoverage ?? 0) < 0.9 ? "集約履歴足は一次判定にだけ使います。実際に売買できた証拠となる同期板を前向きに収集中です。" : "採用基準を通ったルールがないため、最終テストでは資金を動かしていません。単純戦略の成績は、見送り結果とは別に比較しています。"}</p> : null}
-          <ModelSampleFlow model={model} />
-          <HoldoutAttribution audit={holdoutAudit} />
-          <CandidateDiagnosis diagnostics={model?.candidateDiagnostics} />
-          <HorizonComparison studies={model?.horizonStudies} />
-          <ReturnComparison strategyReturn={hasTrades ? model?.latestReturnPct : null} benchmarks={model?.benchmarkReturns} />
-          <div className="flex flex-wrap gap-2 border-t px-5 py-3 text-[11px] font-bold text-slate-600">
-            <span className="rounded-sm bg-slate-100 px-2 py-1">順次検証 {model?.profitableValidationFolds ?? 0}/{model?.walkForwardFolds ?? 0}期間でプラス</span>
-            <span className="rounded-sm bg-slate-100 px-2 py-1">累計候補 {model?.strategyTrials ?? 0}通りを補正</span>
-            <span className="rounded-sm bg-slate-100 px-2 py-1">時刻誤差 最大 {formatMinutes(model?.maximumExecutionTimingErrorMinutes)}</span>
-            <span className="rounded-sm bg-slate-100 px-2 py-1">確率帯の矛盾 {model?.probabilityLadderViolationEvents ?? 0}/{model?.probabilityLadderEvents ?? 0}テーマ</span>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3 text-xs text-muted-foreground">
-            <span>{model?.name ?? "モデル検証準備中"} / 採用: {formatCombinedStrategy(model?.combinedStrategy)}</span>
-            <span>{formatEvaluationPeriod(model?.datasetStartedAt, model?.datasetEndedAt)}</span>
-          </div>
-        </div>
-      </details>
-    </section>
-  );
-}
-
-function ModelSampleFlow({ model }: { model: MonitoringSnapshot["model"] | undefined }) {
-  if (!model?.totalEligibleSignals) return null;
-  const steps = [
-    { label: "売買可能", value: model.totalEligibleSignals },
-    { label: "ルール選定", value: model.validationEligibleSignals },
-    { label: "最終テスト", value: model.testedEvents },
-  ];
-  return (
-    <div className="border-t px-5 py-4" aria-label="モデル検証データの分割">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-        {steps.map((step, index) => (
-          <div className="contents" key={step.label}>
-            <div className="min-w-0 text-center">
-              <p className="text-xl font-bold tabular-nums text-slate-950">{step.value}</p>
-              <p className="mt-1 text-[10px] font-bold text-muted-foreground">{step.label}</p>
-            </div>
-            {index < steps.length - 1 ? <ArrowRight className="h-4 w-4 shrink-0 text-slate-300" /> : null}
-          </div>
-        ))}
-      </div>
-      <p className="mt-3 text-center text-[11px] font-semibold text-slate-500">実売買価格の期間 {formatCompactPeriod(model.executionStartedAt, model.executionEndedAt)}</p>
-    </div>
-  );
-}
-
-function HoldoutAttribution({ audit }: { audit: MonitoringSnapshot["model"]["closestHoldoutAudit"] | undefined }) {
-  if (!audit?.attribution) return null;
-  const groups = [
-    { label: "資産別", items: audit.attribution.byAsset },
-    { label: "売買方向別", items: audit.attribution.bySide },
-    { label: "資金調達率別", items: audit.attribution.byFundingStrength },
-    { label: "Poly方向との関係", items: audit.attribution.byConsensus },
-  ];
-  return (
-    <div className="border-t px-5 py-4" aria-label="最終テストの損益内訳">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] font-bold text-muted-foreground">不採用候補が負けた場所</p>
-        <span className="rounded-sm bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">原因分析専用</span>
-      </div>
-      <div className="mt-3 grid gap-x-6 gap-y-4 sm:grid-cols-2">
-        {groups.map((group) => (
-          <div key={group.label} className="min-w-0">
-            <p className="border-b pb-1.5 text-[10px] font-bold text-slate-500">{group.label}</p>
-            {group.items.map((item) => (
-              <div key={item.key} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-b border-slate-100 py-2 text-xs">
-                <span className="truncate font-semibold text-slate-700">{item.label}</span>
-                <span className="tabular-nums text-slate-500">{item.trades}件</span>
-                <span className={`min-w-16 text-right font-bold tabular-nums ${(item.averageNetTradeReturn ?? 0) > 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(item.averageNetTradeReturn)}</span>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-      <p className="mt-3 text-[10px] font-semibold text-slate-500">右端は1取引あたりの平均損益。次期ルールの過去成績としては使用しません。</p>
-    </div>
-  );
-}
-
-function CandidateDiagnosis({ diagnostics }: { diagnostics: MonitoringSnapshot["model"]["candidateDiagnostics"] | undefined }) {
-  const best = selectLeadingCandidate(diagnostics);
-  if (!best) return null;
-  const passed = best.gates.filter((gate) => gate.passed).length;
-  const families = [
-    { rule: "polymarket-only" as const, label: "Poly方向" },
-    { rule: "hyperliquid-momentum" as const, label: "HL順張り" },
-    { rule: "hyperliquid-reversion" as const, label: "HL反転" },
-    { rule: "hyperliquid-funding-carry" as const, label: "資金受取" },
-    { rule: "hyperliquid-funding-momentum" as const, label: "資金方向" },
-  ].flatMap(({ rule, label }) => {
-    const candidate = [...(diagnostics ?? [])]
-      .filter((item) => item.strategy.signalRule === rule)
-      .sort((left, right) => right.netReturnPct - left.netReturnPct)[0];
-    return candidate ? [{ label, candidate }] : [];
-  });
-
-  return (
-    <div className="border-t px-5 py-4" aria-label="候補ルールの採用診断">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[11px] font-bold text-muted-foreground">採用に最も近いルール</p>
-          <p className="mt-1 text-base font-bold text-slate-950">{formatCombinedStrategy(best.strategy.id)}</p>
-        </div>
-        <span className={`rounded-sm px-2 py-1 text-xs font-bold ${best.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
-          {passed}/{best.gates.length} 条件
-        </span>
-      </div>
-      <div className="mt-3 grid grid-cols-5 gap-1" aria-label={`${passed}/${best.gates.length}条件を達成`}>
-        {best.gates.map((gate) => <span key={gate.id} className={`h-2 rounded-sm ${gate.passed ? "bg-emerald-500" : "bg-slate-200"}`} title={gate.label} />)}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {best.gates.map((gate) => (
-          <span key={gate.id} className={`inline-flex items-center gap-1 text-[10px] font-bold ${gate.passed ? "text-emerald-700" : "text-slate-500"}`}>
-            {gate.passed ? <CheckCircle2 className="h-3 w-3" /> : <MinusCircle className="h-3 w-3" />}{gate.label}
-          </span>
-        ))}
-      </div>
-      <p className="mt-3 text-xs font-semibold text-slate-600">
-        検証 {best.trades}取引 / 損益 {formatSignedPct(best.netReturnPct)} / 単純戦略との差 {formatSignedPct(best.excessReturnPct)} / 確信度 {formatPct(best.deflatedSharpeProbability)}
-      </p>
-      <div className="mt-3 grid grid-cols-2 gap-y-2 divide-x rounded-md bg-slate-50 py-2 text-center sm:grid-cols-5">
-        {families.map(({ label, candidate }) => (
-          <div className="min-w-0 px-2" key={label}>
-            <p className="text-[10px] font-bold text-slate-500">{label}</p>
-            <p className={`mt-1 text-xs font-bold ${candidate.netReturnPct > 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatSignedPct(candidate.netReturnPct)}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function selectLeadingCandidate(diagnostics: MonitoringSnapshot["model"]["candidateDiagnostics"] | undefined) {
-  return diagnostics?.length ? [...diagnostics].sort((left, right) =>
-    Number(right.passed) - Number(left.passed)
-    || right.gates.filter((gate) => gate.passed).length - left.gates.filter((gate) => gate.passed).length
-    || right.netReturnPct - left.netReturnPct
-    || right.excessReturnPct - left.excessReturnPct,
-  )[0] : null;
-}
-
-function HorizonComparison({ studies }: { studies: MonitoringSnapshot["model"]["horizonStudies"] | undefined }) {
-  const rows = studies?.length ? [...studies].sort((a, b) => a.horizonHours - b.horizonHours) : [6, 12, 24, 48].map((horizonHours) => ({
-    horizonHours,
-    status: "unavailable" as const,
-    totalEvents: 0,
-    testEvents: 0,
-    eligibleSignals: 0,
-    trades: 0,
-    netReturnPct: null,
-    bestBenchmarkReturnPct: null,
-    excessReturnPct: null,
-    deflatedSharpeProbability: null,
-    testExecutionFeatureCoverage: null,
-    testSynchronizedExecutionCoverage: null,
-    maximumExecutionTimingErrorMinutes: null,
-  }));
-
-  return (
-    <div className="border-t px-5 py-4" aria-label="時間軸別の検証結果">
-      <p className="mb-3 text-[11px] font-bold text-muted-foreground">判定までの時間別</p>
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4">
-        {rows.map((row) => {
-          const noTrade = row.trades === 0;
-          const positive = (row.netReturnPct ?? 0) > 0;
-          return (
-            <div key={row.horizonHours} className="min-w-0 bg-white p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-base font-bold tabular-nums text-slate-950">{row.horizonHours}時間前</span>
-                <span className={`h-2 w-2 shrink-0 rounded-full ${row.status === "promising" ? "bg-emerald-500" : row.status === "underperforming" ? "bg-rose-500" : "bg-amber-400"}`} />
-              </div>
-              <p className="mt-2 text-xl font-bold leading-none text-slate-950">{noTrade ? (row.testSynchronizedExecutionCoverage ?? 0) < 0.9 ? "同期板待ち" : "見送り" : formatSignedPct(row.netReturnPct)}</p>
-              <p className="mt-2 text-[10px] font-semibold leading-4 text-muted-foreground">テスト {row.testEvents}件 / 取引 {row.trades}件</p>
-              <div className={`mt-2 h-1 rounded-full ${noTrade ? "bg-amber-300" : positive ? "bg-emerald-500" : "bg-rose-500"}`} />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ReturnComparison({ strategyReturn, benchmarks }: { strategyReturn: number | null | undefined; benchmarks: MonitoringSnapshot["model"]["benchmarkReturns"] | undefined }) {
-  const rows = [
-    { label: "組み合わせ", value: strategyReturn, className: (strategyReturn ?? 0) >= 0 ? "bg-emerald-500" : "bg-rose-500" },
-    { label: "常時ロング", value: benchmarks?.alwaysLongReturnPct, className: "bg-slate-500" },
-    { label: "常時ショート", value: benchmarks?.alwaysShortReturnPct, className: "bg-slate-400" },
-    { label: "Poly方向", value: benchmarks?.polymarketDirectionReturnPct, className: "bg-sky-500" },
-    { label: `ランダム${benchmarks?.randomTrials ? ` ${benchmarks.randomTrials}回` : ""}`, value: benchmarks?.randomMedianReturnPct, className: "bg-slate-300" },
-  ];
-  const maximum = Math.max(...rows.map((row) => Math.abs(row.value ?? 0)), 0.01) * 1.12;
-  return (
-    <div className="grid gap-2 border-t px-5 py-4" aria-label="未使用期間の損益比較">
-      <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground"><span>未使用期間の損益</span><span>中央より右が利益</span></div>
-      {rows.map((row) => (
-        <div key={row.label} className="grid grid-cols-[88px_minmax(0,1fr)_64px] items-center gap-2 text-xs">
-          <span className="font-bold text-slate-700">{row.label}</span>
-          <div className="relative h-3 overflow-hidden rounded-full bg-slate-100">
-            <span className="absolute inset-y-0 left-1/2 w-px bg-slate-300" />
-            <span
-              className={`absolute inset-y-0 ${row.className}`}
-              style={row.value === null || row.value === undefined
-                ? { width: 0 }
-                : row.value >= 0
-                  ? { left: "50%", width: `${Math.max(2, Math.abs(row.value) / maximum * 50)}%` }
-                  : { right: "50%", width: `${Math.max(2, Math.abs(row.value) / maximum * 50)}%` }}
-            />
-          </div>
-          <span className="text-right font-bold tabular-nums text-slate-950">{formatSignedPct(row.value)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ResultMetric({
-  icon: Icon,
-  label,
-  value,
-  note,
-  tone,
-  meter,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  note: string;
-  tone: Tone;
-  meter?: number;
-}) {
-  return (
-    <div className="flex min-h-36 min-w-0 flex-col justify-between p-3 sm:min-h-40 sm:p-5">
-      <div>
-        <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold leading-4 text-muted-foreground sm:gap-2 sm:text-xs">
-          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md sm:h-8 sm:w-8 ${toneIconClass(tone)}`}><Icon className="h-4 w-4" /></span>
-          <span className="break-words">{label}</span>
-        </div>
-        <p className="mt-3 break-words text-xl font-bold leading-tight text-slate-950 sm:mt-4 sm:text-2xl">{value}</p>
-        <p className="mt-1 break-words text-[10px] font-semibold leading-4 text-muted-foreground sm:text-xs">{note}</p>
-      </div>
-      {meter !== undefined ? <VisualMeter tone={tone} value={meter} className="mt-4" /> : null}
-    </div>
-  );
-}
-
-function ScoreboardCard({ asset, backtests, onSelect }: { asset: string; backtests: BacktestRun[]; onSelect?: (id: string) => void }) {
-  const filtered = backtests.filter((run) => run.asset === asset);
-  const sorted = [...filtered].sort((a, b) => scoreBacktest(a) - scoreBacktest(b)).slice(0, 8);
-  return (
-    <details className="rounded-lg border border-border bg-white shadow-sm">
-      <summary className="flex cursor-pointer items-center justify-between gap-3 border-b px-4 py-3">
-        <span className="text-base font-bold text-slate-950">過去検証の履歴</span>
-        <span className="text-xs text-muted-foreground">{filtered.length}件</span>
-      </summary>
-      <div className="grid gap-2 p-3">
-        {sorted.map((run, index) => {
-          const signal = getModelSignal(run.metrics?.brierScore);
-          return (
-            <button key={run.id} type="button" disabled={!onSelect} onClick={() => onSelect?.(run.id)} className="grid gap-3 rounded-md border border-border p-3 text-left enabled:hover:border-primary/40 enabled:hover:bg-accent disabled:cursor-default">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="flex min-w-0 items-center gap-2 font-bold text-slate-950">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">{index + 1}</span>
-                  <span className="break-words">{run.asset} / 市場価格の基準 {formatPct(run.threshold)}</span>
-                </span>
-                <QualityPill signal={signal} />
-              </div>
-              <VisualMeter tone={signal.tone} value={errorMeter(run.metrics?.brierScore)} />
-              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-                <span>確率の誤差 <b className="text-slate-950">{formatNumber(run.metrics?.brierScore, 3)}</b></span>
-                <span>自信を持った外れ <b className="text-slate-950">{formatNumber(run.metrics?.logLoss, 3)}</b></span>
-                <span>損益 <b className={run.metrics?.returnPct && run.metrics.returnPct > 0 ? "text-emerald-700" : "text-slate-950"}>{formatPct(run.metrics?.returnPct)}</b></span>
-                <span>市場数 <b className="text-slate-950">{run.metrics?.markets ?? 0}</b></span>
-              </div>
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => switchView(item.id)}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex min-h-11 items-center justify-center gap-2 rounded px-2 text-xs font-bold transition-colors sm:text-sm",
+                active ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{item.label}</span>
+              <span className="sm:hidden">{item.shortLabel}</span>
             </button>
           );
         })}
-        {!sorted.length ? <p className="p-4 text-sm text-muted-foreground">まだ過去検証の履歴がありません。「市場価格で過去検証」を実行してください。</p> : null}
-      </div>
-    </details>
+      </nav>
+
+      {error ? (
+        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      ) : null}
+
+      {view === "operations" ? (
+        <OperationsView dashboard={dashboard} walletBacktest={walletBacktest} hyperliquid={hyperliquid} />
+      ) : null}
+      {view === "wallets" ? (
+        <WalletsView wallets={wallets} backtest={walletBacktest} source={source} />
+      ) : null}
+      {view === "hyperliquid" ? <HyperliquidView model={hyperliquid} /> : null}
+    </div>
   );
 }
 
-function PaperRunsCard({ asset, runs, updatedAt, onSelect }: { asset: string; runs: Run[]; updatedAt: string | null; onSelect?: (id: string) => void }) {
-  const filtered = runs.filter((run) => run.asset === asset);
+function OperationsView({
+  dashboard,
+  walletBacktest,
+  hyperliquid,
+}: {
+  dashboard: PublicDashboard | null;
+  walletBacktest: WalletBacktest;
+  hyperliquid: HyperliquidModel;
+}) {
+  const audit = dashboard?.monitoring?.combinedShadow?.shortTermDirection?.executionAudit;
+  const strategy = dashboard?.monitoring?.combinedShadow?.shortTermDirection;
+  const pnl = audit?.portfolioNetReturnPct ?? strategy?.netReturnPct ?? null;
+  const excess = audit?.excessReturnPct ?? strategy?.excessReturnPct ?? null;
+  const drawdown = audit?.maxDrawdownPct ?? strategy?.maxDrawdownPct ?? null;
+  const independentEvents = audit?.verifiedIndependentEvents ?? 0;
+  const verifiedEdge = Boolean(
+    pnl !== null
+    && excess !== null
+    && pnl > 0
+    && excess > 0
+    && (audit?.excessConfidenceInterval95?.[0] ?? -1) > 0
+    && (audit?.deflatedSharpeProbability ?? 0) >= 0.95,
+  );
+  const period = formatPeriod(audit?.collectionStartedAt ?? null, dashboard?.monitoring?.generatedAt ?? dashboard?.generatedAt);
+  const gaps = dashboard?.dataQuality?.gaps ?? [];
+
   return (
-    <details className="rounded-lg border border-border bg-white shadow-sm">
-      <summary className="flex cursor-pointer items-center justify-between gap-3 border-b px-4 py-3">
-        <span className="text-base font-bold text-slate-950">Polymarket単体の仮想履歴</span>
-        <span className="text-xs text-muted-foreground">{updatedAt ? new Date(updatedAt).toLocaleTimeString("ja-JP") : "-"}</span>
+    <div className="space-y-5">
+      <section className={cn(
+        "border-l-4 bg-white px-5 py-5 shadow-sm md:px-6",
+        verifiedEdge ? "border-emerald-500" : "border-amber-500",
+      )}>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-bold text-slate-500">現在の判定</p>
+            <div className="mt-1 flex items-center gap-3">
+              {verifiedEdge ? (
+                <ShieldCheck className="h-8 w-8 text-emerald-600" />
+              ) : (
+                <AlertTriangle className="h-8 w-8 text-amber-600" />
+              )}
+              <p className="text-3xl font-bold tracking-normal text-slate-950">
+                {verifiedEdge ? "優位性あり" : "優位性未確認"}
+              </p>
+            </div>
+          </div>
+          <p className="max-w-xl text-sm leading-6 text-slate-600">
+            {verifiedEdge
+              ? "市場平均との差と統計基準を満たしました。模擬取引で再現性を監視しています。"
+              : independentEvents > 0
+                ? `独立した${formatNumber(independentEvents)}期間を監査しましたが、手数料後の利益は確認できていません。`
+                : "前向きデータを収集中です。合格条件を満たすまで実取引には移行しません。"}
+          </p>
+        </div>
+      </section>
+
+      <section className="grid gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200 sm:grid-cols-2 xl:grid-cols-5">
+        <Metric
+          label="累積損益"
+          value={formatPercent(pnl)}
+          note="手数料・スプレッド控除後"
+          tone={toneForNumber(pnl)}
+          icon={CircleDollarSign}
+        />
+        <Metric
+          label="市場平均との差"
+          value={formatPercent(excess)}
+          note="現金待機との比較"
+          tone={toneForNumber(excess)}
+          icon={Target}
+        />
+        <Metric
+          label="最大損失"
+          value={formatPercent(drawdown === null ? null : -Math.abs(drawdown))}
+          note="最大ドローダウン"
+          tone="negative"
+          icon={TrendingDown}
+        />
+        <Metric
+          label="検証期間"
+          value={period}
+          note={`${formatNumber(independentEvents)} 独立期間`}
+          tone="neutral"
+          icon={Clock3}
+        />
+        <Metric
+          label="データ状態"
+          value={gaps.length > 0 ? "欠損あり" : dashboard ? "収集中" : "確認中"}
+          note={gaps.length > 0 ? "欠損期間は検証から除外" : "継続監視"}
+          tone={gaps.length > 0 ? "warning" : "neutral"}
+          icon={Database}
+        />
+      </section>
+
+      <section className="bg-white px-5 py-5 shadow-sm ring-1 ring-slate-200 md:px-6">
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">モデル開発の進捗</h2>
+            <p className="mt-1 text-sm text-slate-500">データ収集から合格判定までを自動で繰り返します</p>
+          </div>
+          <span className="rounded bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900">実取引 OFF</span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <ProgressStep
+            number="1"
+            title="データ収集"
+            status={gaps.length > 0 ? "要確認" : "稼働中"}
+            value={dashboard?.monitoring?.collection?.totalRecords ?? 0}
+            valueLabel="価格データ"
+            tone={gaps.length > 0 ? "warning" : "active"}
+          />
+          <ProgressStep
+            number="2"
+            title="バックテスト"
+            status="検証中"
+            value={independentEvents}
+            valueLabel="独立期間"
+            tone="active"
+          />
+          <ProgressStep
+            number="3"
+            title="合格判定"
+            status={verifiedEdge ? "合格" : "不合格"}
+            value={audit?.passedReadinessGates ?? 0}
+            valueLabel={`${audit?.totalReadinessGates ?? 0} 基準中`}
+            tone={verifiedEdge ? "passed" : "failed"}
+          />
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <ModelSummary
+          title="Polymarketウォレット"
+          icon={Users}
+          verdict={walletBacktest.edgeConfirmed ? "優位性あり" : "収集中"}
+          reason={walletBacktest.reason}
+          progress={Math.min(100, ((walletBacktest.reports[0]?.independentEvents ?? 0) / 50) * 100)}
+          stat={`${walletBacktest.reports[0]?.independentEvents ?? 0} / 50 イベント`}
+        />
+        <ModelSummary
+          title="Hyperliquid板モデル"
+          icon={BarChart3}
+          verdict={hyperliquid.edgeConfirmed ? "優位性あり" : "優位性未確認"}
+          reason={hyperliquid.reason}
+          progress={Math.min(100, ((hyperliquid.data?.l2DurationHours ?? 0) / 72) * 100)}
+          stat={`${formatNumber(hyperliquid.data?.l2DurationHours ?? 0, 1)} / 72 時間`}
+        />
+      </section>
+
+      {gaps.length > 0 ? (
+        <details className="group rounded-md border border-amber-200 bg-amber-50">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 text-sm font-bold text-amber-950">
+            データ欠損の詳細
+            <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-t border-amber-200 px-4 py-4 text-sm text-amber-900">
+            {gaps.map((gap) => (
+              <div key={`${gap.scope}-${gap.startedAt}`} className="grid gap-1">
+                <span className="font-bold">{gap.scope}</span>
+                <span>{formatDateTime(gap.startedAt)} から {gap.endedAt ? formatDateTime(gap.endedAt) : "停止中"}</span>
+                <span>{gap.reason}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function WalletsView({
+  wallets,
+  backtest,
+  source,
+}: {
+  wallets: WalletDashboard;
+  backtest: WalletBacktest;
+  source: "live" | "snapshot" | "loading";
+}) {
+  const report = backtest.reports.find((item) => item.latencySeconds === backtest.selectedLatencySeconds)
+    ?? backtest.reports[0];
+  const visibleProfiles = wallets.profiles
+    .filter((profile) => !profile.excluded)
+    .sort((left, right) => right.copyabilityScore - left.copyabilityScore)
+    .slice(0, 6);
+
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="追跡中" value={formatNumber(wallets.summary.trackedWallets)} note="上位アドレス" icon={Users} tone="neutral" />
+        <Metric label="追随候補" value={formatNumber(wallets.summary.qualifiedWallets)} note="裁定・両建て型を除外" icon={ShieldCheck} tone="positive" />
+        <Metric label="合意シグナル" value={formatNumber(wallets.summary.readySignals)} note="複数口座が同方向" icon={Target} tone="neutral" />
+        <Metric
+          label="検証済み"
+          value={`${report?.independentEvents ?? 0} / 50`}
+          note={`${backtest.selectedLatencySeconds}秒後に模擬約定`}
+          icon={Clock3}
+          tone="warning"
+        />
+      </section>
+
+      <section className="border-l-4 border-amber-500 bg-white px-5 py-5 shadow-sm md:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-slate-500">ウォレット戦略の判定</p>
+            <p className="mt-1 text-2xl font-bold text-slate-950">
+              {backtest.edgeConfirmed ? "優位性あり" : report ? "検証中" : "データ収集中"}
+            </p>
+          </div>
+          <p className="max-w-lg text-sm leading-6 text-slate-600">{backtest.reason}</p>
+        </div>
+        <ProgressBar value={Math.min(100, ((report?.independentEvents ?? 0) / 50) * 100)} className="mt-4" />
+      </section>
+
+      <section>
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-slate-950">追随候補</h2>
+          <p className="mt-1 text-sm text-slate-500">過去利益だけでなく、継続性と実際に追随できるかで並べています</p>
+        </div>
+        {source !== "live" ? (
+          <EmptyState
+            icon={Database}
+            title="アドレス一覧はライブ接続時に表示"
+            body="公開画面では、個人データを含まない保存済みのバックテスト結果を表示しています。"
+          />
+        ) : visibleProfiles.length === 0 ? (
+          <EmptyState
+            icon={Clock3}
+            title="追随候補を採点中"
+            body="最初の採点後に発生した取引だけを使うため、未来情報は参照していません。"
+          />
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {visibleProfiles.map((profile) => {
+              const best = [...profile.scores].sort((a, b) => b.riskAdjustedScore - a.riskAdjustedScore)[0];
+              return (
+                <article key={profile.address} className="min-w-0 overflow-hidden bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-bold text-slate-950">
+                        {walletName(profile)}
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-500">{shortAddress(profile.address)}</p>
+                    </div>
+                    <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">
+                      {categoryLabel(best?.category)}
+                    </span>
+                  </div>
+                  <div className="mt-5 flex items-end justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-bold text-slate-500">追随しやすさ</p>
+                      <p className="mt-1 text-3xl font-bold text-slate-950">{Math.round(profile.copyabilityScore)}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-5 text-right">
+                      <SmallStat label="過去勝率" value={formatPercent(best?.winRate ?? null)} />
+                      <SmallStat label="独立市場" value={formatNumber(best?.independentEvents ?? 0)} />
+                    </div>
+                  </div>
+                  <ProgressBar value={profile.copyabilityScore} className="mt-4" tone="emerald" />
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-slate-950">現在の合意</h2>
+          <p className="mt-1 text-sm text-slate-500">追随候補が同じ市場・同じ方向へ増やしたポジション</p>
+        </div>
+        {wallets.signals.length === 0 ? (
+          <EmptyState icon={Target} title="合意シグナルはまだありません" body="条件を満たさない単独取引は表示しません。" />
+        ) : (
+          <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+            {wallets.signals.slice(0, 10).map((signal) => (
+              <div key={signal.id} className="grid gap-2 border-b border-slate-100 px-4 py-4 last:border-0 sm:grid-cols-[1fr_auto] sm:items-center">
+                <div>
+                  <p className="font-bold text-slate-950">{signal.title || "市場タイトルを取得中"}</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {categoryLabel(signal.category)}・{formatNumber(signal.contributorCount)}口座が合意
+                  </p>
+                </div>
+                <span className={cn(
+                  "w-fit rounded px-3 py-1 text-sm font-bold",
+                  signal.outcome === "YES" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800",
+                )}>
+                  {signal.outcome}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {report ? <GateDetails title="ウォレット戦略の合格条件" gates={report.gates} /> : null}
+    </div>
+  );
+}
+
+function HyperliquidView({ model }: { model: HyperliquidModel }) {
+  const selected = model.selected;
+  const holdout = selected?.holdout;
+  const l2Hours = model.data?.l2DurationHours ?? 0;
+  const l2Progress = Math.min(100, (l2Hours / 72) * 100);
+
+  return (
+    <div className="space-y-5">
+      <section className={cn(
+        "border-l-4 bg-white px-5 py-5 shadow-sm md:px-6",
+        model.edgeConfirmed ? "border-emerald-500" : "border-amber-500",
+      )}>
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div>
+            <p className="text-sm font-bold text-slate-500">Hyperliquidモデルの判定</p>
+            <div className="mt-1 flex items-center gap-3">
+              {model.edgeConfirmed ? (
+                <ShieldCheck className="h-8 w-8 text-emerald-600" />
+              ) : (
+                <AlertTriangle className="h-8 w-8 text-amber-600" />
+              )}
+              <p className="text-3xl font-bold text-slate-950">{model.verdict}</p>
+            </div>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">{model.reason}</p>
+          </div>
+          <div className="min-w-52">
+            <div className="flex items-center justify-between text-sm font-bold text-slate-700">
+              <span>L2板の収集</span>
+              <span>{formatNumber(l2Hours, 1)} / 72時間</span>
+            </div>
+            <ProgressBar value={l2Progress} className="mt-2" />
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric
+          label="平均損益 / 取引"
+          value={formatPercent(holdout?.netReturnPct ?? null, 3)}
+          note="手数料・スプレッド控除後"
+          icon={CircleDollarSign}
+          tone={toneForNumber(holdout?.netReturnPct ?? null)}
+        />
+        <Metric
+          label="的中率"
+          value={formatPercent(holdout?.winRate ?? null, 1)}
+          note="利益とは一致しません"
+          icon={Target}
+          tone="neutral"
+        />
+        <Metric
+          label="未使用データ検証"
+          value={formatNumber(holdout?.independentWindows ?? 0)}
+          note="独立時間枠"
+          icon={ShieldCheck}
+          tone="neutral"
+        />
+        <Metric
+          label="最大損失"
+          value={formatPercent(holdout ? -Math.abs(holdout.maxDrawdownPct) : null, 1)}
+          note="連続売買を複利計算"
+          icon={TrendingDown}
+          tone="negative"
+        />
+      </section>
+
+      {holdout && (holdout.winRate ?? 0) > 0.5 && holdout.netReturnPct < 0 ? (
+        <div className="flex items-start gap-3 rounded-md border border-rose-200 bg-rose-50 px-4 py-4 text-rose-950">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="font-bold">当たっていても利益は残っていません</p>
+            <p className="mt-1 text-sm leading-6">
+              的中率は{formatPercent(holdout.winRate, 1)}ですが、売買コスト控除後は1取引平均
+              {formatPercent(holdout.netReturnPct, 3)}です。現行モデルは不採用です。
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      <section>
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-slate-950">時間軸ごとの結果</h2>
+          <p className="mt-1 text-sm text-slate-500">学習に使っていない最後の期間だけを比較</p>
+        </div>
+        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+          <div className="hidden grid-cols-[0.7fr_1.5fr_1fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-500 md:grid">
+            <span>予測時間</span>
+            <span>モデル</span>
+            <span>取引数</span>
+            <span>的中率</span>
+            <span>平均損益</span>
+          </div>
+          {(model.horizons ?? []).map((horizon) => (
+            <div
+              key={horizon.horizonSeconds}
+              className={cn(
+                "grid gap-3 border-t border-slate-100 px-4 py-4 first:border-t-0 md:grid-cols-[0.7fr_1.5fr_1fr_1fr_1fr] md:items-center",
+                horizon.horizonSeconds === model.selectedHorizonSeconds && "bg-emerald-50/60",
+              )}
+            >
+              <div className="flex items-center justify-between md:block">
+                <span className="text-xs font-bold text-slate-500 md:hidden">予測時間</span>
+                <span className="font-bold text-slate-950">{formatHorizon(horizon.horizonSeconds)}</span>
+              </div>
+              <div className="flex items-center justify-between md:block">
+                <span className="text-xs font-bold text-slate-500 md:hidden">モデル</span>
+                <span className="text-sm text-slate-700">{modelLabel(horizon.selectedModel)}</span>
+              </div>
+              <ResultCell label="取引数" value={formatNumber(horizon.holdout.trades)} />
+              <ResultCell label="的中率" value={formatPercent(horizon.holdout.winRate, 1)} />
+              <ResultCell
+                label="平均損益"
+                value={formatPercent(horizon.holdout.netReturnPct, 3)}
+                tone={toneForNumber(horizon.holdout.netReturnPct)}
+              />
+            </div>
+          ))}
+          {(model.horizons ?? []).length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-slate-500">初回バックテストを準備中です</div>
+          ) : null}
+        </div>
+      </section>
+
+      {selected ? <GateDetails title="採用するための合格条件" gates={selected.gates} /> : null}
+
+      <details className="group rounded-md border border-slate-200 bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 text-sm font-bold text-slate-950">
+          データと試験条件
+          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="grid gap-3 border-t border-slate-200 px-4 py-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <SmallStat label="L1価格" value={formatNumber(model.data?.l1Rows ?? 0)} />
+          <SmallStat label="L2板" value={formatNumber(model.data?.l2Rows ?? 0)} />
+          <SmallStat label="約定データ" value={formatNumber(model.data?.tradeRows ?? 0)} />
+          <SmallStat label="ウォレット合意" value={formatNumber(model.data?.walletSignals ?? 0)} />
+          <SmallStat label="学習" value={formatNumber(selected?.dataset.train ?? 0)} />
+          <SmallStat label="モデル選定" value={formatNumber(selected?.dataset.validation ?? 0)} />
+          <SmallStat label="最終検証" value={formatNumber(selected?.dataset.holdout ?? 0)} />
+          <SmallStat label="モデル版" value={model.modelVersion ?? "準備中"} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  note,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  icon: LucideIcon;
+  tone: "positive" | "negative" | "warning" | "neutral";
+}) {
+  return (
+    <article className="min-h-36 bg-white p-5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-bold text-slate-500">{label}</p>
+        <Icon className={cn(
+          "h-5 w-5",
+          tone === "positive" && "text-emerald-600",
+          tone === "negative" && "text-rose-600",
+          tone === "warning" && "text-amber-600",
+          tone === "neutral" && "text-slate-400",
+        )} />
+      </div>
+      <p className={cn(
+        "mt-4 break-words text-2xl font-bold tracking-normal sm:text-3xl",
+        tone === "positive" && "text-emerald-700",
+        tone === "negative" && "text-rose-700",
+        tone === "warning" && "text-amber-700",
+        tone === "neutral" && "text-slate-950",
+      )}>
+        {value}
+      </p>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{note}</p>
+    </article>
+  );
+}
+
+function ProgressStep({
+  number,
+  title,
+  status,
+  value,
+  valueLabel,
+  tone,
+}: {
+  number: string;
+  title: string;
+  status: string;
+  value: number;
+  valueLabel: string;
+  tone: "active" | "passed" | "failed" | "warning";
+}) {
+  return (
+    <article className="border border-slate-200 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold",
+            tone === "passed" && "bg-emerald-600 text-white",
+            tone === "failed" && "bg-rose-100 text-rose-700",
+            tone === "active" && "bg-slate-950 text-white",
+            tone === "warning" && "bg-amber-100 text-amber-800",
+          )}>{number}</span>
+          <h3 className="font-bold text-slate-950">{title}</h3>
+        </div>
+        <span className={cn(
+          "text-xs font-bold",
+          tone === "passed" && "text-emerald-700",
+          tone === "failed" && "text-rose-700",
+          tone === "active" && "text-slate-600",
+          tone === "warning" && "text-amber-700",
+        )}>{status}</span>
+      </div>
+      <p className="mt-5 text-2xl font-bold text-slate-950">{formatNumber(value)}</p>
+      <p className="mt-1 text-xs text-slate-500">{valueLabel}</p>
+    </article>
+  );
+}
+
+function ModelSummary({
+  title,
+  icon: Icon,
+  verdict,
+  reason,
+  progress,
+  stat,
+}: {
+  title: string;
+  icon: LucideIcon;
+  verdict: string;
+  reason: string;
+  progress: number;
+  stat: string;
+}) {
+  return (
+    <article className="bg-white p-5 shadow-sm ring-1 ring-slate-200">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded bg-slate-100 text-slate-700">
+          <Icon className="h-5 w-5" />
+        </span>
+        <div>
+          <h3 className="font-bold text-slate-950">{title}</h3>
+          <p className="text-sm font-bold text-amber-700">{verdict}</p>
+        </div>
+      </div>
+      <p className="mt-4 min-h-12 text-sm leading-6 text-slate-600">{reason}</p>
+      <div className="mt-4 flex items-center justify-between text-xs font-bold text-slate-500">
+        <span>必要データ</span>
+        <span>{stat}</span>
+      </div>
+      <ProgressBar value={progress} className="mt-2" />
+    </article>
+  );
+}
+
+function GateDetails({ title, gates }: { title: string; gates: Gate[] }) {
+  const passed = gates.filter((gate) => gate.passed).length;
+  return (
+    <details className="group rounded-md border border-slate-200 bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4">
+        <span>
+          <span className="block text-sm font-bold text-slate-950">{title}</span>
+          <span className="mt-1 block text-xs text-slate-500">{passed} / {gates.length} 基準を通過</span>
+        </span>
+        <ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180" />
       </summary>
-      <div className="grid gap-2 p-3">
-        {filtered.slice(0, 8).map((run) => {
-          const signal = getProfitSignal(run.metrics?.totalReturnPct);
-          return (
-          <button key={run.id} type="button" disabled={!onSelect} onClick={() => onSelect?.(run.id)} className={`grid gap-3 rounded-md border p-3 text-left enabled:hover:border-primary/40 enabled:hover:bg-accent disabled:cursor-default ${toneBorderClass(signal.tone)}`}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-bold text-slate-950">{run.asset} / {modeLabel(run.mode)}</span>
-              <span className={run.status === "running" ? "rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700" : "rounded-full bg-secondary px-2 py-1 text-xs font-semibold"}>{statusLabel(run.status)}</span>
-            </div>
-            <VisualMeter tone={signal.tone} value={profitMeter(run.metrics?.totalReturnPct)} />
-            <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-              <span>損益 <b className={signal.tone === "good" ? "text-emerald-700" : signal.tone === "bad" ? "text-rose-700" : "text-slate-950"}>{formatPct(run.metrics?.totalReturnPct)}</b></span>
-              <span>確率の誤差 <b className="text-slate-950">{formatNumber(run.metrics?.brierScore, 3)}</b></span>
-              <span>最大の落ち込み <b className="text-slate-950">{formatPct(run.metrics?.maxDrawdownPct)}</b></span>
-              <span>売買成立 <b className="text-slate-950">{run.metrics?.filledOrders ?? 0}</b></span>
-            </div>
-          </button>
-          );
-        })}
-        {!filtered.length ? <p className="p-4 text-sm text-muted-foreground">{asset}の検証履歴はまだありません。</p> : null}
+      <div className="grid gap-px border-t border-slate-200 bg-slate-100 sm:grid-cols-2">
+        {gates.map((gate) => (
+          <div key={gate.id} className="flex items-center gap-3 bg-white px-4 py-3 text-sm">
+            <span className={cn(
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+              gate.passed ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700",
+            )}>
+              {gate.passed ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+            </span>
+            <span className={cn("font-medium", gate.passed ? "text-slate-700" : "text-slate-950")}>{gate.label}</span>
+          </div>
+        ))}
       </div>
     </details>
   );
 }
 
-function DetailPanel({ paperRun, backtest, loading }: { paperRun: PaperRunDetail | null; backtest: BacktestRun | null; loading: boolean }) {
-  if (loading) return <div className="rounded-lg border border-border bg-white p-5 text-sm text-muted-foreground">詳細を取得しています…</div>;
-  if (!paperRun && !backtest) return null;
-
+function EmptyState({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
   return (
-    <section className="rounded-lg border border-border bg-white p-4 shadow-sm sm:p-5">
-      {paperRun ? (
-        <div className="grid gap-4">
-          <div className="grid gap-1">
-            <h2 className="text-xl font-bold text-slate-950">Polymarket単体の仮想売買</h2>
-            <p className="text-sm text-muted-foreground">{paperRun.asset} / {modeLabel(paperRun.mode)} / {statusLabel(paperRun.status)}</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            <MiniMetric label="損益" value={formatPct(paperRun.metrics?.totalReturnPct)} />
-            <MiniMetric label="確率の誤差" value={formatNumber(paperRun.metrics?.brierScore, 3)} />
-            <MiniMetric label="最大の落ち込み" value={formatPct(paperRun.metrics?.maxDrawdownPct)} />
-            <MiniMetric label="手数料" value={formatUsd(paperRun.metrics?.totalFees)} />
-          </div>
-          <details className="rounded-md border border-border bg-slate-50 p-3">
-            <summary className="cursor-pointer text-sm font-bold text-slate-800">注文と保有状況を見る</summary>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <CompactList title="注文履歴" items={paperRun.orders.slice(-8).reverse().map((order) => `${order.outcome} ${statusLabel(order.status)} / ${formatNumber(order.filledPrice, 3)} x ${formatNumber(order.filledQuantity, 2)}`)} />
-              <CompactList title="保有状況" items={paperRun.positions.slice(-8).reverse().map((position) => `${position.outcome} ${statusLabel(position.status)} / ${formatNumber(position.quantity, 2)} / 損益 ${formatUsd(position.realizedPnl)}`)} />
-            </div>
-          </details>
-        </div>
-      ) : null}
-
-      {backtest ? (
-        <div className="grid gap-4">
-          <div className="grid gap-1">
-            <h2 className="text-xl font-bold text-slate-950">過去検証の詳細</h2>
-            <p className="text-sm text-muted-foreground">{backtest.asset} / 判定基準 {formatPct(backtest.threshold)} / {statusLabel(backtest.status)}</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            <MiniMetric label="確率の誤差" value={formatNumber(backtest.metrics?.brierScore, 3)} />
-            <MiniMetric label="自信を持った外れ" value={formatNumber(backtest.metrics?.logLoss, 3)} />
-            <MiniMetric label="的中率" value={formatPct(backtest.metrics?.accuracy)} />
-            <MiniMetric label="損益" value={formatPct(backtest.metrics?.returnPct)} />
-          </div>
-          <details className="rounded-md border border-border bg-slate-50 p-3">
-            <summary className="cursor-pointer text-sm font-bold text-slate-800">確率帯と市場別の結果を見る</summary>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <CompactList title="確率帯の結果" items={(backtest.metrics?.calibration ?? []).map((bucket) => `${bucket.bucket}: 予測 ${formatPct(bucket.predicted)} / 実績 ${formatPct(bucket.actual)} / 件数 ${bucket.count}`)} />
-              <CompactList title="市場別の結果" items={backtest.markets.slice(0, 10).map((market) => `${market.result ? "成立" : "不成立"} / ${formatPct(market.lastProbability)} / ${market.title}`)} />
-            </div>
-          </details>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function QualityPill({ signal }: { signal: Signal }) {
-  const Icon = signal.icon;
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${tonePillClass(signal.tone)}`}>
-      <Icon className="h-3.5 w-3.5" />
-      {signal.label}
-    </span>
-  );
-}
-
-function VisualMeter({ tone, value, className = "" }: { tone: Tone; value: number; className?: string }) {
-  return (
-    <div className={`h-2 overflow-hidden rounded-full bg-slate-100 ${className}`}>
-      <div className={`h-full rounded-full ${toneBarClass(tone)}`} style={{ width: `${clamp(value, 0, 100)}%` }} />
+    <div className="flex min-h-48 flex-col items-center justify-center border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
+      <Icon className="h-8 w-8 text-slate-400" />
+      <p className="mt-3 font-bold text-slate-950">{title}</p>
+      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{body}</p>
     </div>
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: string }) {
+function ProgressBar({
+  value,
+  className,
+  tone = "slate",
+}: {
+  value: number;
+  className?: string;
+  tone?: "slate" | "emerald";
+}) {
   return (
-    <div className="rounded-md bg-slate-50 p-3">
-      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-bold text-slate-950">{value}</p>
+    <div className={cn("h-2 overflow-hidden rounded-full bg-slate-200", className)}>
+      <div
+        className={cn("h-full rounded-full transition-[width]", tone === "emerald" ? "bg-emerald-600" : "bg-slate-950")}
+        style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+      />
     </div>
   );
 }
 
-function CompactList({ title, items }: { title: string; items: string[] }) {
+function DataStatus({ source, generatedAt }: { source: "live" | "snapshot" | "loading"; generatedAt?: string | null }) {
   return (
-    <div className="grid gap-2">
-      <p className="text-xs font-bold text-muted-foreground">{title}</p>
-      {items.length ? items.map((item) => <p key={item} className="line-clamp-2 break-words rounded-md bg-white p-2 text-sm leading-6 text-slate-700">{item}</p>) : <p className="text-sm text-muted-foreground">データなし</p>}
+    <div className="text-right">
+      <div className="flex items-center justify-end gap-2 text-sm font-bold text-slate-700">
+        <span className={cn(
+          "h-2.5 w-2.5 rounded-full",
+          source === "live" ? "bg-emerald-500" : source === "snapshot" ? "bg-amber-500" : "bg-slate-300",
+        )} />
+        {source === "live" ? "リアルタイム" : source === "snapshot" ? "保存データ" : "接続中"}
+      </div>
+      <p className="mt-1 text-xs text-slate-500">{generatedAt ? formatDateTime(generatedAt) : "更新時刻を確認中"}</p>
     </div>
   );
 }
 
-function scoreBacktest(run: BacktestRun) {
-  return run.metrics?.brierScore ?? Number.POSITIVE_INFINITY;
+function SmallStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs font-bold text-slate-500">{label}</p>
+      <p className="mt-1 break-words text-sm font-bold text-slate-950">{value}</p>
+    </div>
+  );
 }
 
-function getEvaluationSignal(
-  status: MonitoringSnapshot["model"]["evaluationStatus"] | undefined,
-  combinedStrategy?: string | null,
-  synchronizedHoldoutCoverage?: number | null,
-): Signal {
-  if (status === "promising") {
-    return { label: "優位性を確認", description: "Polymarketの予測を使ったHyperliquid取引が、未使用期間でもコスト控除後に基準を上回りました。", tone: "good", icon: CheckCircle2 };
-  }
-  if (status === "underperforming") {
-    return { label: "改善が必要", description: "十分な履歴で単純戦略を下回りました。本番利用せず、モデルを見直します。", tone: "bad", icon: TrendingDown };
-  }
-  if (status === "inconclusive") {
-    if ((synchronizedHoldoutCoverage ?? 0) < 0.9) {
-      return { label: "同期板を収集中", description: "集約履歴は一次判定のみ。実売買可能な板価格を前向きに蓄積しています。", tone: "watch", icon: Clock3 };
-    }
-    if (combinedStrategy === "no-trade guard") {
-      return { label: "実取引はまだ不可", description: "検証条件を満たす売買ルールがまだ見つかっていません。0%は利益ではなく、見送りルールが働いて0回だった結果です。", tone: "watch", icon: AlertCircle };
-    }
-    return { label: "検証継続", description: "優位性を判断できるだけの差がまだ確認できていません。", tone: "watch", icon: AlertCircle };
-  }
-  return { label: "検証準備中", description: "過去データを整え、最初の未使用期間テストを実行しています。", tone: "neutral", icon: Gauge };
+function ResultCell({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "positive" | "negative" | "warning" | "neutral";
+}) {
+  return (
+    <div className="flex items-center justify-between md:block">
+      <span className="text-xs font-bold text-slate-500 md:hidden">{label}</span>
+      <span className={cn(
+        "text-sm font-bold",
+        tone === "positive" && "text-emerald-700",
+        tone === "negative" && "text-rose-700",
+        tone === "warning" && "text-amber-700",
+        tone === "neutral" && "text-slate-950",
+      )}>{value}</span>
+    </div>
+  );
 }
 
-function getModelSignal(value: number | null | undefined): Signal {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return {
-      label: "データ待ち",
-      description: "過去検証を実行すると判定できます",
-      tone: "neutral",
-      icon: Gauge,
-    };
-  }
-  if (value <= 0.08) {
-    return {
-      label: "良好",
-      description: "予測誤差は小さめです",
-      tone: "good",
-      icon: CheckCircle2,
-    };
-  }
-  if (value <= 0.16) {
-    return {
-      label: "注意",
-      description: "もう少しデータを増やして確認します",
-      tone: "watch",
-      icon: AlertCircle,
-    };
-  }
-  return {
-    label: "要確認",
-    description: "外れが大きい可能性があります",
-    tone: "bad",
-    icon: AlertCircle,
-  };
+async function fetchStatic<T>(path: string) {
+  const separator = path.includes("?") ? "&" : "?";
+  const response = await fetch(`${path}${separator}v=${Date.now()}`, { cache: "no-store" });
+  if (!response.ok) throw new Error(`static artifact ${response.status}`);
+  return response.json() as Promise<T>;
 }
 
-function getProfitSignal(value: number | null | undefined): Signal {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return {
-      label: "データ待ち",
-      description: "取引結果がまだありません",
-      tone: "neutral",
-      icon: Gauge,
-    };
-  }
-  if (value > 0.005) {
-    return {
-      label: "プラス",
-      description: "検証上は利益方向です",
-      tone: "good",
-      icon: TrendingUp,
-    };
-  }
-  if (value < -0.005) {
-    return {
-      label: "マイナス",
-      description: "損失方向なので条件を見直します",
-      tone: "bad",
-      icon: TrendingDown,
-    };
-  }
-  return {
-    label: "横ばい",
-    description: "大きな損益は出ていません",
-    tone: "watch",
-    icon: MinusCircle,
-  };
+function toneForNumber(value: number | null | undefined): "positive" | "negative" | "neutral" {
+  if (value === null || value === undefined || !Number.isFinite(value) || value === 0) return "neutral";
+  return value > 0 ? "positive" : "negative";
 }
 
-function errorMeter(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 0;
-  return 100 - clamp((value / 0.2) * 100, 0, 100);
+function formatPercent(value: number | null | undefined, digits = 2) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "未確定";
+  return new Intl.NumberFormat("ja-JP", {
+    style: "percent",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    signDisplay: "exceptZero",
+  }).format(value);
 }
 
-function profitMeter(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 0;
-  return clamp(50 + value * 500, 5, 100);
+function formatNumber(value: number, digits = 0) {
+  return new Intl.NumberFormat("ja-JP", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  }).format(Number.isFinite(value) ? value : 0);
 }
 
-function readinessStatusLabel(status: MonitoringSnapshot["tradeReadiness"]["gates"][number]["status"]) {
-  const labels = {
-    ready: "完了",
-    running: "稼働中",
-    attention: "確認中",
-    blocked: "未合格",
-    not_started: "未開始",
-    locked: "停止中",
-  } as const;
-  return labels[status];
-}
-
-function readinessStepClass(status: MonitoringSnapshot["tradeReadiness"]["gates"][number]["status"]) {
-  if (status === "ready") return "bg-emerald-100 text-emerald-700";
-  if (status === "running") return "bg-sky-100 text-sky-700";
-  if (status === "attention") return "bg-sky-100 text-sky-700";
-  if (status === "blocked") return "bg-amber-100 text-amber-800";
-  return "bg-slate-100 text-slate-500";
-}
-
-function toneSoftClass(tone: Tone) {
-  const classes: Record<Tone, string> = {
-    good: "bg-emerald-50",
-    watch: "bg-amber-50",
-    bad: "bg-rose-50",
-    neutral: "bg-slate-50",
-  };
-  return classes[tone];
-}
-
-function toneIconClass(tone: Tone) {
-  const classes: Record<Tone, string> = {
-    good: "bg-emerald-100 text-emerald-700",
-    watch: "bg-amber-100 text-amber-700",
-    bad: "bg-rose-100 text-rose-700",
-    neutral: "bg-slate-100 text-primary",
-  };
-  return classes[tone];
-}
-
-function tonePillClass(tone: Tone) {
-  const classes: Record<Tone, string> = {
-    good: "bg-emerald-100 text-emerald-700",
-    watch: "bg-amber-100 text-amber-800",
-    bad: "bg-rose-100 text-rose-700",
-    neutral: "bg-slate-100 text-slate-600",
-  };
-  return classes[tone];
-}
-
-function toneBorderClass(tone: Tone) {
-  const classes: Record<Tone, string> = {
-    good: "border-emerald-200 bg-emerald-50/30",
-    watch: "border-amber-200 bg-amber-50/30",
-    bad: "border-rose-200 bg-rose-50/30",
-    neutral: "border-border bg-white",
-  };
-  return classes[tone];
-}
-
-function toneBarClass(tone: Tone) {
-  const classes: Record<Tone, string> = {
-    good: "bg-emerald-500",
-    watch: "bg-amber-500",
-    bad: "bg-rose-500",
-    neutral: "bg-slate-300",
-  };
-  return classes[tone];
-}
-
-function modeLabel(mode: Run["mode"]) {
-  return mode === "live" ? "継続観察" : "過去検証";
-}
-
-function statusLabel(status: string) {
-  const labels: Record<string, string> = {
-    running: "実行中",
-    completed: "完了",
-    stopped: "停止・未確定",
-    failed: "失敗",
-    pending: "待機",
-    filled: "約定",
-    cancelled: "取消",
-    open: "保有中",
-    closed: "決済済み",
-  };
-  return labels[status.toLowerCase()] ?? status;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function formatNumber(value: number | null | undefined, digits = 2) {
-  return value === null || value === undefined || !Number.isFinite(value) ? "-" : value.toFixed(digits);
-}
-
-function formatCombinedStrategy(strategy: string | null | undefined) {
-  if (!strategy) return "選定中";
-  if (strategy === "no-trade guard") return "取引見送り";
-  if (strategy.startsWith("hl funding carry")) return `資金調達を受け取る方向 / 24時間 ${strategy.split(" ").at(-1)}以上`;
-  if (strategy.startsWith("hl funding momentum")) return `資金調達と同じ方向 / 24時間 ${strategy.split(" ").at(-1)}以上`;
-  const threshold = strategy.match(/[0-9.]+$/)?.[0];
-  if (!threshold) return strategy;
-  if (strategy.startsWith("contrarian")) return `予測乖離へ逆張り / 強度 ${threshold}以上`;
-  if (strategy.startsWith("hl momentum")) return `6時間値動きへ順張り / Poly強度 ${threshold}以上`;
-  if (strategy.startsWith("hl reversion")) return `6時間値動きへ反転 / Poly強度 ${threshold}以上`;
-  return strategy.startsWith("trend")
-    ? `予測方向 + 6時間トレンド / 強度 ${threshold}以上`
-    : `予測方向 / 強度 ${threshold}以上`;
-}
-
-function formatShadowAction(action: string | null | undefined) {
-  const labels: Record<string, string> = {
-    OPEN_LONG: "ロングを仮想発注",
-    OPEN_SHORT: "ショートを仮想発注",
-    HOLD: "保有を継続",
-    WAIT: "条件待ち",
-    NO_SIGNAL: "対象市場待ち",
-    SKIP: "重複のため見送り",
-    BLOCKED: "リスク制限で停止",
-  };
-  return action ? labels[action] ?? action : "確認待ち";
-}
-
-function formatShadowRule(rule: MonitoringSnapshot["combinedShadow"]["signalRule"] | null | undefined) {
-  if (rule === "contrarian") return "予測乖離へ逆張り";
-  if (rule === "hyperliquid-momentum") return "6時間値動きへ順張り";
-  if (rule === "hyperliquid-reversion") return "6時間値動きへ反転";
-  if (rule === "hyperliquid-funding-carry") return "資金調達を受け取る方向";
-  if (rule === "hyperliquid-funding-momentum") return "資金調達と同じ方向";
-  if (rule === "polymarket-funding-consensus") return "Poly方向と資金受取方向が一致";
-  return "予測方向に追随";
-}
-
-function formatEvaluationPeriod(start: string | null | undefined, end: string | null | undefined) {
-  if (!start || !end) return "検証期間を準備中";
-  const formatter = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "2-digit" });
-  return `検証期間 ${formatter.format(new Date(start))} - ${formatter.format(new Date(end))}`;
-}
-
-function formatCompactPeriod(start: string | null | undefined, end: string | null | undefined) {
-  if (!start || !end) return "準備中";
-  const formatter = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit" });
-  return `${formatter.format(new Date(start))} - ${formatter.format(new Date(end))}`;
-}
-
-function formatJapanDateTime(value: string) {
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "時刻不明";
   return new Intl.DateTimeFormat("ja-JP", {
-    timeZone: "Asia/Tokyo",
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(date);
 }
 
-function formatMinutes(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  return value < 60 ? `${Math.round(value)}分` : `${(value / 60).toFixed(1)}時間`;
+function formatPeriod(start: string | null, end: string | null | undefined) {
+  if (!start || !end) return "収集中";
+  const milliseconds = Math.max(0, new Date(end).getTime() - new Date(start).getTime());
+  const hours = milliseconds / 3_600_000;
+  if (hours < 48) return `${Math.max(1, Math.round(hours))}時間`;
+  return `${Math.max(1, Math.round(hours / 24))}日間`;
 }
 
-function formatMilliseconds(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  return value < 1_000 ? `${Math.round(value)}ms` : `${(value / 1_000).toFixed(1)}秒`;
+function formatHorizon(seconds: number) {
+  if (seconds < 60) return `${seconds}秒`;
+  return `${seconds / 60}分`;
 }
 
-function formatDurationHours(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  if (value < 1) return `${Math.max(1, Math.round(value * 60))}分`;
-  if (value < 24) return `${value.toFixed(1)}時間`;
-  return `${Math.floor(value / 24)}日 ${Math.floor(value % 24)}時間`;
+function shortAddress(address: string) {
+  return address.length > 14 ? `${address.slice(0, 7)}…${address.slice(-5)}` : address;
 }
 
-function formatBasisBps(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  const basisPoints = value * 10_000;
-  const digits = Math.abs(basisPoints) < 0.1 ? 2 : Math.abs(basisPoints) < 10 ? 1 : 0;
-  return `${basisPoints.toFixed(digits)}bp`;
+function walletName(profile: WalletProfile) {
+  const value = profile.displayName?.trim();
+  if (!value) return shortAddress(profile.address);
+  return value.length > 32 ? `${value.slice(0, 31)}…` : value;
 }
 
-function formatSignedBasisBps(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  const formatted = formatBasisBps(value);
-  return `${value >= 0 ? "+" : ""}${formatted}`;
+function categoryLabel(category?: string) {
+  const labels: Record<string, string> = {
+    CRYPTO: "暗号資産",
+    POLITICS: "政治",
+    SPORTS: "スポーツ",
+    OVERALL: "総合",
+  };
+  return labels[category ?? ""] ?? category ?? "総合";
 }
 
-function formatCompact(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  if (Math.abs(value) < 10_000) return new Intl.NumberFormat("ja-JP").format(value);
-  return new Intl.NumberFormat("ja-JP", { notation: "compact", maximumFractionDigits: 1 }).format(value);
-}
-
-function formatElapsed(startedAt: string | null | undefined) {
-  if (!startedAt) return "-";
-  const elapsedHours = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 3_600_000));
-  const days = Math.floor(elapsedHours / 24);
-  const hours = elapsedHours % 24;
-  return days > 0 ? `${days}日 ${hours}時間` : `${hours}時間`;
-}
-
-function relativeTime(value: string | null | undefined) {
-  if (!value) return "更新待ち";
-  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
-  if (minutes < 1) return "最終収集 1分以内";
-  if (minutes < 60) return `最終収集 ${minutes}分前`;
-  return `最終収集 ${Math.floor(minutes / 60)}時間前`;
-}
-
-function formatMarketPrice(value: number) {
-  const digits = value >= 1_000 ? 0 : value >= 10 ? 2 : 4;
-  return `$${new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(value)}`;
-}
-
-function formatUsdCompact(value: number) {
-  return `$${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
-}
-
-function formatSignedPct(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
-  return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
-}
-
-function formatPct(value: number | null | undefined) {
-  return value === null || value === undefined || !Number.isFinite(value) ? "-" : `${(value * 100).toFixed(2)}%`;
-}
-
-function formatScore(value: number | null | undefined) {
-  return value === null || value === undefined || !Number.isFinite(value) ? "-" : value.toFixed(4);
-}
-
-function formatProbabilitySkill(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "未判定";
-  if (Math.abs(value) < 0.00005) return "0.00%";
-  return formatSignedPct(value);
-}
-
-function formatSignedScore(value: number | null | undefined) {
-  return value === null || value === undefined || !Number.isFinite(value)
-    ? "-"
-    : `${value > 0 ? "+" : ""}${value.toFixed(4)}`;
-}
-
-function formatUsd(value: number | null | undefined) {
-  return value === null || value === undefined || !Number.isFinite(value)
-    ? "-"
-    : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+function modelLabel(model: string) {
+  if (model.startsWith("hist-gradient")) return "勾配ブースティング";
+  if (model.startsWith("logistic")) return "ロジスティック回帰";
+  return model;
 }

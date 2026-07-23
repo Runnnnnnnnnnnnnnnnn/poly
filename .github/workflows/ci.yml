@@ -11,7 +11,21 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: file:./dev.db
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/polymarket_watch?schema=public
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: polymarket_watch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d polymarket_watch"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -24,6 +38,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Initialize PostgreSQL schema
+        run: npm run db:migrate
 
       - name: Setup Python analytics runtime
         uses: actions/setup-python@v6

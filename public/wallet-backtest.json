@@ -1,0 +1,151 @@
+{
+  "generatedAt": "2026-07-23T09:09:54.138Z",
+  "selectedLatencySeconds": 30,
+  "status": "collecting",
+  "edgeConfirmed": false,
+  "reason": "独立イベントを収集中（0/50）",
+  "reports": [
+    {
+      "methodology": "point-in-time-wallet-consensus-30s",
+      "status": "collecting",
+      "edgeConfirmed": false,
+      "reason": "独立イベントを収集中（0/50）",
+      "latencySeconds": 30,
+      "signals": 0,
+      "independentEvents": 0,
+      "yesEvents": 0,
+      "noEvents": 0,
+      "winRate": null,
+      "meanReturnPct": 0,
+      "benchmarkReturnPct": 0,
+      "excessReturnPct": 0,
+      "excessConfidenceInterval95": null,
+      "deflatedSharpeProbability": null,
+      "maxDrawdownPct": 0,
+      "gates": [
+        {
+          "id": "events",
+          "label": "独立イベント50件",
+          "passed": false,
+          "value": 0,
+          "threshold": 50
+        },
+        {
+          "id": "both-sides",
+          "label": "YES/NO各5件",
+          "passed": false,
+          "value": 0,
+          "threshold": 5
+        },
+        {
+          "id": "profit",
+          "label": "手数料後プラス",
+          "passed": false,
+          "value": 0,
+          "threshold": 0
+        },
+        {
+          "id": "benchmark",
+          "label": "市場基準を上回る",
+          "passed": false,
+          "value": 0,
+          "threshold": 0
+        },
+        {
+          "id": "significance",
+          "label": "超過収益95%下限がプラス",
+          "passed": false,
+          "value": null,
+          "threshold": 0
+        },
+        {
+          "id": "selection-bias",
+          "label": "選択バイアス補正95%以上",
+          "passed": false,
+          "value": null,
+          "threshold": 0.95
+        },
+        {
+          "id": "drawdown",
+          "label": "最大下落5%以内",
+          "passed": true,
+          "value": 0,
+          "threshold": 0.05
+        }
+      ],
+      "datasetHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "points": []
+    },
+    {
+      "methodology": "point-in-time-wallet-consensus-60s",
+      "status": "collecting",
+      "edgeConfirmed": false,
+      "reason": "独立イベントを収集中（0/50）",
+      "latencySeconds": 60,
+      "signals": 0,
+      "independentEvents": 0,
+      "yesEvents": 0,
+      "noEvents": 0,
+      "winRate": null,
+      "meanReturnPct": 0,
+      "benchmarkReturnPct": 0,
+      "excessReturnPct": 0,
+      "excessConfidenceInterval95": null,
+      "deflatedSharpeProbability": null,
+      "maxDrawdownPct": 0,
+      "gates": [
+        {
+          "id": "events",
+          "label": "独立イベント50件",
+          "passed": false,
+          "value": 0,
+          "threshold": 50
+        },
+        {
+          "id": "both-sides",
+          "label": "YES/NO各5件",
+          "passed": false,
+          "value": 0,
+          "threshold": 5
+        },
+        {
+          "id": "profit",
+          "label": "手数料後プラス",
+          "passed": false,
+          "value": 0,
+          "threshold": 0
+        },
+        {
+          "id": "benchmark",
+          "label": "市場基準を上回る",
+          "passed": false,
+          "value": 0,
+          "threshold": 0
+        },
+        {
+          "id": "significance",
+          "label": "超過収益95%下限がプラス",
+          "passed": false,
+          "value": null,
+          "threshold": 0
+        },
+        {
+          "id": "selection-bias",
+          "label": "選択バイアス補正95%以上",
+          "passed": false,
+          "value": null,
+          "threshold": 0.95
+        },
+        {
+          "id": "drawdown",
+          "label": "最大下落5%以内",
+          "passed": true,
+          "value": 0,
+          "threshold": 0.05
+        }
+      ],
+      "datasetHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "points": []
+    }
+  ]
+}

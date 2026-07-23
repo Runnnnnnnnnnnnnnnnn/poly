@@ -21,6 +21,13 @@ const runtimeNode = [
 ].filter(Boolean).find((candidate) => existsSync(candidate));
 if (!runtimeNode) throw new Error("Node.js runtime was not found");
 const deployedRoot = resolve(homedir(), ".polymarket-watch/runtime");
+const databaseUrlFile = resolve(homedir(), ".polymarket-watch/postgres/database-url");
+const databaseUrl = process.env.POLYMARKET_DATABASE_URL
+  || process.env.DATABASE_URL
+  || (existsSync(databaseUrlFile) ? readFileSync(databaseUrlFile, "utf8").trim() : null);
+if (!databaseUrl?.startsWith("postgresql://") && !databaseUrl?.startsWith("postgres://")) {
+  throw new Error("local PostgreSQL DATABASE_URL was not found");
+}
 
 if (process.argv.includes("--uninstall")) {
   for (const label of [watchdogLabel, tunnelLabel, runtimeLabel]) {
@@ -61,22 +68,15 @@ const modelRevision = fileFingerprint([
   "scripts/hyperliquid-testnet-executor.py",
   "scripts/hyperliquid_testnet_safety.py",
 ]);
-const runtimeDatabasePath = resolve(deployedRoot, "prisma/dev.db");
-const buildSnapshotDirectory = mkdtempSync(resolve(tmpdir(), "polymarket-watch-build-"));
-const buildDatabasePath = resolve(buildSnapshotDirectory, "dev.db");
 const buildSourceDirectory = mkdtempSync(resolve(tmpdir(), "polymarket-watch-source-"));
 try {
   prepareBuildSource(buildSourceDirectory);
-  prepareBuildDatabase(runtimeDatabasePath, buildDatabasePath);
-  buildRuntime(modelRevision, buildDatabasePath, buildSourceDirectory);
+  buildRuntime(modelRevision, databaseUrl, buildSourceDirectory);
   rmSync(resolve(buildSourceDirectory, "node_modules"), { force: true });
 } catch (error) {
   rmSync(buildSourceDirectory, { recursive: true, force: true });
   throw error;
-} finally {
-  rmSync(buildSnapshotDirectory, { recursive: true, force: true });
 }
-const databaseUrl = `file:${runtimeDatabasePath}`;
 const command = `set -a; source ${shellQuote(resolve(deployedRoot, ".env"))}; set +a; cd ${shellQuote(homedir())}; PAPER_PRODUCTION=1 APP_PORT=3001 POLYMARKET_PROJECT_ROOT=${shellQuote(deployedRoot)} POLYMARKET_MODEL_REVISION=${shellQuote(modelRevision)} DATABASE_URL=${shellQuote(databaseUrl)} exec ${shellQuote(runtimeNode)} ${shellQuote(resolve(deployedRoot, "scripts/run-all.mjs"))}`;
 const runtimePlist = makePlist(runtimeLabel, command, "/tmp/polymarket-watch-runtime.log");
 
@@ -86,16 +86,12 @@ const previousRuntimePlist = existsSync(runtimePlistPath) ? readFileSync(runtime
 const runtimeWasLoaded = agentIsLoaded(`${domain}/${runtimeLabel}`);
 try {
   stopAgent(runtimeLabel);
-  waitForDatabaseRelease(runtimeDatabasePath);
   stageRuntime(buildSourceDirectory);
-  assertSqliteIntegrity(runtimeDatabasePath);
   execFileSync(runtimeNode, [resolve(deployedRoot, "node_modules/prisma/build/index.js"), "db", "push", "--schema", resolve(deployedRoot, "prisma/schema.prisma")], {
     cwd: deployedRoot,
     env: { ...process.env, DATABASE_URL: databaseUrl },
     stdio: "inherit",
   });
-  configureSqliteDatabase(runtimeDatabasePath);
-  assertSqliteIntegrity(runtimeDatabasePath);
   installAgent(runtimeLabel, runtimePlist);
 } catch (error) {
   restartPreviousAgent(runtimeLabel, previousRuntimePlist, runtimeWasLoaded);
@@ -234,10 +230,10 @@ function prepareBuildSource(target) {
   if (untracked.length) console.log(`excluded ${untracked.length} untracked source file(s) from runtime deployment`);
 }
 
-function buildRuntime(revision, buildDatabasePath, sourceRoot) {
+function buildRuntime(revision, databaseUrl, sourceRoot) {
   const buildEnv = {
     ...process.env,
-    DATABASE_URL: `file:${buildDatabasePath}`,
+    DATABASE_URL: databaseUrl,
     SKIP_TITLE_AI: "1",
     POLYMARKET_MODEL_REVISION: revision,
   };
@@ -299,9 +295,6 @@ function stageRuntime(sourceRoot) {
       writeFileSync(resolve(target, ".polymarket-runtime-dependencies"), sourceDependencyFingerprint, "utf8");
     }
   }
-
-  const runtimeDatabase = resolve(deployedRoot, "prisma/dev.db");
-  if (!existsSync(runtimeDatabase)) copyFileSync(resolve(root, "prisma/dev.db"), runtimeDatabase);
 }
 
 function prepareBuildDatabase(sourcePath, targetPath) {

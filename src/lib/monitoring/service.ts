@@ -1536,7 +1536,9 @@ async function loadSynchronizedPriceQuality(input: {
       ), gaps AS (
         SELECT
           "capturedAt",
-          "capturedAt" - LAG("capturedAt") OVER (ORDER BY "capturedAt") AS "gapMs"
+          EXTRACT(EPOCH FROM (
+            "capturedAt" - LAG("capturedAt") OVER (ORDER BY "capturedAt")
+          )) * 1000 AS "gapMs"
         FROM cycles
       )
       SELECT

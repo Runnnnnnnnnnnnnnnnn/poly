@@ -4,12 +4,13 @@ import { calculatePriceBasisPct } from "@/src/lib/combined-trading/polymarket-re
 import { discoverActiveCryptoDirectionMarkets, fetchCurrentBooks, type ActiveCryptoDirectionMarket } from "@/src/lib/backtest/polymarket";
 import { markPipelineAttempt, markPipelineError, markPipelineSuccess } from "@/src/lib/monitoring/heartbeat";
 import {
-  normalizeHyperliquidWebSocketMessage,
+  normalizeHyperliquidWebSocketMessages,
   normalizePolymarketWebSocketMessage,
   normalizeRtdsReferenceMessage,
   realtimeReferenceSubscriptions,
   type HyperliquidBookUpdate,
   type HyperliquidContextUpdate,
+  type HyperliquidTradeUpdate,
   type RealtimeBookTop,
   type RealtimeReferenceUpdate,
 } from "@/src/lib/realtime-market-data/normalizers";
@@ -41,6 +42,7 @@ export class RealtimeMarketDataCollector {
   private readonly polymarketBooks = new Map<string, RealtimeBookTop>();
   private readonly hyperliquidBooks = new Map<string, HyperliquidBookUpdate>();
   private readonly hyperliquidContexts = new Map<string, HyperliquidContextUpdate>();
+  private readonly pendingHyperliquidTrades = new Map<string, HyperliquidTradeUpdate>();
   private readonly references = new Map<string, ReferenceState>();
   private markets = new Map<string, ActiveCryptoDirectionMarket>();
   private desiredTokens = new Set<string>();
@@ -195,7 +197,20 @@ export class RealtimeMarketDataCollector {
       await Promise.all([
         rows.length ? prisma.realtimeMarketTick.createMany({ data: rows }) : Promise.resolve(),
         assetRows.length ? prisma.realtimeAssetTick.createMany({ data: assetRows }) : Promise.resolve(),
+        this.persistHyperliquidMicrostructure(now),
       ]);
+      if (rows.length || assetRows.length) {
+        await prisma.dataQualityIncident.updateMany({
+          where: {
+            scope: "Hyperliquid・Polymarket高頻度ティック",
+            status: "OPEN",
+          },
+          data: {
+            status: "RESOLVED",
+            endedAt: now,
+          },
+        });
+      }
       this.pendingHeartbeatRecords += rows.length + assetRows.length;
       this.consecutiveEmptyActiveFlushes = activeMarkets.length && !rows.length
         ? this.consecutiveEmptyActiveFlushes + 1
@@ -252,11 +267,15 @@ export class RealtimeMarketDataCollector {
   }
 
   private handleHyperliquidMessage(data: unknown) {
-    const update = normalizeHyperliquidWebSocketMessage(data);
-    if (!update || !supportedAssets.has(update.asset)) return false;
-    if ("bestBid" in update) this.hyperliquidBooks.set(update.asset, update);
-    else this.hyperliquidContexts.set(update.asset, update);
-    return true;
+    let handled = false;
+    for (const update of normalizeHyperliquidWebSocketMessages(data)) {
+      if (!supportedAssets.has(update.asset)) continue;
+      if ("tradeId" in update) this.pendingHyperliquidTrades.set(`${update.asset}:${update.tradeId}`, update);
+      else if ("bestBid" in update) this.hyperliquidBooks.set(update.asset, update);
+      else this.hyperliquidContexts.set(update.asset, update);
+      handled = true;
+    }
+    return handled;
   }
 
   private handleReferenceMessage(data: unknown) {
@@ -301,6 +320,7 @@ export class RealtimeMarketDataCollector {
     for (const asset of supportedAssets) {
       this.hyperliquidSocket.send(JSON.stringify({ method: "subscribe", subscription: { type: "l2Book", coin: asset } }));
       this.hyperliquidSocket.send(JSON.stringify({ method: "subscribe", subscription: { type: "activeAssetCtx", coin: asset } }));
+      this.hyperliquidSocket.send(JSON.stringify({ method: "subscribe", subscription: { type: "trades", coin: asset } }));
     }
   }
 
@@ -320,7 +340,65 @@ export class RealtimeMarketDataCollector {
     return Promise.all([
       prisma.realtimeMarketTick.deleteMany({ where: { capturedAt: { lt: cutoff } } }),
       prisma.realtimeAssetTick.deleteMany({ where: { capturedAt: { lt: cutoff } } }),
+      prisma.hyperliquidL2Snapshot.deleteMany({ where: { capturedAt: { lt: cutoff } } }),
+      prisma.hyperliquidTradeTick.deleteMany({ where: { tradedAt: { lt: cutoff } } }),
     ]);
+  }
+
+  private async persistHyperliquidMicrostructure(now: Date) {
+    const l2Rows = Array.from(this.hyperliquidBooks.values()).flatMap((book) => {
+      if (!isFresh(book.updatedAt, now, maximumHyperliquidBookAgeMs)) return [];
+      const bids = book.levels.bids.slice(0, 10);
+      const asks = book.levels.asks.slice(0, 10);
+      const bidDepth5 = depth(bids.slice(0, 5));
+      const askDepth5 = depth(asks.slice(0, 5));
+      const bidDepth10 = depth(bids);
+      const askDepth10 = depth(asks);
+      const micropriceDenominator = (book.bidSize ?? 0) + (book.askSize ?? 0);
+      const microprice = micropriceDenominator > 0
+        ? (book.bestAsk * (book.bidSize ?? 0) + book.bestBid * (book.askSize ?? 0)) / micropriceDenominator
+        : (book.bestBid + book.bestAsk) / 2;
+      return [{
+        id: `${book.asset}:${now.getTime()}`,
+        asset: book.asset,
+        levels: Math.min(bids.length, asks.length),
+        bidsJson: JSON.stringify(bids),
+        asksJson: JSON.stringify(asks),
+        bestBid: book.bestBid,
+        bestAsk: book.bestAsk,
+        spread: book.bestAsk - book.bestBid,
+        bidDepth5,
+        askDepth5,
+        bidDepth10,
+        askDepth10,
+        imbalance5: imbalance(bidDepth5, askDepth5),
+        imbalance10: imbalance(bidDepth10, askDepth10),
+        microprice,
+        exchangeTimeMs: BigInt(book.exchangeTimeMs),
+        capturedAt: now,
+      }];
+    });
+    const trades = Array.from(this.pendingHyperliquidTrades.values());
+    this.pendingHyperliquidTrades.clear();
+    await Promise.all([
+      l2Rows.length ? prisma.hyperliquidL2Snapshot.createMany({ data: l2Rows, skipDuplicates: true }) : Promise.resolve(),
+      trades.length ? prisma.hyperliquidTradeTick.createMany({
+        data: trades.map((trade) => ({
+          id: `${trade.asset}:${trade.tradeId}`,
+          tradeId: trade.tradeId,
+          asset: trade.asset,
+          side: trade.side,
+          price: trade.price,
+          size: trade.size,
+          notional: trade.price * trade.size,
+          tradedAt: trade.tradedAt,
+          receivedAt: now,
+        })),
+        skipDuplicates: true,
+      }) : Promise.resolve(),
+    ]);
+    this.pendingHeartbeatRecords += l2Rows.length + trades.length;
+    return { l2: l2Rows.length, trades: trades.length };
   }
 
   private async reportError(error: unknown) {
@@ -659,6 +737,15 @@ function boundedNumber(value: number | undefined, fallback: number, minimum: num
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(minimum, Math.min(maximum, value))
     : fallback;
+}
+
+function depth(levels: Array<{ price: number; size: number }>) {
+  return levels.reduce((total, level) => total + level.price * level.size, 0);
+}
+
+function imbalance(bidDepth: number, askDepth: number) {
+  const total = bidDepth + askDepth;
+  return total > 0 ? (bidDepth - askDepth) / total : 0;
 }
 
 function clamp(value: number, minimum: number, maximum: number) {

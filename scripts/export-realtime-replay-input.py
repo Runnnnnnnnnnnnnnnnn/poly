@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.dataset as ds
+import psycopg
 
 
 MARKET_COLUMNS = [
@@ -102,39 +103,40 @@ def json_value(value):
     raise TypeError(f"unsupported JSON value: {type(value).__name__}")
 
 
-def sqlite_rows(connection, table, columns, synchronization_version, since_ms, before_ms):
+def source_rows(connection, table, columns, synchronization_version, since, before):
     selected = ", ".join(f'"{column}"' for column in columns)
     rows = connection.execute(
         f'SELECT {selected} FROM "{table}" '
-        'WHERE "synchronizationVersion" = ? AND "capturedAt" >= ? AND "capturedAt" < ? '
+        f'WHERE "synchronizationVersion" = {placeholder(connection)} '
+        f'AND "capturedAt" >= {placeholder(connection)} AND "capturedAt" < {placeholder(connection)} '
         'ORDER BY "capturedAt", "id"',
-        (synchronization_version, since_ms, before_ms),
+        (synchronization_version, source_boundary(connection, since), source_boundary(connection, before)),
     ).fetchall()
     return [normalize_record(dict(zip(columns, row))) for row in rows]
 
 
-def minimum_sqlite_capture(connection, table, synchronization_version, since_ms, before_ms):
+def minimum_source_capture(connection, table, synchronization_version, since, before):
     row = connection.execute(
         f'SELECT MIN("capturedAt") FROM "{table}" '
-        'WHERE "synchronizationVersion" = ? AND "capturedAt" >= ? AND "capturedAt" < ?',
-        (synchronization_version, since_ms, before_ms),
+        f'WHERE "synchronizationVersion" = {placeholder(connection)} '
+        f'AND "capturedAt" >= {placeholder(connection)} AND "capturedAt" < {placeholder(connection)}',
+        (synchronization_version, source_boundary(connection, since), source_boundary(connection, before)),
     ).fetchone()
-    return int(row[0]) if row and row[0] is not None else None
+    return source_datetime(row[0]) if row and row[0] is not None else None
 
 
-def parquet_rows(archive, dataset_name, columns, synchronization_version, since, before, sqlite_minimum_ms):
-    files = sorted((archive / f"table={dataset_name}").glob("date=*/data.parquet"))
+def parquet_rows(archive, dataset_name, columns, synchronization_version, since, before, source_minimum):
+    files = sorted((archive / f"table={dataset_name}").glob("date=*/**/data.parquet"))
     if not files:
         return []
-    dataset = ds.dataset([str(path) for path in files], format="parquet", partitioning="hive")
+    dataset = ds.dataset([str(path) for path in files], format="parquet")
     expression = (
         (ds.field("synchronizationVersion") == synchronization_version)
         & (ds.field("capturedAt") >= pa.scalar(since))
         & (ds.field("capturedAt") < pa.scalar(before))
     )
-    if sqlite_minimum_ms is not None:
-        sqlite_minimum = datetime.fromtimestamp(sqlite_minimum_ms / 1000, timezone.utc)
-        expression = expression & (ds.field("capturedAt") < pa.scalar(sqlite_minimum))
+    if source_minimum is not None:
+        expression = expression & (ds.field("capturedAt") < pa.scalar(source_minimum))
     table = dataset.to_table(columns=columns, filter=expression)
     return [normalize_record(record) for record in table.to_pylist()]
 
@@ -175,27 +177,21 @@ def run(args):
     now = utc_time(args.now)
     lookback_days = max(0, args.lookback_days)
     since = datetime(1970, 1, 1, tzinfo=timezone.utc) if lookback_days == 0 else now - timedelta(days=lookback_days)
-    since_ms = int(since.timestamp() * 1000)
-    before_ms = int(now.timestamp() * 1000)
-    database = Path(args.database).expanduser().resolve()
+    database_source = args.database
+    database_mode = "postgres" if database_source.startswith(("postgresql://", "postgres://")) else "sqlite"
     archive = Path(args.archive).expanduser().resolve()
-    if not database.is_file():
-        raise FileNotFoundError(f"SQLite database not found: {database}")
-
-    with sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=30) as connection:
-        connection.execute("PRAGMA query_only=ON")
-        connection.execute("PRAGMA busy_timeout=30000")
-        market_minimum = minimum_sqlite_capture(
-            connection, "RealtimeMarketTick", args.market_sync, since_ms, before_ms
+    with source_connection(database_source) as connection:
+        market_minimum = minimum_source_capture(
+            connection, "RealtimeMarketTick", args.market_sync, since, now
         )
-        asset_minimum = minimum_sqlite_capture(
-            connection, "RealtimeAssetTick", args.asset_sync, since_ms, before_ms
+        asset_minimum = minimum_source_capture(
+            connection, "RealtimeAssetTick", args.asset_sync, since, now
         )
-        current_market = sqlite_rows(
-            connection, "RealtimeMarketTick", MARKET_COLUMNS, args.market_sync, since_ms, before_ms
+        current_market = source_rows(
+            connection, "RealtimeMarketTick", MARKET_COLUMNS, args.market_sync, since, now
         )
-        current_asset = sqlite_rows(
-            connection, "RealtimeAssetTick", ASSET_COLUMNS, args.asset_sync, since_ms, before_ms
+        current_asset = source_rows(
+            connection, "RealtimeAssetTick", ASSET_COLUMNS, args.asset_sync, since, now
         )
 
     archived_market = parquet_rows(
@@ -210,8 +206,8 @@ def run(args):
     asset_source = source_summary(archived_asset, current_asset, asset_ticks, asset_duplicates)
     archive_rows = market_source["archiveRows"] + asset_source["archiveRows"]
     sqlite_rows_count = market_source["sqliteRows"] + asset_source["sqliteRows"]
-    archive_partitions = len(list(archive.glob("table=*/date=*/data.parquet")))
-    mode = "hybrid" if archive_rows and sqlite_rows_count else "parquet" if archive_rows else "sqlite"
+    archive_partitions = len(list(archive.glob("table=*/date=*/**/data.parquet")))
+    mode = "hybrid" if archive_rows and sqlite_rows_count else "parquet" if archive_rows else database_mode
     payload = {
         "schemaVersion": 1,
         "generatedAt": now,
@@ -223,12 +219,46 @@ def run(args):
             "beforeAt": now,
             "marketTicks": market_source,
             "assetTicks": asset_source,
+            "databaseMode": database_mode,
         },
         "marketTicks": market_ticks,
         "assetTicks": asset_ticks,
     }
     atomic_json(Path(args.output).expanduser().resolve(), payload)
     return payload["provenance"]
+
+
+def source_connection(database_source):
+    if database_source.startswith(("postgresql://", "postgres://")):
+        connection = psycopg.connect(database_source.split("?schema=", 1)[0], autocommit=True)
+        connection.execute("SET TIME ZONE 'UTC'")
+        return connection
+    database_value = database_source[5:] if database_source.startswith("file:") else database_source
+    database = Path(database_value).expanduser().resolve()
+    if not database.is_file():
+        raise FileNotFoundError(f"SQLite database not found: {database}")
+    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=30)
+    connection.execute("PRAGMA query_only=ON")
+    connection.execute("PRAGMA busy_timeout=30000")
+    return connection
+
+
+def is_postgres(connection):
+    return connection.__class__.__module__.startswith("psycopg")
+
+
+def placeholder(connection):
+    return "%s" if is_postgres(connection) else "?"
+
+
+def source_boundary(connection, value):
+    return value.replace(tzinfo=None) if is_postgres(connection) else int(value.timestamp() * 1000)
+
+
+def source_datetime(value):
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=value.tzinfo or timezone.utc).astimezone(timezone.utc)
+    return datetime.fromtimestamp(int(value) / 1000, timezone.utc)
 
 
 def main():

@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { processSignalTarget, supervisorExitDelayMs, supervisorForceKillDelayMs } from "./process-supervisor-policy.mjs";
+import { runDatabasePreflight } from "./database-preflight.mjs";
 
 const root = process.env.POLYMARKET_PROJECT_ROOT || resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeCwd = process.env.POLYMARKET_RUNTIME_CWD || root;
@@ -31,13 +32,17 @@ const env = {
   PAPER_RUN_FILE: process.env.PAPER_RUN_FILE || join(root, ".paper-run-id"),
 };
 const enableLegacyExperiments = process.env.ENABLE_LEGACY_EXPERIMENTS === "1";
+const databasePreflight = runDatabasePreflight(process.env.DATABASE_URL);
+if (!databasePreflight.ready) {
+  console.error(`database preflight blocked collectors: ${databasePreflight.reason}`);
+}
 const processes = [
   {
     name: "web",
     command: process.execPath,
     args: [join(root, "node_modules/next/dist/bin/next"), production ? "start" : "dev", root, "--hostname", "127.0.0.1", "--port", appPort],
   },
-  ...(enableLegacyExperiments ? [
+  ...(databasePreflight.ready && enableLegacyExperiments ? [
     {
       name: "worker",
       command: process.execPath,
@@ -49,7 +54,7 @@ const processes = [
       args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-combined-shadow.mts")],
     },
   ] : []),
-  {
+  ...(databasePreflight.ready ? [{
     name: "forward-experiment",
     command: process.execPath,
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-forward-experiment.mts")],
@@ -80,6 +85,16 @@ const processes = [
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-realtime-market-data.mts")],
   },
   {
+    name: "wallet-intelligence",
+    command: process.execPath,
+    args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-wallet-intelligence.mts")],
+  },
+  {
+    name: "hyperliquid-model",
+    command: process.execPath,
+    args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-hyperliquid-model.mts")],
+  },
+  {
     name: "columnar-archive",
     command: process.execPath,
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-columnar-archive.mts")],
@@ -92,13 +107,15 @@ const processes = [
   {
     name: "encrypted-backup",
     command: process.execPath,
-    args: [join(root, "scripts/run-encrypted-backup.mjs")],
+    args: [join(root, process.env.DATABASE_URL?.startsWith("postgres")
+      ? "scripts/run-encrypted-postgres-backup.mjs"
+      : "scripts/run-encrypted-backup.mjs")],
   },
   {
     name: "operational-alerts",
     command: process.execPath,
     args: [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "scripts/run-operational-alerts.mts")],
-  },
+  }] : []),
 ];
 const children = new Map();
 

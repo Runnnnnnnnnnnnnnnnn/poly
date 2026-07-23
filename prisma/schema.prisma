@@ -3,8 +3,157 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model DataQualityIncident {
+  id           String    @id
+  scope        String
+  status       String
+  reason       String
+  metadataJson String?
+  startedAt    DateTime
+  endedAt      DateTime?
+  detectedAt   DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, startedAt])
+  @@index([scope, startedAt])
+}
+
+model PolymarketWalletProfile {
+  address          String                          @id
+  displayName      String?
+  style            String                          @default("UNCLASSIFIED")
+  copyabilityScore Float                           @default(0)
+  excluded         Boolean                         @default(false)
+  exclusionReason  String?
+  firstSeenAt      DateTime                        @default(now())
+  lastSeenAt       DateTime                        @default(now())
+  scoredAt         DateTime?
+  scores           PolymarketWalletCategoryScore[]
+  trades           PolymarketWalletTrade[]
+
+  @@index([excluded, copyabilityScore])
+  @@index([lastSeenAt])
+}
+
+model PolymarketWalletCategoryScore {
+  id                  String                  @id
+  walletAddress       String
+  category            String
+  period              String
+  realizedPnl         Float                   @default(0)
+  volume              Float                   @default(0)
+  trades              Int                     @default(0)
+  activeDays          Int                     @default(0)
+  independentEvents   Int                     @default(0)
+  winRate             Float?
+  returnOnVolume      Float?
+  riskAdjustedScore   Float                   @default(0)
+  consistencyScore    Float                   @default(0)
+  twoSidedRatio       Float                   @default(0)
+  medianHoldingTimeMs Int?
+  qualified           Boolean                 @default(false)
+  scoredAt            DateTime
+  wallet              PolymarketWalletProfile @relation(fields: [walletAddress], references: [address], onDelete: Cascade)
+
+  @@unique([walletAddress, category, period])
+  @@index([category, period, qualified, riskAdjustedScore])
+}
+
+model PolymarketWalletTrade {
+  id            String                  @id
+  walletAddress String
+  transactionId String?
+  eventId       String?
+  marketId      String
+  tokenId       String
+  title         String
+  slug          String?
+  category      String
+  side          String
+  outcome       String
+  price         Float
+  size          Float
+  notional      Float
+  tradedAt      DateTime
+  receivedAt    DateTime                @default(now())
+  wallet        PolymarketWalletProfile @relation(fields: [walletAddress], references: [address], onDelete: Cascade)
+
+  @@index([walletAddress, tradedAt])
+  @@index([marketId, tradedAt])
+  @@index([category, tradedAt])
+}
+
+model WalletSignal {
+  id                 String    @id
+  eventId            String?
+  marketId           String
+  tokenId            String?
+  title              String
+  category           String
+  direction          String
+  consensusScore     Float
+  walletCount        Int
+  netNotional        Float
+  marketPrice        Float?
+  delayedPrice30     Float?
+  delayedPrice60     Float?
+  spread             Float?
+  availableLiquidity Float?
+  contributorJson    String
+  status             String
+  reason             String
+  observedAt         DateTime
+  executableAt       DateTime?
+  resolvedOutcome    Int?
+  simulatedReturn30  Float?
+  simulatedReturn60  Float?
+  createdAt          DateTime  @default(now())
+
+  @@index([category, observedAt])
+  @@index([marketId, observedAt])
+  @@index([status, observedAt])
+}
+
+model HyperliquidL2Snapshot {
+  id             String   @id
+  asset          String
+  levels         Int
+  bidsJson       String
+  asksJson       String
+  bestBid        Float
+  bestAsk        Float
+  spread         Float
+  bidDepth5      Float
+  askDepth5      Float
+  bidDepth10     Float
+  askDepth10     Float
+  imbalance5     Float
+  imbalance10    Float
+  microprice     Float
+  exchangeTimeMs BigInt
+  capturedAt     DateTime @default(now())
+
+  @@index([asset, capturedAt])
+  @@index([capturedAt])
+}
+
+model HyperliquidTradeTick {
+  id         String   @id
+  tradeId    String?
+  asset      String
+  side       String
+  price      Float
+  size       Float
+  notional   Float
+  tradedAt   DateTime
+  receivedAt DateTime @default(now())
+
+  @@index([asset, tradedAt])
+  @@index([tradedAt])
 }
 
 model WatchlistItem {
@@ -163,17 +312,34 @@ model PipelineHeartbeat {
 }
 
 model ModelEvaluationRun {
-  id           String    @id
+  id           String            @id
   modelVersion String
   status       String
   datasetHash  String?
   configJson   String
   metricsJson  String?
   error        String?
-  startedAt    DateTime  @default(now())
+  startedAt    DateTime          @default(now())
   completedAt  DateTime?
+  gates        ModelGateResult[]
 
   @@index([status, completedAt])
+}
+
+model ModelGateResult {
+  id          String             @id
+  runId       String
+  gateId      String
+  label       String
+  passed      Boolean
+  value       Float?
+  threshold   Float?
+  detail      String?
+  evaluatedAt DateTime           @default(now())
+  run         ModelEvaluationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, gateId])
+  @@index([passed, evaluatedAt])
 }
 
 model PredictionMarket {
@@ -206,6 +372,11 @@ model PredictionMarket {
 model BacktestRun {
   id             String          @id
   asset          String
+  venue          String          @default("POLYMARKET")
+  modelVersion   String?
+  datasetHash    String?
+  methodology    String?
+  benchmarkLabel String?
   status         String
   threshold      Float
   initialCapital Float

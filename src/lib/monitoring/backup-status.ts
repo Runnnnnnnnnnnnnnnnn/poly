@@ -33,7 +33,7 @@ export function readBackupStatus(now = new Date()): BackupStatus {
   const statusPath = resolve(stateDirectory, "backup-status.json");
   try {
     const files = readdirSync(backupDirectory)
-      .filter((name) => name.startsWith("polymarket-") && name.endsWith(".db.enc"))
+      .filter((name) => name.startsWith("polymarket-") && (name.endsWith(".db.enc") || name.endsWith(".pgdump.enc")))
       .map((name) => {
         const metadata = statSync(resolve(backupDirectory, name));
         return { name, modifiedAt: metadata.mtime, sizeBytes: metadata.size };
@@ -101,7 +101,7 @@ export function evaluateBackupStatus(input: {
   if (input.record.sizeBytes !== latest.sizeBytes) {
     return { ...base, status: "error", message: "確認後にバックアップのサイズが変化しました" };
   }
-  return { ...base, status: "healthy", message: "暗号化・復号・SQLite整合性を確認済みです" };
+  return { ...base, status: "healthy", message: input.record.message || "暗号化バックアップの復元を確認済みです" };
 }
 
 function parseBackupVerificationRecord(value: string) {

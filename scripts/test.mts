@@ -99,11 +99,20 @@ import { calculatePolymarketTakerFee, evaluateExactExecutionAudit, selectCausalE
 import { minimumAdditionalPerfectPositionsForCoverage, persistForwardExecutionAuditReport, type ForwardExecutionAuditReportInput } from "../src/lib/realtime-market-data/execution-audit-report";
 import { evaluateReferenceSettlementAudit, filterReferenceSettlementRows } from "../src/lib/realtime-market-data/settlement-audit";
 import {
+  normalizeHyperliquidWebSocketMessages,
   normalizeHyperliquidWebSocketMessage,
   normalizePolymarketWebSocketMessage,
   normalizeRtdsReferenceMessage,
   realtimeReferenceSubscriptions,
 } from "../src/lib/realtime-market-data/normalizers";
+import {
+  buildWalletConsensusSignals,
+  scoreWalletCategory,
+  walletCopyabilityScore,
+  walletStyle,
+  type ClosedWalletPosition,
+  type WalletTradeObservation,
+} from "../src/lib/wallet-intelligence/scoring";
 import {
   buildPolymarketCryptoReferencePriceUrl,
   deriveCryptoReferenceWindow,
@@ -328,6 +337,14 @@ const coolingWatchdog = evaluateRuntimeWatchdog({
   lastRestartAt: "2026-01-01T00:05:00Z",
 });
 assert.equal(coolingWatchdog.action, "cooldown");
+const corruptWatchdog = evaluateRuntimeWatchdog({
+  nowMs: Date.parse("2026-01-01T00:10:00Z"),
+  healthOk: false,
+  dashboardGeneratedAt: null,
+  previousFailures: 50,
+  errorMessage: "DATABASE_CORRUPTION",
+});
+assert.equal(corruptWatchdog.action, "halt");
 console.log("runtime watchdog policy tests passed");
 
 let cacheNow = 1_000;
@@ -572,6 +589,16 @@ const realtimeHyperliquidContext = normalizeHyperliquidWebSocketMessage({
 assert.ok(realtimeHyperliquidContext && "markPrice" in realtimeHyperliquidContext);
 assert.equal(realtimeHyperliquidContext.markPrice, 100.05);
 assert.equal(realtimeHyperliquidContext.fundingRate, 0.00001);
+const realtimeHyperliquidUpdates = normalizeHyperliquidWebSocketMessages({
+  channel: "trades",
+  data: [
+    { coin: "BTC", side: "B", px: "100.10", sz: "0.5", time: realtimeNow.getTime(), tid: "trade-1" },
+    { coin: "BTC", side: "A", px: "100.00", sz: "0.4", time: realtimeNow.getTime() + 1, tid: "trade-2" },
+    { coin: "BTC", side: "invalid", px: "100.00", sz: "0.4", time: realtimeNow.getTime() + 2, tid: "trade-3" },
+  ],
+});
+assert.equal(realtimeHyperliquidUpdates.length, 2);
+assert.deepEqual(realtimeHyperliquidUpdates.map((update) => "tradeId" in update ? update.side : null), ["BUY", "SELL"]);
 const realtimeBinance = normalizeRtdsReferenceMessage({
   topic: "crypto_prices",
   payload: { symbol: "btcusdt", value: 99, timestamp: realtimeNow.getTime() - 500 },
@@ -695,6 +722,72 @@ assert.equal(
 );
 
 console.log("realtime market data tests passed");
+
+const walletPositions: ClosedWalletPosition[] = Array.from({ length: 12 }, (_, index) => ({
+  conditionId: `crypto-market-${index}`,
+  title: `Will Bitcoin close above ${100_000 + index}?`,
+  outcome: "YES",
+  avgPrice: 0.5,
+  totalBought: 1_000,
+  realizedPnl: 200,
+  timestamp: Date.parse(index < 6 ? "2026-01-01T12:00:00Z" : "2026-01-02T12:00:00Z") / 1_000,
+}));
+const walletScore = scoreWalletCategory(walletPositions, "CRYPTO");
+assert.equal(walletScore.independentEvents, 12);
+assert.equal(walletScore.activeDays, 2);
+assert.equal(walletScore.qualified, true);
+assert.equal(walletStyle([walletScore]), "DIRECTIONAL");
+assert.ok(walletCopyabilityScore([walletScore]) >= 55);
+
+const walletScoredAt = new Date("2026-01-03T00:01:00Z");
+const walletNow = new Date("2026-01-03T00:03:00Z");
+const walletTrade = (
+  walletAddress: string,
+  tradedAt: string,
+  id: string,
+): WalletTradeObservation => ({
+  id,
+  walletAddress,
+  marketId: "market-consensus",
+  tokenId: "yes-token",
+  title: "Will Bitcoin rise?",
+  category: "CRYPTO",
+  side: "BUY",
+  outcome: "YES",
+  price: 0.6,
+  notional: 1_000,
+  tradedAt: new Date(tradedAt),
+});
+const walletScores = ["0xaaa", "0xbbb"].map((walletAddress) => ({
+  walletAddress,
+  category: "CRYPTO",
+  riskAdjustedScore: 70,
+  copyabilityScore: 68,
+  scoredAt: walletScoredAt,
+  qualified: true,
+}));
+const pointInTimeSignals = buildWalletConsensusSignals({
+  now: walletNow,
+  scores: walletScores,
+  trades: [
+    walletTrade("0xaaa", "2026-01-03T00:00:30Z", "pre-score"),
+    walletTrade("0xaaa", "2026-01-03T00:02:00Z", "post-score-a"),
+    walletTrade("0xbbb", "2026-01-03T00:02:30Z", "post-score-b"),
+    walletTrade("0xbbb", "2026-01-03T00:04:00Z", "future"),
+  ],
+});
+assert.equal(pointInTimeSignals.length, 1);
+assert.equal(pointInTimeSignals[0]?.walletCount, 2);
+assert.deepEqual(pointInTimeSignals[0]?.contributors.map((row) => row.address).sort(), ["0xaaa", "0xbbb"]);
+assert.equal(buildWalletConsensusSignals({
+  now: walletNow,
+  scores: walletScores,
+  trades: [
+    walletTrade("0xaaa", "2026-01-03T00:00:30Z", "pre-score"),
+    walletTrade("0xbbb", "2026-01-03T00:04:00Z", "future"),
+  ],
+}).length, 0);
+console.log("point-in-time wallet scoring tests passed");
 
 const auditStart = new Date("2026-01-01T00:00:00.000Z");
 const auditEnd = new Date("2026-01-01T00:15:00.000Z");
