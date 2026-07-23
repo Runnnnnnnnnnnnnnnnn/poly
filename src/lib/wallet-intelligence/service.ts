@@ -48,6 +48,19 @@ const closedPositionSchema = z.array(z.object({
   curPrice: z.coerce.number().optional().default(0),
   timestamp: z.coerce.number(),
 }).passthrough());
+const currentPositionSchema = z.array(z.object({
+  asset: z.string(),
+  conditionId: z.string(),
+  size: z.coerce.number(),
+  currentValue: z.coerce.number(),
+  title: z.string(),
+  outcome: z.string(),
+}).passthrough());
+const activitySchema = z.array(z.object({
+  timestamp: z.coerce.number(),
+  type: z.string(),
+  side: z.string().optional().default(""),
+}).passthrough());
 const bookSchema = z.object({
   bids: z.array(z.object({ price: z.string(), size: z.string() }).passthrough()).default([]),
   asks: z.array(z.object({ price: z.string(), size: z.string() }).passthrough()).default([]),
@@ -163,6 +176,10 @@ export async function getWalletIntelligenceDashboard() {
       copyabilityScore: profile.copyabilityScore,
       excluded: profile.excluded,
       exclusionReason: profile.exclusionReason,
+      currentPositions: profile.currentPositions,
+      currentValue: profile.currentValue,
+      activityCount: profile.activityCount,
+      latestActivityAt: profile.latestActivityAt?.toISOString() ?? null,
       scoredAt: profile.scoredAt?.toISOString() ?? null,
       scores: profile.scores.map((score) => ({
         category: score.category,
@@ -193,9 +210,11 @@ async function collectCandidate(candidate: { address: string; userName: string; 
     where: { address: candidate.address },
     select: { scoredAt: true },
   });
-  const [trades, closed] = await Promise.all([
+  const [trades, closed, currentPositions, activity] = await Promise.all([
     fetchJson(`${dataApi}/trades?user=${candidate.address}&limit=500`, tradeSchema),
     fetchJson(`${dataApi}/closed-positions?user=${candidate.address}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`, closedPositionSchema),
+    fetchJson(`${dataApi}/positions?user=${candidate.address}&sizeThreshold=0&limit=500`, currentPositionSchema),
+    fetchJson(`${dataApi}/activity?user=${candidate.address}&limit=500&sortBy=TIMESTAMP&sortDirection=DESC`, activitySchema),
   ]);
   const closedPositions: ClosedWalletPosition[] = closed.map((position) => ({
     conditionId: position.conditionId,
@@ -211,6 +230,14 @@ async function collectCandidate(candidate: { address: string; userName: string; 
   const style = walletStyle(scores);
   const copyabilityScore = walletCopyabilityScore(scores);
   const qualified = scores.some((score) => score.qualified) && style !== "MARKET_MAKER";
+  const openTokens = new Set(
+    currentPositions
+      .filter((position) => position.size > 0.01)
+      .map((position) => position.asset),
+  );
+  const latestActivityAt = activity.length
+    ? new Date(Math.max(...activity.map((row) => row.timestamp)) * 1_000)
+    : null;
   const storedTrades: WalletTradeObservation[] = trades.map((trade) => ({
     id: tradeId(trade),
     walletAddress: candidate.address,
@@ -235,6 +262,10 @@ async function collectCandidate(candidate: { address: string; userName: string; 
         copyabilityScore,
         excluded: !qualified,
         exclusionReason: qualified ? null : exclusionReason(style, scores),
+        currentPositions: currentPositions.filter((position) => position.size > 0.01).length,
+        currentValue: currentPositions.reduce((total, position) => total + Math.max(0, position.currentValue), 0),
+        activityCount: activity.length,
+        latestActivityAt,
         scoredAt,
         lastSeenAt: scoredAt,
       },
@@ -244,6 +275,10 @@ async function collectCandidate(candidate: { address: string; userName: string; 
         copyabilityScore,
         excluded: !qualified,
         exclusionReason: qualified ? null : exclusionReason(style, scores),
+        currentPositions: currentPositions.filter((position) => position.size > 0.01).length,
+        currentValue: currentPositions.reduce((total, position) => total + Math.max(0, position.currentValue), 0),
+        activityCount: activity.length,
+        latestActivityAt,
         scoredAt,
         lastSeenAt: scoredAt,
       },
@@ -294,7 +329,11 @@ async function collectCandidate(candidate: { address: string; userName: string; 
     }
   });
   return {
-    trades: storedTrades.filter((trade) => existing?.scoredAt && trade.tradedAt >= existing.scoredAt),
+    trades: storedTrades.filter((trade) => (
+      existing?.scoredAt
+      && trade.tradedAt >= existing.scoredAt
+      && openTokens.has(trade.tokenId)
+    )),
     resolutions: closed
       .filter((position) => position.curPrice >= 0.99)
       .map((position) => ({

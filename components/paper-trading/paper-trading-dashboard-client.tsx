@@ -89,6 +89,10 @@ type WalletProfile = {
   copyabilityScore: number;
   excluded: boolean;
   exclusionReason: string | null;
+  currentPositions?: number;
+  currentValue?: number;
+  activityCount?: number;
+  latestActivityAt?: string | null;
   scoredAt: string | null;
   scores: Array<{
     category: string;

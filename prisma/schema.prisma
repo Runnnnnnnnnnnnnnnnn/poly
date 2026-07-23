@@ -29,6 +29,10 @@ model PolymarketWalletProfile {
   copyabilityScore Float                           @default(0)
   excluded         Boolean                         @default(false)
   exclusionReason  String?
+  currentPositions Int                             @default(0)
+  currentValue     Float                           @default(0)
+  activityCount    Int                             @default(0)
+  latestActivityAt DateTime?
   firstSeenAt      DateTime                        @default(now())
   lastSeenAt       DateTime                        @default(now())
   scoredAt         DateTime?

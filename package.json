@@ -35,6 +35,7 @@
     "analytics:install": "node scripts/install-analytics-runtime.mjs",
     "archive:realtime": "ONCE=1 tsx scripts/run-columnar-archive.mts",
     "archive:query": "$HOME/.polymarket-watch/analytics-venv/bin/python scripts/query-realtime-archive.py",
+    "archive:hyperliquid:s3": "$HOME/.polymarket-watch/analytics-venv/bin/python scripts/audit-hyperliquid-s3.py",
     "db:recover": "node scripts/recover-runtime-database.mjs",
     "db:recover:apply": "node scripts/recover-runtime-database.mjs --apply",
     "db:postgres:install": "node scripts/install-postgres-service.mjs",

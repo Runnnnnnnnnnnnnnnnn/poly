@@ -62,5 +62,8 @@ jobs:
       - name: Test verified Parquet archive
         run: python scripts/test_columnar_archive.py
 
+      - name: Test Hyperliquid S3 archive audit
+        run: python scripts/test_hyperliquid_s3.py
+
       - name: Build
         run: npm run build

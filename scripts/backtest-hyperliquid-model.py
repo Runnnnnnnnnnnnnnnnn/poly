@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import psycopg
+import pyarrow.parquet as pq
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
@@ -26,6 +27,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Causal Hyperliquid microstructure model backtest")
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--s3-root", default=str(Path.home() / ".polymarket-watch/hyperliquid-s3"))
     parser.add_argument("--now")
     return parser.parse_args()
 
@@ -41,7 +43,9 @@ def main():
         trades = load_trades(connection)
         wallet_signals = load_wallet_signals(connection)
 
-    l2_summary = summarize_l2(l2, now)
+    historical_l2, historical_supplement = load_historical_l2(Path(args.s3_root).expanduser())
+    l2 = merge_l2(l2, historical_l2)
+    l2_summary = summarize_l2(l2, ticks)
     horizon_reports = []
     for horizon in HORIZONS:
         dataset = build_dataset(ticks, l2, trades, wallet_signals, horizon)
@@ -81,6 +85,7 @@ def main():
             "l2Coverage": l2_summary["coverage"],
             "l2DurationHours": l2_summary["durationHours"],
             "mode": "L2_AND_TRADES" if l2_summary["ready"] else "L1_BASELINE",
+            "historicalSupplement": historical_supplement,
         },
         "selectedHorizonSeconds": selected["horizonSeconds"],
         "selected": selected,
@@ -96,6 +101,7 @@ def main():
             "selection": "model and threshold selected on validation only",
             "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
             "models": ["regularized-logistic", "hist-gradient-boosting"],
+            "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits",
         },
     }
     atomic_json(Path(args.output).expanduser().resolve(), report)
@@ -395,8 +401,15 @@ def trading_metrics(samples, probabilities, threshold):
     }
 
 
-def summarize_l2(l2, now):
-    rows = [row for values in l2.values() for row in values]
+def summarize_l2(l2, ticks):
+    rows = []
+    for asset in ASSETS:
+        tick_rows = ticks.get(asset, [])
+        if not tick_rows:
+            continue
+        first_tick = tick_rows[0]["time"]
+        last_tick = tick_rows[-1]["time"]
+        rows.extend(row for row in l2.get(asset, []) if first_tick <= row["time"] <= last_tick)
     if not rows:
         return {"coverage": 0, "durationHours": 0, "ready": False}
     first = min(row["time"] for row in rows)
@@ -405,6 +418,93 @@ def summarize_l2(l2, now):
     expected = max(1, duration_hours * 3600 / 5 * len(ASSETS))
     coverage = min(1, len(rows) / expected)
     return {"coverage": coverage, "durationHours": duration_hours, "ready": coverage >= 0.8 and duration_hours >= 72}
+
+
+def load_historical_l2(root):
+    statuses = sorted((root / "status").glob("*.json")) if (root / "status").is_dir() else []
+    if not statuses:
+        return defaultdict(list), {
+            "status": "not_downloaded",
+            "acceptedRows": 0,
+            "reason": "Requester Paysのため、明示承認された監査済みデータだけを使用します",
+        }
+    try:
+        grouped = defaultdict(list)
+        accepted_objects = 0
+        rejected_objects = 0
+        audited_dates = []
+        for status_path in statuses:
+            report = json.loads(status_path.read_text(encoding="utf-8"))
+            date = str(report.get("date", ""))
+            if len(date) != 8 or not date.isdigit():
+                rejected_objects += 1
+                continue
+            audited_dates.append(date)
+            for item in report.get("objects", []):
+                if item.get("status") != "accepted":
+                    continue
+                asset = str(item.get("asset", "")).upper()
+                hour = int(item.get("hour", -1))
+                path = root / "verified" / f"date={date}" / f"hour={hour:02d}" / f"{asset}.parquet"
+                expected_rows = int(item.get("rows", 0))
+                expected_checksum = str(item.get("parquetSha256", ""))
+                if (
+                    asset not in ASSETS
+                    or not path.is_file()
+                    or expected_rows <= 0
+                    or len(expected_checksum) != 64
+                    or file_sha256(path) != expected_checksum
+                    or pq.ParquetFile(path).metadata.num_rows != expected_rows
+                ):
+                    rejected_objects += 1
+                    continue
+                accepted_objects += 1
+                for row in pq.read_table(path).to_pylist():
+                    asset = str(row["asset"]).upper()
+                    if asset not in ASSETS:
+                        continue
+                    grouped[asset].append({
+                        "time": utc(row["capturedAt"]),
+                        "imbalance5": float(row["imbalance5"]),
+                        "imbalance10": float(row["imbalance10"]),
+                        "microprice": float(row["microprice"]),
+                        "bidDepth5": float(row["bidDepth5"]),
+                        "askDepth5": float(row["askDepth5"]),
+                        "bidDepth10": float(row["bidDepth10"]),
+                        "askDepth10": float(row["askDepth10"]),
+                    })
+        accepted_rows = sum(len(rows) for rows in grouped.values())
+        return grouped, {
+            "status": "audited" if accepted_rows > 0 and rejected_objects == 0 else "partial" if accepted_rows > 0 else "rejected",
+            "acceptedRows": accepted_rows,
+            "dates": sorted(set(audited_dates)),
+            "acceptedObjects": accepted_objects,
+            "rejectedObjects": rejected_objects,
+            "reason": "監査済みL2は、時刻が重なる前向きL1・約定データがある期間だけ学習へ結合します",
+        }
+    except (OSError, ValueError, json.JSONDecodeError):
+        return defaultdict(list), {
+            "status": "rejected",
+            "acceptedRows": 0,
+            "reason": "S3監査結果を検証できません",
+        }
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def merge_l2(primary, historical):
+    merged = defaultdict(list)
+    for asset in ASSETS:
+        by_time = {row["time"]: row for row in historical.get(asset, [])}
+        by_time.update({row["time"]: row for row in primary.get(asset, [])})
+        merged[asset] = sorted(by_time.values(), key=lambda row: row["time"])
+    return merged
 
 
 def empty_horizon(horizon):
