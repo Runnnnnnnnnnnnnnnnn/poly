@@ -5,10 +5,15 @@ const LOCAL_API_TOKEN_STORAGE_KEY = "jmw.localApiToken";
 const VIEWER_API_TOKEN_STORAGE_KEY = "jmw.viewerApiToken";
 const DEFAULT_STATIC_LOCAL_API_BASE = process.env.NEXT_PUBLIC_LOCAL_API_BASE ?? "";
 const STATIC_BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const LIVE_REGISTRY_BASE = "https://raw.githubusercontent.com/Runnnnnnnnnnnnnnnnn/poly/live";
 const LIVE_CONNECTION_URL = process.env.NEXT_PUBLIC_LIVE_CONNECTION_URL
-  ?? `${STATIC_BASE_PATH}/live-connection.json`;
+  ?? (process.env.NEXT_PUBLIC_STATIC_EXPORT === "1"
+    ? `${LIVE_REGISTRY_BASE}/connection.json`
+    : `${STATIC_BASE_PATH}/live-connection.json`);
 const LIVE_DASHBOARD_URL = process.env.NEXT_PUBLIC_LIVE_DASHBOARD_URL
-  ?? `${STATIC_BASE_PATH}/live-dashboard.json`;
+  ?? (process.env.NEXT_PUBLIC_STATIC_EXPORT === "1"
+    ? `${LIVE_REGISTRY_BASE}/dashboard.json`
+    : `${STATIC_BASE_PATH}/live-dashboard.json`);
 const LIVE_CONNECTION_REFRESH_MS = 120_000;
 
 let liveConnectionPromise: Promise<string> | null = null;
