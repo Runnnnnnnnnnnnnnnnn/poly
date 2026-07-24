@@ -1,0 +1,3783 @@
+{
+  "generatedAt": "2026-07-24T08:30:43.530Z",
+  "monitoring": {
+    "status": "live",
+    "generatedAt": "2026-07-24T08:30:20.837Z",
+    "collection": {
+      "startedAt": "2026-07-13T02:42:17.427Z",
+      "latestAt": "2026-07-24T08:30:17.567Z",
+      "totalRecords": 1310185,
+      "last24Hours": 258615,
+      "realtimePrices": {
+        "status": "healthy",
+        "records": 317248,
+        "last24Hours": 70615,
+        "latestAt": "2026-07-24T08:30:16.398Z",
+        "maximumSkewMs": 120524,
+        "activeMarkets": 8,
+        "assets": [
+          "BTC",
+          "ETH",
+          "SOL",
+          "XRP"
+        ],
+        "arbitrageViolations": 521,
+        "targetCadenceSeconds": 5,
+        "synchronizationVersion": "websocket-v6-near-term-discovery",
+        "executionRecords": 281817,
+        "executionLast24Hours": 65681,
+        "executionLatestAt": "2026-07-24T08:30:16.398Z",
+        "executionMaximumSkewMs": 16083,
+        "executionSynchronizationVersion": "websocket-asset-v1"
+      },
+      "synchronizedPrices": {
+        "records": 471242,
+        "last24Hours": 81825,
+        "latestAt": "2026-07-24T08:30:11.823Z",
+        "maximumSkewMs": 19058,
+        "targetCadenceMinutes": 1,
+        "quality": {
+          "status": "collecting",
+          "records": 471242,
+          "completeRecords": 471242,
+          "windowRecords": 81825,
+          "windowCompleteRecords": 81825,
+          "totalRecords": 110358,
+          "coverage": 0.741450551840374,
+          "durationHours": 23.01155388888889,
+          "startedAt": "2026-07-17T15:26:56.226Z",
+          "continuousStartedAt": "2026-07-23T09:29:30.229Z",
+          "latestAt": "2026-07-24T08:30:11.823Z",
+          "medianSkewMs": 4018,
+          "p95SkewMs": 4611,
+          "medianSpread": 0.003,
+          "p95Spread": 0.04699999999999993,
+          "medianAbsoluteBasisPct": 0.0004412358857677212,
+          "p95AbsoluteBasisPct": 0.0007016393442622615,
+          "maximumCaptureGapMs": 10442534,
+          "assets": [
+            {
+              "asset": "BTC",
+              "records": 27201
+            },
+            {
+              "asset": "ETH",
+              "records": 18233
+            },
+            {
+              "asset": "SOL",
+              "records": 6107
+            },
+            {
+              "asset": "XRP",
+              "records": 1685
+            }
+          ],
+          "passedGates": 5,
+          "totalGates": 6,
+          "gates": [
+            {
+              "id": "records",
+              "label": "1,000件以上",
+              "passed": true
+            },
+            {
+              "id": "duration",
+              "label": "48時間連続",
+              "passed": false
+            },
+            {
+              "id": "coverage",
+              "label": "同期率50%以上",
+              "passed": true
+            },
+            {
+              "id": "timing",
+              "label": "時刻ずれ95%点が60秒以内",
+              "passed": true
+            },
+            {
+              "id": "assets",
+              "label": "4資産を網羅",
+              "passed": true
+            },
+            {
+              "id": "basis",
+              "label": "価格差95%点が10bp以内",
+              "passed": true
+            }
+          ]
+        },
+        "prospective": {
+          "methodology": "prospective-1m-orderbook-holdout",
+          "collectionStartedAt": "2026-07-17T15:26:56.226Z",
+          "latestSnapshotAt": "2026-07-24T08:30:11.823Z",
+          "generatedAt": "2026-07-24T08:30:20.837Z",
+          "completedEvents": 1,
+          "targetEvents": 50,
+          "horizons": [
+            {
+              "horizonHours": 6,
+              "scheduledMarkets": 115,
+              "upcomingMarkets": 26,
+              "observedMarkets": 18,
+              "missedMarkets": 71,
+              "awaitingExitMarkets": 17,
+              "awaitingResolutionMarkets": 0,
+              "completedMarkets": 1,
+              "completedEvents": 1,
+              "holdoutEvents": 0,
+              "eventGroupingCoverage": 1,
+              "observationCoverage": 0.20224719101123595,
+              "targetEvents": 50,
+              "status": "collecting",
+              "modelStatus": null,
+              "trades": 0,
+              "netReturnPct": null,
+              "excessReturnPct": null
+            },
+            {
+              "horizonHours": 12,
+              "scheduledMarkets": 115,
+              "upcomingMarkets": 4,
+              "observedMarkets": 13,
+              "missedMarkets": 98,
+              "awaitingExitMarkets": 13,
+              "awaitingResolutionMarkets": 0,
+              "completedMarkets": 0,
+              "completedEvents": 0,
+              "holdoutEvents": 0,
+              "eventGroupingCoverage": 1,
+              "observationCoverage": 0.11711711711711711,
+              "targetEvents": 50,
+              "status": "collecting",
+              "modelStatus": null,
+              "trades": 0,
+              "netReturnPct": null,
+              "excessReturnPct": null
+            },
+            {
+              "horizonHours": 24,
+              "scheduledMarkets": 115,
+              "upcomingMarkets": 4,
+              "observedMarkets": 0,
+              "missedMarkets": 111,
+              "awaitingExitMarkets": 0,
+              "awaitingResolutionMarkets": 0,
+              "completedMarkets": 0,
+              "completedEvents": 0,
+              "holdoutEvents": 0,
+              "eventGroupingCoverage": 0,
+              "observationCoverage": 0,
+              "targetEvents": 50,
+              "status": "collecting",
+              "modelStatus": null,
+              "trades": 0,
+              "netReturnPct": null,
+              "excessReturnPct": null
+            },
+            {
+              "horizonHours": 48,
+              "scheduledMarkets": 115,
+              "upcomingMarkets": 0,
+              "observedMarkets": 5,
+              "missedMarkets": 110,
+              "awaitingExitMarkets": 4,
+              "awaitingResolutionMarkets": 0,
+              "completedMarkets": 1,
+              "completedEvents": 1,
+              "holdoutEvents": 0,
+              "eventGroupingCoverage": 1,
+              "observationCoverage": 0.043478260869565216,
+              "targetEvents": 50,
+              "status": "collecting",
+              "modelStatus": null,
+              "trades": 0,
+              "netReturnPct": null,
+              "excessReturnPct": null
+            }
+          ]
+        }
+      }
+    },
+    "tradeReadiness": {
+      "objective": "Polymarketの予測をシグナルにしてHyperliquidで売買する",
+      "currentStage": "shadow",
+      "realTradingEnabled": false,
+      "combinedPaperRunning": true,
+      "hyperliquidOrderConnection": "connector_ready",
+      "gates": [
+        {
+          "id": "data",
+          "label": "同期データ品質",
+          "status": "running"
+        },
+        {
+          "id": "edge",
+          "label": "優位性確認",
+          "status": "blocked"
+        },
+        {
+          "id": "shadow",
+          "label": "シャドー検証",
+          "status": "running"
+        },
+        {
+          "id": "testnet",
+          "label": "テストネット",
+          "status": "attention"
+        },
+        {
+          "id": "live",
+          "label": "実取引",
+          "status": "locked"
+        }
+      ]
+    },
+    "combinedShadow": {
+      "status": "running",
+      "startedAt": "2026-07-17T16:18:34.585Z",
+      "updatedAt": "2026-07-24T08:29:03.442Z",
+      "initialEquity": 40000,
+      "equity": 39957.31416736716,
+      "returnPct": -0.0012276110421056805,
+      "cash": 39957.31416736716,
+      "realizedPnl": -42.685832632834305,
+      "openPositions": [],
+      "trades": 5,
+      "wins": 0,
+      "winRate": 0,
+      "maxDrawdownPct": 0.00288328867669269,
+      "riskStatus": "NORMAL",
+      "emergencyStopped": false,
+      "experimentKey": "forward-v2-6-12-24-48",
+      "experimentLabel": "6・12・24・48時間の独立フォワード検証 v2",
+      "forwardOnly": true,
+      "minimumSignalZ": 0.25,
+      "minimumFunding24h": 0.0003,
+      "signalRule": "polymarket-funding-consensus",
+      "modelVersion": "Forward Experiment v2 2026-07-18 / no backfill",
+      "forwardEvaluation": {
+        "status": "collecting",
+        "trades": 2,
+        "independentEvents": 2,
+        "wins": 0,
+        "winRate": 0,
+        "controlTrades": 8,
+        "comparableEvents": 8,
+        "minimumTrades": 50,
+        "minimumIndependentEvents": 50,
+        "minimumComparableEvents": 50,
+        "progressPct": 0.04,
+        "comparisonStartedAt": "2026-07-17T16:18:34.587Z",
+        "netReturnPct": -0.0012276110421056805,
+        "benchmarkReturnPct": -0.00020648954294542052,
+        "benchmarkLabel": "常時ロング",
+        "excessReturnPct": -0.0010211214991602598,
+        "excessConfidenceInterval95": [
+          -0.0007695150547422011,
+          0.000525939299917355
+        ],
+        "deflatedSharpeProbability": null,
+        "randomBenchmarkTrials": 200,
+        "maxDrawdownPct": 0.00288328867669269,
+        "passedGates": 0,
+        "totalGates": 8,
+        "gates": [
+          {
+            "id": "trades",
+            "label": "50独立イベント以上",
+            "passed": false
+          },
+          {
+            "id": "control",
+            "label": "同期間比較50件以上",
+            "passed": false
+          },
+          {
+            "id": "net-positive",
+            "label": "コスト控除後プラス",
+            "passed": false
+          },
+          {
+            "id": "benchmark",
+            "label": "最良の単純戦略を上回る",
+            "passed": false
+          },
+          {
+            "id": "significance",
+            "label": "平均との差の95%下限がプラス",
+            "passed": false
+          },
+          {
+            "id": "selection-bias",
+            "label": "固定実験の確信度95%以上",
+            "passed": false
+          },
+          {
+            "id": "drawdown",
+            "label": "最大下落5%以内",
+            "passed": false
+          },
+          {
+            "id": "settlement",
+            "label": "判定価格の整合性を確認",
+            "passed": false
+          }
+        ],
+        "benchmarks": {
+          "polymarketOnlyReturnPct": -0.000927776343908975,
+          "alwaysLongReturnPct": -0.00020648954294542052,
+          "alwaysShortReturnPct": -0.0009277763439089746,
+          "randomMedianReturnPct": -0.0004932564404694164
+        },
+        "attribution": {
+          "byAsset": [
+            {
+              "asset": "BTC",
+              "trades": 1,
+              "wins": 0,
+              "returnContributionPct": -0.0006441939999850876,
+              "averageTradeReturnPct": -0.012883879999701753
+            },
+            {
+              "asset": "ETH",
+              "trades": 1,
+              "wins": 0,
+              "returnContributionPct": -0.000583417042120593,
+              "averageTradeReturnPct": -0.011669693955067057
+            }
+          ]
+        },
+        "activeHorizonHours": 12,
+        "totalTrades": 5,
+        "totalIndependentEvents": 5,
+        "totalMinimumTrades": 200,
+        "totalMinimumIndependentEvents": 200,
+        "horizons": [
+          {
+            "horizonHours": 6,
+            "status": "collecting",
+            "trades": 1,
+            "independentEvents": 1,
+            "minimumTrades": 50,
+            "minimumIndependentEvents": 50,
+            "progressPct": 0.02,
+            "netReturnPct": -0.0009557604059228342,
+            "excessReturnPct": -0.002750956004986683,
+            "maxDrawdownPct": 0.001266434973432231,
+            "passedGates": 0,
+            "totalGates": 8,
+            "horizonEligibleMarkets": 22,
+            "priceReadyEvents": 2,
+            "latestAction": "WAIT",
+            "latestReason": "24時間資金調達率0.0%が基準0.0%未満",
+            "nextWindowAt": "2026-07-25T08:00:00.000Z"
+          },
+          {
+            "horizonHours": 12,
+            "status": "collecting",
+            "trades": 2,
+            "independentEvents": 2,
+            "minimumTrades": 50,
+            "minimumIndependentEvents": 50,
+            "progressPct": 0.04,
+            "netReturnPct": -0.0012276110421056805,
+            "excessReturnPct": -0.0010211214991602598,
+            "maxDrawdownPct": 0.00288328867669269,
+            "passedGates": 0,
+            "totalGates": 8,
+            "horizonEligibleMarkets": 0,
+            "priceReadyEvents": 0,
+            "latestAction": "NO_SIGNAL",
+            "latestReason": "次の12時間観測は7/25 11:00です",
+            "nextWindowAt": "2026-07-25T02:00:00.000Z"
+          },
+          {
+            "horizonHours": 24,
+            "status": "collecting",
+            "trades": 1,
+            "independentEvents": 1,
+            "minimumTrades": 50,
+            "minimumIndependentEvents": 50,
+            "progressPct": 0.02,
+            "netReturnPct": -0.0009395960506654959,
+            "excessReturnPct": -0.0008079786122080672,
+            "maxDrawdownPct": 0.001405848276970087,
+            "passedGates": 0,
+            "totalGates": 8,
+            "horizonEligibleMarkets": 0,
+            "priceReadyEvents": 0,
+            "latestAction": "NO_SIGNAL",
+            "latestReason": "次の24時間観測は7/24 22:00です",
+            "nextWindowAt": "2026-07-24T13:00:00.000Z"
+          },
+          {
+            "horizonHours": 48,
+            "status": "collecting",
+            "trades": 1,
+            "independentEvents": 1,
+            "minimumTrades": 50,
+            "minimumIndependentEvents": 50,
+            "progressPct": 0.02,
+            "netReturnPct": -0.0011456157645894191,
+            "excessReturnPct": -0.0021593408229420782,
+            "maxDrawdownPct": 0.001412273801839804,
+            "passedGates": 0,
+            "totalGates": 8,
+            "horizonEligibleMarkets": 0,
+            "priceReadyEvents": 0,
+            "latestAction": "NO_SIGNAL",
+            "latestReason": "48時間の観測帯に入る価格市場がありません",
+            "nextWindowAt": null
+          }
+        ]
+      },
+      "shortTermDirection": {
+        "experimentKey": "poly-updown-hl-trend-forward-v9-m15",
+        "modelVersion": "Short Direction v9 2026-07-18 / near-term market discovery / all sources fresh within 15s / persisted synchronized 5s signal / causal 5s execution audit / Chainlink boundary reconciliation / independent 15m windows / 11 trials / entry 2-4m / p 0.58 / spread 0.08 / no backfill",
+        "status": "underperforming",
+        "running": true,
+        "startedAt": "2026-07-18T06:35:12.058Z",
+        "updatedAt": "2026-07-24T08:30:00.800Z",
+        "trades": 718,
+        "controlTrades": 731,
+        "minimumTrades": 50,
+        "progressPct": 1,
+        "netReturnPct": -0.04327773739648694,
+        "excessReturnPct": -0.04327773739648694,
+        "confidenceLowerPct": -0.0472695061885091,
+        "maxDrawdownPct": 0.043277737396487645,
+        "passedGates": 5,
+        "totalGates": 10,
+        "openPositions": 0,
+        "scannedMarkets": 37,
+        "fifteenMinuteMarkets": 8,
+        "decisionWindowMarkets": 0,
+        "priceReadyMarkets": 0,
+        "thresholdSignals": 718,
+        "opened": 718,
+        "latestAction": "NO_SIGNAL",
+        "latestReason": "次回は7/24 17:32",
+        "nextDecisionAt": "2026-07-24T08:32:00.000Z",
+        "observedAt": "2026-07-24T08:30:00.800Z",
+        "specificationHash": "655dac2ae6bf6768",
+        "executionAudit": {
+          "status": "healthy",
+          "readinessStatus": "underperforming",
+          "priceSources": {
+            "entry": "Polymarket CLOB 5秒板",
+            "exit": "Hyperliquid L2 独立5秒板",
+            "settlement": "Polymarket基準価格 + 公開RTDS監査"
+          },
+          "collectionStartedAt": "2026-07-18T06:35:18.248Z",
+          "minimumAuditedPositions": 50,
+          "minimumIndependentEvents": 50,
+          "eligiblePositions": 718,
+          "auditedPositions": 700,
+          "coverage": 0.9749303621169917,
+          "verifiedPositions": 698,
+          "verifiedIndependentEvents": 379,
+          "directionCoverage": {
+            "minimumIndependentEventsPerSide": 5,
+            "longIndependentEvents": 214,
+            "shortIndependentEvents": 224,
+            "passed": true
+          },
+          "verifiedCoverage": 0.9721448467966574,
+          "resolvedPredictions": 716,
+          "predictionAccuracy": 0.7332402234636871,
+          "polymarketAuditedPositions": 712,
+          "polymarketNetReturnPct": -0.01871455304456355,
+          "hyperliquidNetReturnPct": -0.0012665930626563785,
+          "storedNetReturnPct": -0.0012060153101551073,
+          "portfolioNetReturnPct": -0.04327773739648694,
+          "storedPortfolioReturnPct": -0.04120510746180379,
+          "meanTradeReturnConfidenceInterval95": [
+            -0.001385737699569606,
+            -0.001129334383280478
+          ],
+          "benchmarkReturnPct": 0,
+          "benchmarkLabel": "現金待機",
+          "excessReturnPct": -0.04327773739648694,
+          "excessConfidenceInterval95": [
+            -0.0472695061885091,
+            -0.03894858766853139
+          ],
+          "deflatedSharpeProbability": 0,
+          "strategyTrials": 11,
+          "randomBenchmarkTrials": 200,
+          "maxDrawdownPct": 0.043277737396487645,
+          "attribution": {
+            "byAsset": [
+              {
+                "asset": "BTC",
+                "trades": 161,
+                "wins": 18,
+                "netPnl": -101.79318978879085,
+                "returnContributionPct": -0.010179318978879085
+              },
+              {
+                "asset": "ETH",
+                "trades": 185,
+                "wins": 31,
+                "netPnl": -117.59267770003582,
+                "returnContributionPct": -0.011759267770003582
+              },
+              {
+                "asset": "SOL",
+                "trades": 177,
+                "wins": 27,
+                "netPnl": -110.17991198438946,
+                "returnContributionPct": -0.011017991198438947
+              },
+              {
+                "asset": "XRP",
+                "trades": 175,
+                "wins": 27,
+                "netPnl": -103.2115944916525,
+                "returnContributionPct": -0.01032115944916525
+              }
+            ],
+            "bySide": [
+              {
+                "side": "LONG",
+                "trades": 342,
+                "wins": 47,
+                "netPnl": -197.5528547907835,
+                "returnContributionPct": -0.01975528547907835
+              },
+              {
+                "side": "SHORT",
+                "trades": 356,
+                "wins": 56,
+                "netPnl": -235.22451917408517,
+                "returnContributionPct": -0.023522451917408517
+              }
+            ]
+          },
+          "controlComparablePositions": 711,
+          "comparableEvents": 718,
+          "comparableIndependentEvents": 380,
+          "controlCoverage": 0.9902506963788301,
+          "benchmarks": {
+            "cashReturnPct": 0,
+            "polymarketOnlyReturnPct": -0.043704893097138466,
+            "alwaysLongReturnPct": -0.04469430427388539,
+            "alwaysShortReturnPct": -0.04986826959239303,
+            "randomMedianReturnPct": -0.0474089045110272
+          },
+          "passedReadinessGates": 5,
+          "currentlyPassingReadinessGates": 5,
+          "evaluatedReadinessGates": 10,
+          "totalReadinessGates": 10,
+          "readinessGates": [
+            {
+              "id": "trades",
+              "label": "50件の独立時間枠を完全監査",
+              "state": "passing",
+              "passed": true
+            },
+            {
+              "id": "directions",
+              "label": "上昇・下落を各5独立枠で監査",
+              "state": "passing",
+              "passed": true
+            },
+            {
+              "id": "execution",
+              "label": "実板・時刻・決着の監査率95%以上",
+              "state": "passing",
+              "passed": true
+            },
+            {
+              "id": "control",
+              "label": "同時対照の再現率95%以上",
+              "state": "passing",
+              "passed": true
+            },
+            {
+              "id": "net-positive",
+              "label": "全コスト控除後プラス",
+              "state": "failing",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "最良の単純戦略を上回る",
+              "state": "failing",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "対照との差の95%下限がプラス",
+              "state": "failing",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後の確信度95%以上",
+              "state": "failing",
+              "passed": false
+            },
+            {
+              "id": "drawdown",
+              "label": "最大下落5%以内",
+              "state": "passing",
+              "passed": true
+            },
+            {
+              "id": "settlement",
+              "label": "Polymarket基準価格と公開RTDSの差を監査",
+              "state": "failing",
+              "passed": false
+            }
+          ],
+          "settlementResolutionStatus": "attention",
+          "returnDifferencePct": -0.000060577752501271174,
+          "medianTimingErrorMs": 2219,
+          "maximumTimingErrorMs": 12549,
+          "medianPolymarketQuoteAgeMs": 120,
+          "maximumPolymarketQuoteAgeMs": 20588,
+          "medianCloseDelayMs": 33207,
+          "maximumCloseDelayMs": 72143,
+          "allowedTimingErrorMs": 15000,
+          "allowedPolymarketQuoteAgeMs": 120000,
+          "missingEntry": 4,
+          "missingExit": 14,
+          "missingResolution": 2
+        },
+        "settlementResolution": {
+          "status": "attention",
+          "source": "POLYMARKET_CRYPTO_PRICE",
+          "rule": "終了価格が開始価格以上ならUp",
+          "targetMarkets": 50,
+          "resolvedObservedMarkets": 716,
+          "completeMarkets": 716,
+          "missingBoundaryMarkets": 0,
+          "matchedMarkets": 716,
+          "mismatchedMarkets": 0,
+          "coverage": 1,
+          "matchRate": 1,
+          "reconstructedCompleteMarkets": 706,
+          "reconstructedMatchedMarkets": 692,
+          "reconstructedMismatchedMarkets": 14,
+          "reconstructionCoverage": 0.9860335195530726,
+          "reconstructionMatchRate": 0.9801699716713881,
+          "medianAbsoluteOpenPriceBasisBps": 0.10981437060686439,
+          "medianAbsoluteClosePriceBasisBps": 0.12274655517174882,
+          "medianBoundaryErrorMs": 2000,
+          "maximumBoundaryErrorMs": 37000,
+          "allowedBoundaryErrorMs": 60000,
+          "boundarySelection": "polymarket-crypto-price-with-public-rtds-audit",
+          "byAsset": [
+            {
+              "asset": "BTC",
+              "completeMarkets": 166,
+              "matchedMarkets": 166,
+              "mismatchedMarkets": 0,
+              "reconstructedMismatchedMarkets": 3
+            },
+            {
+              "asset": "ETH",
+              "completeMarkets": 190,
+              "matchedMarkets": 190,
+              "mismatchedMarkets": 0,
+              "reconstructedMismatchedMarkets": 7
+            },
+            {
+              "asset": "SOL",
+              "completeMarkets": 179,
+              "matchedMarkets": 179,
+              "mismatchedMarkets": 0,
+              "reconstructedMismatchedMarkets": 2
+            },
+            {
+              "asset": "XRP",
+              "completeMarkets": 181,
+              "matchedMarkets": 181,
+              "mismatchedMarkets": 0,
+              "reconstructedMismatchedMarkets": 2
+            }
+          ],
+          "passedGates": 3,
+          "totalGates": 4,
+          "gates": [
+            {
+              "id": "samples",
+              "label": "公式決着50市場以上",
+              "passed": true
+            },
+            {
+              "id": "coverage",
+              "label": "開始・終了価格の取得率95%以上",
+              "passed": true
+            },
+            {
+              "id": "agreement",
+              "label": "Polymarket基準価格と正式決着の不一致0件",
+              "passed": true
+            },
+            {
+              "id": "reconstruction",
+              "label": "公開RTDS再構成とPolymarket基準価格の不一致0件",
+              "passed": false
+            }
+          ]
+        },
+        "research": {
+          "generatedAt": "2026-07-24T04:03:58.124Z",
+          "marketDuration": "15m",
+          "executionMode": "taker",
+          "lookbackHours": 72,
+          "completeMarkets": 1140,
+          "walkForwardFolds": 4,
+          "minimumProfitableFolds": 3,
+          "acceptedCandidates": 0,
+          "totalCandidates": 4,
+          "currentCandidateId": "baseline",
+          "diagnosis": {
+            "verdict": "cost_barrier",
+            "trades": 277,
+            "binaryOutcomeAccuracy": 0.7328519855595668,
+            "afterCostWinRate": 0.16967509025270758,
+            "estimatedBeforeCostWinRate": 0.5054151624548736,
+            "averageNetReturnPct": -0.001245877932002595,
+            "estimatedBeforeCostAverageReturnPct": 0.0000541220679974043,
+            "assumedRoundTripCostPct": 0.0013,
+            "slices": {
+              "byAsset": [
+                {
+                  "key": "BTC",
+                  "label": "BTC",
+                  "trades": 76,
+                  "profitableTrades": 8,
+                  "afterCostWinRate": 0.10526315789473684,
+                  "averageReturnPct": -0.0012266581752130767,
+                  "netReturnPct": -0.0046613010658096915
+                },
+                {
+                  "key": "ETH",
+                  "label": "ETH",
+                  "trades": 73,
+                  "profitableTrades": 16,
+                  "afterCostWinRate": 0.2191780821917808,
+                  "averageReturnPct": -0.0013358975796059782,
+                  "netReturnPct": -0.004876026165561821
+                },
+                {
+                  "key": "SOL",
+                  "label": "SOL",
+                  "trades": 64,
+                  "profitableTrades": 14,
+                  "afterCostWinRate": 0.21875,
+                  "averageReturnPct": -0.0011643780025566682,
+                  "netReturnPct": -0.0037260096081813384
+                },
+                {
+                  "key": "XRP",
+                  "label": "XRP",
+                  "trades": 64,
+                  "profitableTrades": 9,
+                  "afterCostWinRate": 0.140625,
+                  "averageReturnPct": -0.0012475226620884692,
+                  "netReturnPct": -0.003992072518683102
+                }
+              ],
+              "bySide": [
+                {
+                  "key": "LONG",
+                  "label": "LONG",
+                  "trades": 124,
+                  "profitableTrades": 20,
+                  "afterCostWinRate": 0.16129032258064516,
+                  "averageReturnPct": -0.0013486494492310666,
+                  "netReturnPct": -0.008361626585232613
+                },
+                {
+                  "key": "SHORT",
+                  "label": "SHORT",
+                  "trades": 153,
+                  "profitableTrades": 27,
+                  "afterCostWinRate": 0.17647058823529413,
+                  "averageReturnPct": -0.0011625859833991293,
+                  "netReturnPct": -0.00889378277300334
+                }
+              ],
+              "byProbability": [
+                {
+                  "key": "58-60",
+                  "label": "0.58-0.60",
+                  "trades": 25,
+                  "profitableTrades": 5,
+                  "afterCostWinRate": 0.2,
+                  "averageReturnPct": -0.001198581847809866,
+                  "netReturnPct": -0.0014982273097623325
+                },
+                {
+                  "key": "60-65",
+                  "label": "0.60-0.65",
+                  "trades": 68,
+                  "profitableTrades": 7,
+                  "afterCostWinRate": 0.10294117647058823,
+                  "averageReturnPct": -0.0014145014260008265,
+                  "netReturnPct": -0.00480930484840281
+                },
+                {
+                  "key": "65-70",
+                  "label": "0.65-0.70",
+                  "trades": 87,
+                  "profitableTrades": 16,
+                  "afterCostWinRate": 0.1839080459770115,
+                  "averageReturnPct": -0.0011970130099815028,
+                  "netReturnPct": -0.005207006593419538
+                },
+                {
+                  "key": "70-80",
+                  "label": "0.70-0.80",
+                  "trades": 80,
+                  "profitableTrades": 15,
+                  "afterCostWinRate": 0.1875,
+                  "averageReturnPct": -0.0010486326558646832,
+                  "netReturnPct": -0.0041945306234587336
+                },
+                {
+                  "key": "80-plus",
+                  "label": "0.80+",
+                  "trades": 17,
+                  "profitableTrades": 4,
+                  "afterCostWinRate": 0.23529411764705882,
+                  "averageReturnPct": -0.0018192235096382795,
+                  "netReturnPct": -0.0015463399831925377
+                }
+              ],
+              "byTrendStrength": [
+                {
+                  "key": "015-030",
+                  "label": "0.15-0.30",
+                  "trades": 22,
+                  "profitableTrades": 1,
+                  "afterCostWinRate": 0.045454545454545456,
+                  "averageReturnPct": -0.0019807146100768104,
+                  "netReturnPct": -0.002178786071084492
+                },
+                {
+                  "key": "030-060",
+                  "label": "0.30-0.60",
+                  "trades": 49,
+                  "profitableTrades": 3,
+                  "afterCostWinRate": 0.061224489795918366,
+                  "averageReturnPct": -0.0012004630563481134,
+                  "netReturnPct": -0.002941134488052878
+                },
+                {
+                  "key": "060-100",
+                  "label": "0.60-1.00",
+                  "trades": 74,
+                  "profitableTrades": 16,
+                  "afterCostWinRate": 0.21621621621621623,
+                  "averageReturnPct": -0.0009614768912153054,
+                  "netReturnPct": -0.00355746449749663
+                },
+                {
+                  "key": "100-200",
+                  "label": "1.00-2.00",
+                  "trades": 114,
+                  "profitableTrades": 23,
+                  "afterCostWinRate": 0.20175438596491227,
+                  "averageReturnPct": -0.001207208057173892,
+                  "netReturnPct": -0.006881085925891184
+                },
+                {
+                  "key": "200-plus",
+                  "label": "2.00+",
+                  "trades": 18,
+                  "profitableTrades": 4,
+                  "afterCostWinRate": 0.2222222222222222,
+                  "averageReturnPct": -0.0018854870841230758,
+                  "netReturnPct": -0.0016969383757107683
+                }
+              ],
+              "byJstSession": [
+                {
+                  "key": "00-05",
+                  "label": "00-05 JST",
+                  "trades": 64,
+                  "profitableTrades": 12,
+                  "afterCostWinRate": 0.1875,
+                  "averageReturnPct": -0.0013280862062974277,
+                  "netReturnPct": -0.004249875860151769
+                },
+                {
+                  "key": "06-11",
+                  "label": "06-11 JST",
+                  "trades": 95,
+                  "profitableTrades": 13,
+                  "afterCostWinRate": 0.1368421052631579,
+                  "averageReturnPct": -0.001396123404008665,
+                  "netReturnPct": -0.00663158616904116
+                },
+                {
+                  "key": "12-17",
+                  "label": "12-17 JST",
+                  "trades": 63,
+                  "profitableTrades": 9,
+                  "afterCostWinRate": 0.14285714285714285,
+                  "averageReturnPct": -0.001313956119951901,
+                  "netReturnPct": -0.004138961777848489
+                },
+                {
+                  "key": "18-23",
+                  "label": "18-23 JST",
+                  "trades": 55,
+                  "profitableTrades": 13,
+                  "afterCostWinRate": 0.23636363636363636,
+                  "averageReturnPct": -0.0008127220186161941,
+                  "netReturnPct": -0.002234985551194534
+                }
+              ]
+            }
+          },
+          "sensitivity": {
+            "purpose": "diagnostic_only",
+            "selectionPolicy": "fixed_grid_not_used_for_promotion",
+            "testedVariants": 9,
+            "calibrationPositiveVariants": 0,
+            "holdoutPositiveVariants": 0,
+            "variants": [
+              {
+                "id": "p58-t15",
+                "minimumProbability": 0.58,
+                "minimumTrendZ": 0.15,
+                "calibration": {
+                  "trades": 432,
+                  "netReturnPct": -0.02533130801202054,
+                  "averageReturnPct": -0.0011727457412972456
+                },
+                "holdout": {
+                  "trades": 277,
+                  "netReturnPct": -0.017255409358235958,
+                  "averageReturnPct": -0.0012458779320025952
+                }
+              },
+              {
+                "id": "p58-t60",
+                "minimumProbability": 0.58,
+                "minimumTrendZ": 0.6,
+                "calibration": {
+                  "trades": 348,
+                  "netReturnPct": -0.0193828427270361,
+                  "averageReturnPct": -0.0011139564785652924
+                },
+                "holdout": {
+                  "trades": 219,
+                  "netReturnPct": -0.012933991474620451,
+                  "averageReturnPct": -0.0011811864360383973
+                }
+              },
+              {
+                "id": "p58-t100",
+                "minimumProbability": 0.58,
+                "minimumTrendZ": 1,
+                "calibration": {
+                  "trades": 238,
+                  "netReturnPct": -0.011612917316665673,
+                  "averageReturnPct": -0.0009758754047618215
+                },
+                "holdout": {
+                  "trades": 165,
+                  "netReturnPct": -0.010038288257297414,
+                  "averageReturnPct": -0.0012167622130057477
+                }
+              },
+              {
+                "id": "p65-t15",
+                "minimumProbability": 0.65,
+                "minimumTrendZ": 0.15,
+                "calibration": {
+                  "trades": 326,
+                  "netReturnPct": -0.018884235145998147,
+                  "averageReturnPct": -0.0011585420334968176
+                },
+                "holdout": {
+                  "trades": 215,
+                  "netReturnPct": -0.012528349405536977,
+                  "averageReturnPct": -0.0011654278516778581
+                }
+              },
+              {
+                "id": "p65-t60",
+                "minimumProbability": 0.65,
+                "minimumTrendZ": 0.6,
+                "calibration": {
+                  "trades": 282,
+                  "netReturnPct": -0.015800064008994013,
+                  "averageReturnPct": -0.0011205719155314893
+                },
+                "holdout": {
+                  "trades": 179,
+                  "netReturnPct": -0.009934005761854136,
+                  "averageReturnPct": -0.0011099447778607973
+                }
+              },
+              {
+                "id": "p65-t100",
+                "minimumProbability": 0.65,
+                "minimumTrendZ": 1,
+                "calibration": {
+                  "trades": 208,
+                  "netReturnPct": -0.010463444148143038,
+                  "averageReturnPct": -0.0010061003988599071
+                },
+                "holdout": {
+                  "trades": 134,
+                  "netReturnPct": -0.008870861451897126,
+                  "averageReturnPct": -0.0013240091719249455
+                }
+              },
+              {
+                "id": "p70-t15",
+                "minimumProbability": 0.7,
+                "minimumTrendZ": 0.15,
+                "calibration": {
+                  "trades": 236,
+                  "netReturnPct": -0.01332016910365975,
+                  "averageReturnPct": -0.0011288278901406554
+                },
+                "holdout": {
+                  "trades": 156,
+                  "netReturnPct": -0.009511544933500645,
+                  "averageReturnPct": -0.0012194288376282882
+                }
+              },
+              {
+                "id": "p70-t60",
+                "minimumProbability": 0.7,
+                "minimumTrendZ": 0.6,
+                "calibration": {
+                  "trades": 220,
+                  "netReturnPct": -0.01220386297518946,
+                  "averageReturnPct": -0.0011094420886535864
+                },
+                "holdout": {
+                  "trades": 137,
+                  "netReturnPct": -0.00795327464856042,
+                  "averageReturnPct": -0.0011610619924905727
+                }
+              },
+              {
+                "id": "p70-t100",
+                "minimumProbability": 0.7,
+                "minimumTrendZ": 1,
+                "calibration": {
+                  "trades": 175,
+                  "netReturnPct": -0.008598923520868714,
+                  "averageReturnPct": -0.0009827341166707094
+                },
+                "holdout": {
+                  "trades": 109,
+                  "netReturnPct": -0.007308447883419819,
+                  "averageReturnPct": -0.0013409996116366641
+                }
+              }
+            ]
+          },
+          "history": [
+            {
+              "generatedAt": "2026-07-24T04:03:58.124Z",
+              "marketDuration": "15m",
+              "lookbackHours": 72,
+              "executionMode": "taker",
+              "completeMarkets": 1140,
+              "status": "rejected",
+              "trades": 277,
+              "netReturnPct": -0.017255409358235954,
+              "averageReturnPct": -0.001245877932002595,
+              "confidenceLowerPct": -0.00019093574240389773,
+              "excessReturnPct": 0.002609008307187449,
+              "maxDrawdownPct": 0.017110781205393666,
+              "profitableFolds": 0,
+              "totalFolds": 4,
+              "passedGates": 2,
+              "totalGates": 7
+            },
+            {
+              "generatedAt": "2026-07-23T22:03:57.794Z",
+              "marketDuration": "15m",
+              "lookbackHours": 72,
+              "executionMode": "taker",
+              "completeMarkets": 1140,
+              "status": "rejected",
+              "trades": 276,
+              "netReturnPct": -0.016198848975839585,
+              "averageReturnPct": -0.0011738296359304053,
+              "confidenceLowerPct": -0.00018297694033215375,
+              "excessReturnPct": 0.0018280107288294821,
+              "maxDrawdownPct": 0.016268485856536535,
+              "profitableFolds": 0,
+              "totalFolds": 4,
+              "passedGates": 2,
+              "totalGates": 7
+            },
+            {
+              "generatedAt": "2026-07-23T16:03:57.603Z",
+              "marketDuration": "15m",
+              "lookbackHours": 72,
+              "executionMode": "taker",
+              "completeMarkets": 1140,
+              "status": "rejected",
+              "trades": 279,
+              "netReturnPct": -0.013099744570110051,
+              "averageReturnPct": -0.0009390497899720476,
+              "confidenceLowerPct": -0.00015550581259180356,
+              "excessReturnPct": 0.003148004356410832,
+              "maxDrawdownPct": 0.01338856265050492,
+              "profitableFolds": 0,
+              "totalFolds": 4,
+              "passedGates": 4,
+              "totalGates": 7
+            },
+            {
+              "generatedAt": "2026-07-23T10:03:55.280Z",
+              "marketDuration": "15m",
+              "lookbackHours": 72,
+              "executionMode": "taker",
+              "completeMarkets": 1140,
+              "status": "rejected",
+              "trades": 281,
+              "netReturnPct": -0.015113914744281828,
+              "averageReturnPct": -0.0010757234693439019,
+              "confidenceLowerPct": -0.00017316323895198282,
+              "excessReturnPct": 0.0021404378065779162,
+              "maxDrawdownPct": 0.015202450654530979,
+              "profitableFolds": 0,
+              "totalFolds": 4,
+              "passedGates": 4,
+              "totalGates": 7
+            },
+            {
+              "generatedAt": "2026-07-18T16:03:57.158Z",
+              "marketDuration": "15m",
+              "lookbackHours": 72,
+              "executionMode": "taker",
+              "completeMarkets": 1147,
+              "status": "rejected",
+              "trades": 274,
+              "netReturnPct": -0.017333199096122454,
+              "averageReturnPct": -0.0012651970143155082,
+              "confidenceLowerPct": -0.00018237568014456434,
+              "excessReturnPct": 0.002082342040787715,
+              "maxDrawdownPct": 0.017187641833062206,
+              "profitableFolds": 0,
+              "totalFolds": 4,
+              "passedGates": 2,
+              "totalGates": 7
+            },
+            {
+              "generatedAt": "2026-07-18T10:06:59.981Z",
+              "marketDuration": "15m",
+              "lookbackHours": 72,
+              "executionMode": "taker",
+              "completeMarkets": 1147,
+              "status": "rejected",
+              "trades": 278,
+              "netReturnPct": -0.018047600245234982,
+              "averageReturnPct": -0.0012983885068514377,
+              "confidenceLowerPct": -0.00019011321805344604,
+              "excessReturnPct": 0.0012193636590087013,
+              "maxDrawdownPct": 0.018257245879972465,
+              "profitableFolds": 0,
+              "totalFolds": 4,
+              "passedGates": 2,
+              "totalGates": 7
+            }
+          ],
+          "candidates": [
+            {
+              "id": "baseline",
+              "label": "現行15分モデル",
+              "status": "rejected",
+              "trades": 277,
+              "netReturnPct": -0.017255409358235954,
+              "averageReturnPct": -0.001245877932002595,
+              "confidenceLowerPct": -0.00019093574240389773,
+              "excessReturnPct": 0.002609008307187449,
+              "maxDrawdownPct": 0.017110781205393666,
+              "profitableFolds": 0,
+              "totalFolds": 4,
+              "passedGates": 2,
+              "totalGates": 7
+            },
+            {
+              "id": "implied",
+              "label": "暗黙終値",
+              "status": "insufficient",
+              "trades": 29,
+              "netReturnPct": -0.002060719041646003,
+              "averageReturnPct": -0.00142118554596276,
+              "confidenceLowerPct": -0.00026895775377619636,
+              "excessReturnPct": -0.0007050689056102627,
+              "maxDrawdownPct": 0.0022175512412160063,
+              "profitableFolds": 0,
+              "totalFolds": 4,
+              "passedGates": 0,
+              "totalGates": 7
+            },
+            {
+              "id": "leadLag",
+              "label": "確率変化",
+              "status": "rejected",
+              "trades": 228,
+              "netReturnPct": -0.015998507911238,
+              "averageReturnPct": -0.0014033778869507018,
+              "confidenceLowerPct": -0.00020656953025807606,
+              "excessReturnPct": -0.0024202525615291846,
+              "maxDrawdownPct": 0.015874165808056673,
+              "profitableFolds": 0,
+              "totalFolds": 4,
+              "passedGates": 2,
+              "totalGates": 7
+            },
+            {
+              "id": "crossSectional",
+              "label": "資産間比較",
+              "status": "insufficient",
+              "trades": 1,
+              "netReturnPct": -0.000034688780561612305,
+              "averageReturnPct": -0.0006937756112322461,
+              "confidenceLowerPct": null,
+              "excessReturnPct": 0.00003315756434079436,
+              "maxDrawdownPct": 0.00003468878056156477,
+              "profitableFolds": 0,
+              "totalFolds": 4,
+              "passedGates": 0,
+              "totalGates": 7
+            }
+          ]
+        },
+        "realtimeResearch": null,
+        "realTradingEnabled": false
+      },
+      "settlementBasis": {
+        "status": "collecting",
+        "samples": 5,
+        "medianAbsolutePct": 0.0008123464462435059,
+        "maximumAbsolutePct": 0.001204781634281393,
+        "medianReferenceCaptureLagSeconds": 28.176
+      },
+      "funnel": {
+        "scans": 1682,
+        "scannedMarkets": 126,
+        "structuredMarkets": 33,
+        "horizonEligibleMarkets": 22,
+        "groupedEvents": 2,
+        "priceReadyEvents": 2,
+        "thresholdSignals": 281,
+        "opened": 5,
+        "closed": 5
+      },
+      "latestDecision": {
+        "action": "NO_SIGNAL",
+        "reason": "次の12時間観測は7/25 11:00です",
+        "asset": null,
+        "signalZ": null,
+        "spotPrice": null,
+        "targetPrice": null,
+        "polymarketSide": null,
+        "strategySide": null,
+        "trendZ6h": null,
+        "hyperliquidFunding24h": null,
+        "horizonHours": 12,
+        "marketBestBid": null,
+        "marketBestAsk": null,
+        "marketSpread": null,
+        "polymarketReferencePrice": null,
+        "referenceSource": null,
+        "priceBasisPct": null,
+        "ladderViolations": null,
+        "nextWindowAt": "2026-07-25T02:00:00.000Z",
+        "observedAt": "2026-07-24T08:29:03.442Z"
+      },
+      "testnet": {
+        "environment": "testnet",
+        "installed": true,
+        "accountConfigured": false,
+        "apiWalletConfigured": true,
+        "apiWalletKeySource": "file",
+        "enabled": false,
+        "autoMirrorEnabled": false,
+        "supportedAssets": [
+          "BTC",
+          "ETH",
+          "SOL"
+        ],
+        "setupBlockers": [
+          "master_account_not_configured",
+          "execution_not_enabled"
+        ],
+        "nextStep": "マスター口座でAPI Walletを承認し、口座アドレスを登録",
+        "ready": false,
+        "maximumNotionalUsd": 25,
+        "mainnetSupported": false,
+        "transport": {
+          "id": "testnet-transport",
+          "label": "testnet API疎通",
+          "cadence": "10分ごと",
+          "status": "healthy",
+          "lastSuccessAt": "2026-07-24T08:24:13.791Z",
+          "records": 138810
+        },
+        "verifiedReady": false,
+        "verification": {
+          "id": "64a616a7-e4a6-42c3-8c20-9413e9b8e735",
+          "status": "FAILED",
+          "asset": "BTC",
+          "requestedNotionalUsd": 12,
+          "sdkVersion": "0.24.0",
+          "connectivityPassed": true,
+          "openFillPassed": false,
+          "closeFillPassed": false,
+          "restingOrderPassed": false,
+          "cancelPassed": false,
+          "deadManSwitchPassed": false,
+          "partialFillObserved": false,
+          "reconnectPassed": false,
+          "reconciliationPassed": false,
+          "emergencyCleanupPassed": false,
+          "orphanOrderCount": 0,
+          "positionMismatchCount": 0,
+          "startedAt": "2026-07-18T09:16:36.124Z",
+          "completedAt": "2026-07-18T09:16:36.756Z",
+          "error": "Hyperliquid testnet account and dedicated API wallet are not armed",
+          "failedChecks": [
+            "executionArmed",
+            "verificationPassed",
+            "openFill",
+            "closeFill",
+            "restingOrder",
+            "cancellation",
+            "deadManSwitch",
+            "partialFill",
+            "reconnect",
+            "finalReconciliation",
+            "emergencyCleanup",
+            "accountHealthy",
+            "zeroExposure",
+            "noAccountMismatch",
+            "reconciliationFresh"
+          ]
+        },
+        "reconciliation": {
+          "status": "not_configured",
+          "lastSuccessAt": null,
+          "message": null,
+          "accountValue": null,
+          "accountLossPct": null,
+          "healthy": false,
+          "orderMismatchCount": 0,
+          "positionMismatchCount": 0,
+          "capturedAt": null
+        }
+      }
+    },
+    "polymarket": {
+      "snapshots": 592622,
+      "markets": 2531,
+      "latestAt": "2026-07-24T08:30:11.823Z",
+      "backtestRuns": 7,
+      "backtestPoints": 781
+    },
+    "model": {
+      "name": "Polymarket x Hyperliquid Signal v18",
+      "selectedCandidate": "price structure 40%",
+      "selectedCandidateKind": "logit-pool",
+      "combinedStrategy": "no-trade guard",
+      "combinedMinimumSignalZ": 0,
+      "selectedFromValidation": false,
+      "totalEligibleSignals": 0,
+      "validationEligibleSignals": 0,
+      "executionStartedAt": null,
+      "executionEndedAt": null,
+      "validationStartedAt": null,
+      "validationEndedAt": null,
+      "testStartedAt": null,
+      "testEndedAt": null,
+      "closestValidationCandidate": {
+        "id": "signal z 0.25",
+        "minimumSignalZ": 0.25,
+        "signalRule": "polymarket-only",
+        "minimumTrendZ": 0,
+        "minimumFunding24h": 0,
+        "positionPct": 0.05
+      },
+      "closestHoldoutAudit": {
+        "strategy": {
+          "id": "signal z 0.25",
+          "minimumSignalZ": 0.25,
+          "signalRule": "polymarket-only",
+          "minimumTrendZ": 0,
+          "minimumFunding24h": 0,
+          "positionPct": 0.05
+        },
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "netReturnPct": 0,
+        "benchmarkReturnPct": 0,
+        "excessReturnPct": 0,
+        "returnConfidenceInterval95": null,
+        "statisticallyPositive": false,
+        "deflatedSharpeProbability": null,
+        "maxDrawdownPct": 0,
+        "attribution": {
+          "byAsset": [],
+          "bySide": [],
+          "byFundingStrength": [],
+          "byConsensus": []
+        }
+      },
+      "candidateDiagnostics": [
+        {
+          "strategy": {
+            "id": "signal z 0.25",
+            "minimumSignalZ": 0.25,
+            "signalRule": "polymarket-only",
+            "minimumTrendZ": 0,
+            "minimumFunding24h": 0,
+            "positionPct": 0.05
+          },
+          "validationSignals": 0,
+          "trades": 0,
+          "netReturnPct": 0,
+          "benchmarkReturnPct": 0,
+          "excessReturnPct": 0,
+          "profitableFolds": 0,
+          "deflatedSharpeProbability": null,
+          "confidenceInterval95": null,
+          "passed": false,
+          "gates": [
+            {
+              "id": "trades",
+              "label": "12取引以上",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "95%区間がプラス",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "単純戦略を上回る",
+              "passed": false
+            },
+            {
+              "id": "folds",
+              "label": "4期間の安定性確認で3期間以上プラス",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後95%以上",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "strategy": {
+            "id": "signal z 0.50",
+            "minimumSignalZ": 0.5,
+            "signalRule": "polymarket-only",
+            "minimumTrendZ": 0,
+            "minimumFunding24h": 0,
+            "positionPct": 0.05
+          },
+          "validationSignals": 0,
+          "trades": 0,
+          "netReturnPct": 0,
+          "benchmarkReturnPct": 0,
+          "excessReturnPct": 0,
+          "profitableFolds": 0,
+          "deflatedSharpeProbability": null,
+          "confidenceInterval95": null,
+          "passed": false,
+          "gates": [
+            {
+              "id": "trades",
+              "label": "12取引以上",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "95%区間がプラス",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "単純戦略を上回る",
+              "passed": false
+            },
+            {
+              "id": "folds",
+              "label": "4期間の安定性確認で3期間以上プラス",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後95%以上",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "strategy": {
+            "id": "hl momentum z 0.25",
+            "minimumSignalZ": 0.25,
+            "signalRule": "hyperliquid-momentum",
+            "minimumTrendZ": 0.1,
+            "minimumFunding24h": 0,
+            "positionPct": 0.05
+          },
+          "validationSignals": 0,
+          "trades": 0,
+          "netReturnPct": 0,
+          "benchmarkReturnPct": 0,
+          "excessReturnPct": 0,
+          "profitableFolds": 0,
+          "deflatedSharpeProbability": null,
+          "confidenceInterval95": null,
+          "passed": false,
+          "gates": [
+            {
+              "id": "trades",
+              "label": "12取引以上",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "95%区間がプラス",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "単純戦略を上回る",
+              "passed": false
+            },
+            {
+              "id": "folds",
+              "label": "4期間の安定性確認で3期間以上プラス",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後95%以上",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "strategy": {
+            "id": "hl momentum z 0.50",
+            "minimumSignalZ": 0.5,
+            "signalRule": "hyperliquid-momentum",
+            "minimumTrendZ": 0.1,
+            "minimumFunding24h": 0,
+            "positionPct": 0.05
+          },
+          "validationSignals": 0,
+          "trades": 0,
+          "netReturnPct": 0,
+          "benchmarkReturnPct": 0,
+          "excessReturnPct": 0,
+          "profitableFolds": 0,
+          "deflatedSharpeProbability": null,
+          "confidenceInterval95": null,
+          "passed": false,
+          "gates": [
+            {
+              "id": "trades",
+              "label": "12取引以上",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "95%区間がプラス",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "単純戦略を上回る",
+              "passed": false
+            },
+            {
+              "id": "folds",
+              "label": "4期間の安定性確認で3期間以上プラス",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後95%以上",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "strategy": {
+            "id": "hl reversion z 0.25",
+            "minimumSignalZ": 0.25,
+            "signalRule": "hyperliquid-reversion",
+            "minimumTrendZ": 0.1,
+            "minimumFunding24h": 0,
+            "positionPct": 0.05
+          },
+          "validationSignals": 0,
+          "trades": 0,
+          "netReturnPct": 0,
+          "benchmarkReturnPct": 0,
+          "excessReturnPct": 0,
+          "profitableFolds": 0,
+          "deflatedSharpeProbability": null,
+          "confidenceInterval95": null,
+          "passed": false,
+          "gates": [
+            {
+              "id": "trades",
+              "label": "12取引以上",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "95%区間がプラス",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "単純戦略を上回る",
+              "passed": false
+            },
+            {
+              "id": "folds",
+              "label": "4期間の安定性確認で3期間以上プラス",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後95%以上",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "strategy": {
+            "id": "hl reversion z 0.50",
+            "minimumSignalZ": 0.5,
+            "signalRule": "hyperliquid-reversion",
+            "minimumTrendZ": 0.1,
+            "minimumFunding24h": 0,
+            "positionPct": 0.05
+          },
+          "validationSignals": 0,
+          "trades": 0,
+          "netReturnPct": 0,
+          "benchmarkReturnPct": 0,
+          "excessReturnPct": 0,
+          "profitableFolds": 0,
+          "deflatedSharpeProbability": null,
+          "confidenceInterval95": null,
+          "passed": false,
+          "gates": [
+            {
+              "id": "trades",
+              "label": "12取引以上",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "95%区間がプラス",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "単純戦略を上回る",
+              "passed": false
+            },
+            {
+              "id": "folds",
+              "label": "4期間の安定性確認で3期間以上プラス",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後95%以上",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "strategy": {
+            "id": "hl funding carry 0.03%",
+            "minimumSignalZ": 0.25,
+            "signalRule": "hyperliquid-funding-carry",
+            "minimumTrendZ": 0,
+            "minimumFunding24h": 0.0003,
+            "positionPct": 0.05
+          },
+          "validationSignals": 0,
+          "trades": 0,
+          "netReturnPct": 0,
+          "benchmarkReturnPct": 0,
+          "excessReturnPct": 0,
+          "profitableFolds": 0,
+          "deflatedSharpeProbability": null,
+          "confidenceInterval95": null,
+          "passed": false,
+          "gates": [
+            {
+              "id": "trades",
+              "label": "12取引以上",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "95%区間がプラス",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "単純戦略を上回る",
+              "passed": false
+            },
+            {
+              "id": "folds",
+              "label": "4期間の安定性確認で3期間以上プラス",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後95%以上",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "strategy": {
+            "id": "hl funding carry 0.06%",
+            "minimumSignalZ": 0.25,
+            "signalRule": "hyperliquid-funding-carry",
+            "minimumTrendZ": 0,
+            "minimumFunding24h": 0.0006,
+            "positionPct": 0.05
+          },
+          "validationSignals": 0,
+          "trades": 0,
+          "netReturnPct": 0,
+          "benchmarkReturnPct": 0,
+          "excessReturnPct": 0,
+          "profitableFolds": 0,
+          "deflatedSharpeProbability": null,
+          "confidenceInterval95": null,
+          "passed": false,
+          "gates": [
+            {
+              "id": "trades",
+              "label": "12取引以上",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "95%区間がプラス",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "単純戦略を上回る",
+              "passed": false
+            },
+            {
+              "id": "folds",
+              "label": "4期間の安定性確認で3期間以上プラス",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後95%以上",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "strategy": {
+            "id": "hl funding momentum 0.03%",
+            "minimumSignalZ": 0.25,
+            "signalRule": "hyperliquid-funding-momentum",
+            "minimumTrendZ": 0,
+            "minimumFunding24h": 0.0003,
+            "positionPct": 0.05
+          },
+          "validationSignals": 0,
+          "trades": 0,
+          "netReturnPct": 0,
+          "benchmarkReturnPct": 0,
+          "excessReturnPct": 0,
+          "profitableFolds": 0,
+          "deflatedSharpeProbability": null,
+          "confidenceInterval95": null,
+          "passed": false,
+          "gates": [
+            {
+              "id": "trades",
+              "label": "12取引以上",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "95%区間がプラス",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "単純戦略を上回る",
+              "passed": false
+            },
+            {
+              "id": "folds",
+              "label": "4期間の安定性確認で3期間以上プラス",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後95%以上",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "strategy": {
+            "id": "hl funding momentum 0.06%",
+            "minimumSignalZ": 0.25,
+            "signalRule": "hyperliquid-funding-momentum",
+            "minimumTrendZ": 0,
+            "minimumFunding24h": 0.0006,
+            "positionPct": 0.05
+          },
+          "validationSignals": 0,
+          "trades": 0,
+          "netReturnPct": 0,
+          "benchmarkReturnPct": 0,
+          "excessReturnPct": 0,
+          "profitableFolds": 0,
+          "deflatedSharpeProbability": null,
+          "confidenceInterval95": null,
+          "passed": false,
+          "gates": [
+            {
+              "id": "trades",
+              "label": "12取引以上",
+              "passed": false
+            },
+            {
+              "id": "significance",
+              "label": "95%区間がプラス",
+              "passed": false
+            },
+            {
+              "id": "benchmark",
+              "label": "単純戦略を上回る",
+              "passed": false
+            },
+            {
+              "id": "folds",
+              "label": "4期間の安定性確認で3期間以上プラス",
+              "passed": false
+            },
+            {
+              "id": "selection-bias",
+              "label": "試行補正後95%以上",
+              "passed": false
+            }
+          ]
+        }
+      ],
+      "structuralFeatureCoverage": 1,
+      "fundingFeatureCoverage": 1,
+      "synchronizedExecutionCoverage": 0,
+      "testSynchronizedExecutionCoverage": 0,
+      "evaluationStatus": "inconclusive",
+      "latestAsset": "ETH・BTC・SOL・XRP",
+      "latestBrierScore": 0.04174670886177093,
+      "latestAccuracy": null,
+      "latestReturnPct": 0,
+      "benchmarkReturnPct": 0,
+      "benchmarkReturns": {
+        "alwaysLongReturnPct": 0,
+        "alwaysShortReturnPct": 0,
+        "polymarketDirectionReturnPct": 0,
+        "randomMedianReturnPct": 0,
+        "randomTrials": 200,
+        "bestReturnPct": 0,
+        "bestLabel": "常時ロング"
+      },
+      "horizonStudies": [
+        {
+          "horizonHours": 6,
+          "status": "inconclusive",
+          "totalEvents": 300,
+          "testEvents": 60,
+          "eligibleSignals": 0,
+          "trades": 0,
+          "netReturnPct": null,
+          "bestBenchmarkReturnPct": null,
+          "excessReturnPct": null,
+          "deflatedSharpeProbability": null,
+          "testExecutionFeatureCoverage": 1,
+          "testSynchronizedExecutionCoverage": 0,
+          "maximumExecutionTimingErrorMinutes": null
+        },
+        {
+          "horizonHours": 12,
+          "status": "inconclusive",
+          "totalEvents": 300,
+          "testEvents": 60,
+          "eligibleSignals": 0,
+          "trades": 0,
+          "netReturnPct": null,
+          "bestBenchmarkReturnPct": null,
+          "excessReturnPct": null,
+          "deflatedSharpeProbability": null,
+          "testExecutionFeatureCoverage": 1,
+          "testSynchronizedExecutionCoverage": 0,
+          "maximumExecutionTimingErrorMinutes": null
+        },
+        {
+          "horizonHours": 24,
+          "status": "inconclusive",
+          "totalEvents": 300,
+          "testEvents": 60,
+          "eligibleSignals": 0,
+          "trades": 0,
+          "netReturnPct": null,
+          "bestBenchmarkReturnPct": null,
+          "excessReturnPct": null,
+          "deflatedSharpeProbability": null,
+          "testExecutionFeatureCoverage": 1,
+          "testSynchronizedExecutionCoverage": 0,
+          "maximumExecutionTimingErrorMinutes": null
+        },
+        {
+          "horizonHours": 48,
+          "status": "inconclusive",
+          "totalEvents": 300,
+          "testEvents": 60,
+          "eligibleSignals": 0,
+          "trades": 0,
+          "netReturnPct": null,
+          "bestBenchmarkReturnPct": null,
+          "excessReturnPct": null,
+          "deflatedSharpeProbability": null,
+          "testExecutionFeatureCoverage": 1,
+          "testSynchronizedExecutionCoverage": 0,
+          "maximumExecutionTimingErrorMinutes": null
+        }
+      ],
+      "excessReturnPct": 0,
+      "eligibleSignals": 0,
+      "testedMarkets": 660,
+      "testedEvents": 60,
+      "observations": 2700,
+      "brierImprovement": 0.054734611300962466,
+      "previousBrierScore": 0.04416400871212121,
+      "confidenceInterval95": null,
+      "statisticallyPositive": false,
+      "deflatedSharpeProbability": null,
+      "strategyTrials": 19,
+      "walkForwardFolds": 0,
+      "profitableValidationFolds": 0,
+      "completedAt": "2026-07-24T04:06:00.162Z",
+      "datasetStartedAt": "2024-03-01T00:00:00.000Z",
+      "datasetEndedAt": "2026-07-23T16:00:00.000Z",
+      "trades": 0,
+      "longTrades": 0,
+      "shortTrades": 0,
+      "winRate": null,
+      "averageTradeReturn": null,
+      "maxDrawdownPct": 0,
+      "medianObservationLagMinutes": null,
+      "medianEntryLagMinutes": null,
+      "medianExitLeadMinutes": null,
+      "maximumExecutionTimingErrorMinutes": null,
+      "probabilityLadderEvents": 240,
+      "probabilityLadderViolationEvents": 0,
+      "aiPredictions": 308,
+      "aiResolved": 82,
+      "aiBrierScore": 0.18216413770152232,
+      "marketBrierScore": 0.16319659527439034,
+      "aiImprovement": -0.018967542427131973,
+      "paperRuns": 6,
+      "runningPaperRuns": 0,
+      "paperSnapshots": 1075,
+      "paperOrders": 7,
+      "paperFills": 7,
+      "paperReturnPct": 0
+    },
+    "paperExperiment": {
+      "label": "Polymarket単体の仮想売買",
+      "strategy": null,
+      "status": "not_running",
+      "realMoney": false,
+      "initialCash": null,
+      "equity": null,
+      "returnPct": null,
+      "unrealizedPnl": null,
+      "openPositions": 0,
+      "fills": 0,
+      "updatedAt": null
+    },
+    "backtestQuality": {
+      "status": "inconclusive",
+      "checks": [
+        {
+          "label": "過去データだけで取引ルールを再選択する4期間検証",
+          "passed": false
+        },
+        {
+          "label": "全市場を決着24時間前で統一",
+          "passed": true
+        },
+        {
+          "label": "未使用期間の同期板価格で売買検証",
+          "passed": false
+        },
+        {
+          "label": "最終テストの集約参考価格を90%以上取得",
+          "passed": true
+        },
+        {
+          "label": "最終テストの1分同期板価格を90%以上取得",
+          "passed": false
+        },
+        {
+          "label": "売買時刻の誤差を5分以内に制限",
+          "passed": false
+        },
+        {
+          "label": "価格帯の確率矛盾を単調補正",
+          "passed": true
+        },
+        {
+          "label": "同期板・手数料・滑り・全取引期間の資金調達を反映",
+          "passed": false
+        },
+        {
+          "label": "同期板テストの資金調達率と取引期間コストを全件取得",
+          "passed": false
+        },
+        {
+          "label": "売買可能な最終テスト15イベント以上",
+          "passed": false
+        },
+        {
+          "label": "最終テスト12取引以上",
+          "passed": false
+        },
+        {
+          "label": "採用戦略が最終テストで単純戦略を上回る",
+          "passed": false
+        },
+        {
+          "label": "最有力候補が未使用期間でプラスかつ単純戦略を上回る",
+          "passed": false
+        },
+        {
+          "label": "ブロック再標本化95%区間がプラス",
+          "passed": false
+        },
+        {
+          "label": "試行回数補正後も95%以上",
+          "passed": false
+        }
+      ]
+    },
+    "hyperliquid": {
+      "snapshots": 36794,
+      "latestAt": "2026-07-24T08:30:08.274Z",
+      "assets": [
+        {
+          "asset": "BTC",
+          "price": 65373.5,
+          "change24hPct": -0.0029967973158456784,
+          "dayVolume": 1848943115.41761,
+          "openInterestUsd": 2426599349.0172,
+          "fundingRate": 0.0000125,
+          "capturedAt": "2026-07-24T08:30:08.274Z"
+        },
+        {
+          "asset": "ETH",
+          "price": 1889.15,
+          "change24hPct": -0.01663109676747687,
+          "dayVolume": 865512039.0725702,
+          "openInterestUsd": 1925072910.637056,
+          "fundingRate": 0.0000039847,
+          "capturedAt": "2026-07-24T08:30:08.274Z"
+        },
+        {
+          "asset": "SOL",
+          "price": 75.7755,
+          "change24hPct": -0.019950076308233533,
+          "dayVolume": 112432098.9159501,
+          "openInterestUsd": 346295579.54784,
+          "fundingRate": -0.0000090739,
+          "capturedAt": "2026-07-24T08:30:08.274Z"
+        },
+        {
+          "asset": "XRP",
+          "price": 1.11315,
+          "change24hPct": -0.019337503303673564,
+          "dayVolume": 26158209.3303,
+          "openInterestUsd": 87902755.8982,
+          "fundingRate": 0.0000022942,
+          "capturedAt": "2026-07-24T08:30:08.274Z"
+        },
+        {
+          "asset": "HYPE",
+          "price": 58.8545,
+          "change24hPct": -0.0006197891019000812,
+          "dayVolume": 282748576.1119899,
+          "openInterestUsd": 1328333555.7038798,
+          "fundingRate": 0.0000125,
+          "capturedAt": "2026-07-24T08:30:08.274Z"
+        }
+      ]
+    },
+    "operations": {
+      "alerts": {
+        "status": "healthy",
+        "message": "異常2件を監視中",
+        "lastSuccessAt": "2026-07-24T08:29:41.080Z",
+        "webhookConfigured": false
+      },
+      "tunnel": {
+        "mode": "quick",
+        "status": "healthy",
+        "publicUrl": "https://discovery-face-flag-jackson.trycloudflare.com",
+        "fixedUrl": false,
+        "fallback": false,
+        "publishedAt": "2026-07-24T08:25:53.162Z",
+        "lastCheckedAt": "2026-07-24T08:29:54.763Z",
+        "consecutiveFailures": 0,
+        "updatedAt": "2026-07-24T08:29:54.763Z"
+      },
+      "backup": {
+        "encrypted": true,
+        "copies": 19,
+        "latestAt": "2026-07-24T03:04:16.311Z",
+        "verifiedAt": "2026-07-24T03:04:30.113Z",
+        "status": "healthy",
+        "message": "PostgreSQLバックアップを暗号化し、一時DBへの復元を確認済みです"
+      },
+      "columnarArchive": {
+        "status": "healthy",
+        "schemaVersion": 1,
+        "generatedAt": "2026-07-24T04:04:01.701917Z",
+        "verifiedAt": "2026-07-24T04:04:02.738787Z",
+        "archivedThrough": "2026-07-24",
+        "partitions": 63,
+        "rows": 593344,
+        "sizeBytes": 43915409,
+        "message": "日次Parquetを件数・SHA-256・再読込で確認済みです"
+      }
+    },
+    "pipelines": [
+      {
+        "id": "polymarket",
+        "label": "価格同期収集",
+        "cadence": "1分ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T08:30:12.027Z",
+        "records": 579590
+      },
+      {
+        "id": "hyperliquid",
+        "label": "相場データ収集",
+        "cadence": "1分ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T08:30:08.283Z",
+        "records": 36795
+      },
+      {
+        "id": "realtime-market-data",
+        "label": "秒単位の板収集",
+        "cadence": "5秒ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T08:30:16.408Z",
+        "records": 934982
+      },
+      {
+        "id": "backtest",
+        "label": "モデル再検証",
+        "cadence": "6時間ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T04:06:00.181Z",
+        "records": 15708
+      },
+      {
+        "id": "short-term-backtest",
+        "label": "15分モデル過去検証",
+        "cadence": "6時間ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T04:04:26.767Z",
+        "records": 205543
+      },
+      {
+        "id": "realtime-short-term-backtest",
+        "label": "5秒板リプレイ",
+        "cadence": "30分ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T08:24:51.869Z",
+        "records": 151255
+      },
+      {
+        "id": "columnar-archive",
+        "label": "検証データ保存",
+        "cadence": "6時間ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T04:04:02.754Z",
+        "records": 42136589
+      },
+      {
+        "id": "testnet-transport",
+        "label": "testnet API疎通",
+        "cadence": "10分ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T08:24:13.791Z",
+        "records": 138810
+      },
+      {
+        "id": "forward-experiment",
+        "label": "固定フォワード検証",
+        "cadence": "5分ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T08:29:08.384Z",
+        "records": 13522
+      },
+      {
+        "id": "short-term-direction",
+        "label": "15分モデル検証",
+        "cadence": "1分ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T08:30:17.567Z",
+        "records": 2721695
+      },
+      {
+        "id": "forward-execution-audit-report",
+        "label": "前向き監査の保存",
+        "cadence": "5分ごと",
+        "status": "healthy",
+        "lastSuccessAt": "2026-07-24T08:29:58.933Z",
+        "records": 230752
+      }
+    ]
+  },
+  "runs": [
+    {
+      "id": "3cc87cfd-ae1b-4d28-8ec4-b055e84c1a9c",
+      "accountId": "b5c45c34-ded4-41cb-868e-2dca80d047cc",
+      "asset": "BTC",
+      "mode": "live",
+      "strategy": "calibrated_consensus",
+      "status": "stopped",
+      "initialCash": 10000,
+      "finalCash": 9969.029353211256,
+      "startedAt": "2026-07-16T19:39:01.652Z",
+      "completedAt": "2026-07-17T16:03:12.646Z",
+      "error": null,
+      "metrics": null
+    },
+    {
+      "id": "66d960a1-8631-46dd-a806-df76ec7c840a",
+      "accountId": "9ed479ae-6362-4afb-9c80-a24efa0394d3",
+      "asset": "BTC",
+      "mode": "live",
+      "strategy": "calibrated_consensus",
+      "status": "stopped",
+      "initialCash": 10000,
+      "finalCash": 10000,
+      "startedAt": "2026-07-14T06:36:21.332Z",
+      "completedAt": "2026-07-16T19:42:09.917Z",
+      "error": null,
+      "metrics": null
+    },
+    {
+      "id": "2820ca3e-80b3-4807-8afd-14204a09f98f",
+      "accountId": "fd211d91-84cb-413a-aa88-f28fdbeb9c10",
+      "asset": "BTC",
+      "mode": "historical",
+      "strategy": "calibrated_consensus",
+      "status": "completed",
+      "initialCash": 5000,
+      "finalCash": 5000,
+      "startedAt": "2026-07-13T13:11:13.649Z",
+      "completedAt": "2026-07-13T13:11:13.780Z",
+      "error": null,
+      "metrics": {
+        "startingCash": 5000,
+        "endingCash": 5000,
+        "totalReturn": 0,
+        "totalReturnPct": 0,
+        "orders": 0,
+        "filledOrders": 0,
+        "rejectedOrders": 0,
+        "settledMarkets": 8,
+        "winningMarkets": 0,
+        "losingMarkets": 0,
+        "winRate": null,
+        "totalFees": 0,
+        "maxDrawdownPct": 0,
+        "sharpeLike": null,
+        "brierScore": 0.11507371875,
+        "logLoss": 0.33093178397531925
+      }
+    },
+    {
+      "id": "a7a2b71b-f87f-49c2-a487-d55713443856",
+      "accountId": "089f78b2-eab5-47dd-a58c-71bb05931738",
+      "asset": "BTC",
+      "mode": "live",
+      "strategy": "calibrated_consensus",
+      "status": "stopped",
+      "initialCash": 10000,
+      "finalCash": 10000,
+      "startedAt": "2026-07-13T13:10:01.147Z",
+      "completedAt": "2026-07-16T18:43:34.156Z",
+      "error": null,
+      "metrics": null
+    },
+    {
+      "id": "8712e388-76ac-4ee1-8197-2d11f07f8682",
+      "accountId": "1c1a6fa4-0b56-4315-bb4d-71d8a6d7fcb5",
+      "asset": "BTC",
+      "mode": "historical",
+      "strategy": "calibrated_consensus",
+      "status": "completed",
+      "initialCash": 10000,
+      "finalCash": 8938.12,
+      "startedAt": "2026-07-13T13:09:51.459Z",
+      "completedAt": "2026-07-13T13:09:52.161Z",
+      "error": null,
+      "metrics": {
+        "startingCash": 10000,
+        "endingCash": 8938.12,
+        "totalReturn": -1061.8799999999992,
+        "totalReturnPct": -0.10618799999999992,
+        "orders": 1,
+        "filledOrders": 1,
+        "rejectedOrders": 0,
+        "settledMarkets": 12,
+        "winningMarkets": 0,
+        "losingMarkets": 1,
+        "winRate": 0,
+        "totalFees": 61.88,
+        "maxDrawdownPct": 0.10618799999999992,
+        "sharpeLike": -1.006557447310804,
+        "brierScore": 0.0900936898148148,
+        "logLoss": 0.2634076666288568
+      }
+    },
+    {
+      "id": "d2eb7433-7b41-464f-9e14-2474913c194e",
+      "accountId": "f1f56401-85e6-4d73-9a02-d2e73248879c",
+      "asset": "BTC",
+      "mode": "historical",
+      "strategy": "calibrated_consensus",
+      "status": "completed",
+      "initialCash": 10000,
+      "finalCash": 10000,
+      "startedAt": "2026-07-13T13:09:44.816Z",
+      "completedAt": "2026-07-13T13:09:46.619Z",
+      "error": null,
+      "metrics": {
+        "startingCash": 10000,
+        "endingCash": 10000,
+        "totalReturn": 0,
+        "totalReturnPct": 0,
+        "orders": 0,
+        "filledOrders": 0,
+        "rejectedOrders": 0,
+        "settledMarkets": 1,
+        "winningMarkets": 0,
+        "losingMarkets": 0,
+        "winRate": null,
+        "totalFees": 0,
+        "maxDrawdownPct": 0,
+        "sharpeLike": null,
+        "brierScore": 0.0000022499999999998374,
+        "logLoss": 0.0015011261262670914
+      }
+    }
+  ],
+  "backtests": [
+    {
+      "id": "wallet-copy:30:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "asset": "ALL",
+      "status": "collecting",
+      "threshold": 0.95,
+      "initialCapital": 1,
+      "startedAt": "2026-07-23T09:09:54.157Z",
+      "completedAt": "2026-07-23T09:09:54.138Z",
+      "metrics": {
+        "methodology": "point-in-time-wallet-consensus-30s",
+        "status": "collecting",
+        "edgeConfirmed": false,
+        "reason": "独立イベントを収集中（0/50）",
+        "latencySeconds": 30,
+        "signals": 0,
+        "independentEvents": 0,
+        "yesEvents": 0,
+        "noEvents": 0,
+        "winRate": null,
+        "meanReturnPct": 0,
+        "benchmarkReturnPct": 0,
+        "excessReturnPct": 0,
+        "excessConfidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "maxDrawdownPct": 0,
+        "gates": [
+          {
+            "id": "events",
+            "label": "独立イベント50件",
+            "passed": false,
+            "value": 0,
+            "threshold": 50
+          },
+          {
+            "id": "both-sides",
+            "label": "YES/NO各5件",
+            "passed": false,
+            "value": 0,
+            "threshold": 5
+          },
+          {
+            "id": "profit",
+            "label": "手数料後プラス",
+            "passed": false,
+            "value": 0,
+            "threshold": 0
+          },
+          {
+            "id": "benchmark",
+            "label": "市場基準を上回る",
+            "passed": false,
+            "value": 0,
+            "threshold": 0
+          },
+          {
+            "id": "significance",
+            "label": "超過収益95%下限がプラス",
+            "passed": false,
+            "value": null,
+            "threshold": 0
+          },
+          {
+            "id": "selection-bias",
+            "label": "選択バイアス補正95%以上",
+            "passed": false,
+            "value": null,
+            "threshold": 0.95
+          },
+          {
+            "id": "drawdown",
+            "label": "最大下落5%以内",
+            "passed": true,
+            "value": 0,
+            "threshold": 0.05
+          }
+        ],
+        "datasetHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "points": []
+      },
+      "markets": [],
+      "error": null
+    },
+    {
+      "id": "1a094113-5ccd-4862-b00b-c5f611153a9c",
+      "asset": "ETH",
+      "status": "completed",
+      "threshold": 0.55,
+      "initialCapital": 1000,
+      "startedAt": "2026-07-16T18:52:51.849Z",
+      "completedAt": "2026-07-16T18:52:52.320Z",
+      "metrics": {
+        "markets": 27,
+        "observations": 258,
+        "accuracy": 0.9147286821705426,
+        "brierScore": 0.10034020542635665,
+        "logLoss": 0.3294093340000022,
+        "calibration": [
+          {
+            "bucket": "0-10%",
+            "predicted": 0.022374999999999996,
+            "actual": 0,
+            "count": 24
+          },
+          {
+            "bucket": "10-20%",
+            "predicted": 0.135,
+            "actual": 0,
+            "count": 4
+          },
+          {
+            "bucket": "20-30%",
+            "predicted": 0.23,
+            "actual": 1,
+            "count": 1
+          },
+          {
+            "bucket": "30-40%",
+            "predicted": 0.34333333333333327,
+            "actual": 1,
+            "count": 3
+          },
+          {
+            "bucket": "40-50%",
+            "predicted": 0.45963157894736845,
+            "actual": 0.8947368421052632,
+            "count": 19
+          },
+          {
+            "bucket": "50-60%",
+            "predicted": 0.5489473684210526,
+            "actual": 1,
+            "count": 57
+          },
+          {
+            "bucket": "60-70%",
+            "predicted": 0.65116,
+            "actual": 1,
+            "count": 25
+          },
+          {
+            "bucket": "70-80%",
+            "predicted": 0.7452656250000002,
+            "actual": 0.96875,
+            "count": 32
+          },
+          {
+            "bucket": "80-90%",
+            "predicted": 0.8337500000000001,
+            "actual": 1,
+            "count": 44
+          },
+          {
+            "bucket": "90-100%",
+            "predicted": 0.9709489795918365,
+            "actual": 1,
+            "count": 49
+          }
+        ],
+        "tradedMarkets": 27,
+        "totalPnl": 33.53227104324804,
+        "returnPct": 0.03353227104324804
+      },
+      "markets": [],
+      "error": null
+    },
+    {
+      "id": "b610d9ca-8f18-462d-9e30-f810d0eb9eb6",
+      "asset": "XRP",
+      "status": "completed",
+      "threshold": 0.55,
+      "initialCapital": 1000,
+      "startedAt": "2026-07-16T18:51:33.164Z",
+      "completedAt": "2026-07-16T18:51:33.549Z",
+      "metrics": {
+        "markets": 5,
+        "observations": 6,
+        "accuracy": 0.3333333333333333,
+        "brierScore": 0.2525125,
+        "logLoss": 0.6981723484866961,
+        "calibration": [
+          {
+            "bucket": "50-60%",
+            "predicted": 0.5025000000000001,
+            "actual": 0.3333333333333333,
+            "count": 6
+          }
+        ],
+        "tradedMarkets": 0,
+        "totalPnl": 0,
+        "returnPct": 0
+      },
+      "markets": [],
+      "error": null
+    },
+    {
+      "id": "76e83585-2132-474d-a3b2-d6fe0c9ec0e8",
+      "asset": "SOL",
+      "status": "completed",
+      "threshold": 0.55,
+      "initialCapital": 1000,
+      "startedAt": "2026-07-16T18:43:38.905Z",
+      "completedAt": "2026-07-16T18:43:39.332Z",
+      "metrics": {
+        "markets": 9,
+        "observations": 46,
+        "accuracy": 0.9347826086956522,
+        "brierScore": 0.08020327173913044,
+        "logLoss": 0.27206632609540415,
+        "calibration": [
+          {
+            "bucket": "0-10%",
+            "predicted": 0.038823529411764715,
+            "actual": 0,
+            "count": 17
+          },
+          {
+            "bucket": "10-20%",
+            "predicted": 0.135,
+            "actual": 0,
+            "count": 8
+          },
+          {
+            "bucket": "20-30%",
+            "predicted": 0.22,
+            "actual": 0,
+            "count": 1
+          },
+          {
+            "bucket": "30-40%",
+            "predicted": 0.32642857142857146,
+            "actual": 0,
+            "count": 7
+          },
+          {
+            "bucket": "40-50%",
+            "predicted": 0.4466666666666667,
+            "actual": 0.3333333333333333,
+            "count": 3
+          },
+          {
+            "bucket": "50-60%",
+            "predicted": 0.5,
+            "actual": 1,
+            "count": 5
+          },
+          {
+            "bucket": "60-70%",
+            "predicted": 0.635,
+            "actual": 0,
+            "count": 2
+          },
+          {
+            "bucket": "80-90%",
+            "predicted": 0.8833333333333333,
+            "actual": 1,
+            "count": 3
+          }
+        ],
+        "tradedMarkets": 5,
+        "totalPnl": 117.88043708003644,
+        "returnPct": 0.11788043708003644
+      },
+      "markets": [],
+      "error": null
+    },
+    {
+      "id": "81135e88-ded3-408d-9810-95304bbf0c14",
+      "asset": "BTC",
+      "status": "completed",
+      "threshold": 0.55,
+      "initialCapital": 1000,
+      "startedAt": "2026-07-16T12:19:10.087Z",
+      "completedAt": "2026-07-16T12:19:11.016Z",
+      "metrics": {
+        "markets": 24,
+        "observations": 167,
+        "accuracy": 0.9583333333333334,
+        "brierScore": 0.04841491666666667,
+        "logLoss": 0.15387110493820777,
+        "calibration": [
+          {
+            "bucket": "0-10%",
+            "predicted": 0.009000000000000001,
+            "actual": 0,
+            "count": 8
+          },
+          {
+            "bucket": "10-20%",
+            "predicted": 0.1775,
+            "actual": 0,
+            "count": 1
+          },
+          {
+            "bucket": "40-50%",
+            "predicted": 0.4,
+            "actual": 0,
+            "count": 1
+          },
+          {
+            "bucket": "50-60%",
+            "predicted": 0.585,
+            "actual": 1,
+            "count": 1
+          },
+          {
+            "bucket": "80-90%",
+            "predicted": 0.868,
+            "actual": 0.6666666666666666,
+            "count": 3
+          },
+          {
+            "bucket": "90-100%",
+            "predicted": 0.99505,
+            "actual": 1,
+            "count": 10
+          }
+        ],
+        "tradedMarkets": 24,
+        "totalPnl": 42.80916820619065,
+        "returnPct": 0.04280916820619065
+      },
+      "markets": [],
+      "error": null
+    },
+    {
+      "id": "b13e902a-b8f0-4841-aa57-0d8f76ce757a",
+      "asset": "BTC",
+      "status": "completed",
+      "threshold": 0.55,
+      "initialCapital": 1000,
+      "startedAt": "2026-07-13T02:47:00.682Z",
+      "completedAt": "2026-07-13T02:47:02.060Z",
+      "metrics": {
+        "markets": 22,
+        "observations": 152,
+        "accuracy": 0.9090909090909091,
+        "brierScore": 0.05743580681818184,
+        "logLoss": 0.16237835199523512,
+        "calibration": [
+          {
+            "bucket": "0-10%",
+            "predicted": 0.008055555555555557,
+            "actual": 0,
+            "count": 9
+          },
+          {
+            "bucket": "40-50%",
+            "predicted": 0.4075,
+            "actual": 0.5,
+            "count": 2
+          },
+          {
+            "bucket": "80-90%",
+            "predicted": 0.87,
+            "actual": 0,
+            "count": 1
+          },
+          {
+            "bucket": "90-100%",
+            "predicted": 0.9933000000000002,
+            "actual": 1,
+            "count": 10
+          }
+        ],
+        "tradedMarkets": 22,
+        "totalPnl": -54.052745063150866,
+        "returnPct": -0.054052745063150866
+      },
+      "markets": [],
+      "error": null
+    },
+    {
+      "id": "693d0d68-a91f-4ff2-8f26-bddd59e63600",
+      "asset": "ETH",
+      "status": "completed",
+      "threshold": 0.55,
+      "initialCapital": 1000,
+      "startedAt": "2026-07-13T02:43:56.885Z",
+      "completedAt": "2026-07-13T02:43:56.999Z",
+      "metrics": {
+        "markets": 0,
+        "observations": 0,
+        "accuracy": null,
+        "brierScore": null,
+        "logLoss": null,
+        "calibration": [],
+        "tradedMarkets": 0,
+        "totalPnl": 0,
+        "returnPct": 0
+      },
+      "markets": [],
+      "error": null
+    },
+    {
+      "id": "6814e510-3191-49b7-ae96-607f388b78bd",
+      "asset": "BTC",
+      "status": "completed",
+      "threshold": 0.55,
+      "initialCapital": 1000,
+      "startedAt": "2026-07-13T02:42:24.106Z",
+      "completedAt": "2026-07-13T02:42:24.933Z",
+      "metrics": {
+        "markets": 22,
+        "observations": 152,
+        "accuracy": 0.9078947368421053,
+        "brierScore": 0.06036892763157892,
+        "logLoss": 0.18978464062132588,
+        "calibration": [
+          {
+            "bucket": "0-10%",
+            "predicted": 0.021078431372549007,
+            "actual": 0,
+            "count": 51
+          },
+          {
+            "bucket": "10-20%",
+            "predicted": 0.16125,
+            "actual": 0.125,
+            "count": 8
+          },
+          {
+            "bucket": "20-30%",
+            "predicted": 0.23875,
+            "actual": 0,
+            "count": 4
+          },
+          {
+            "bucket": "30-40%",
+            "predicted": 0.35374999999999995,
+            "actual": 0.5,
+            "count": 4
+          },
+          {
+            "bucket": "40-50%",
+            "predicted": 0.4383333333333333,
+            "actual": 0.3333333333333333,
+            "count": 6
+          },
+          {
+            "bucket": "50-60%",
+            "predicted": 0.5525000000000001,
+            "actual": 0.5,
+            "count": 6
+          },
+          {
+            "bucket": "60-70%",
+            "predicted": 0.65,
+            "actual": 0,
+            "count": 2
+          },
+          {
+            "bucket": "70-80%",
+            "predicted": 0.7459999999999999,
+            "actual": 0.8,
+            "count": 5
+          },
+          {
+            "bucket": "80-90%",
+            "predicted": 0.8494999999999999,
+            "actual": 0.7,
+            "count": 10
+          },
+          {
+            "bucket": "90-100%",
+            "predicted": 0.9793571428571426,
+            "actual": 1,
+            "count": 56
+          }
+        ],
+        "tradedMarkets": 22,
+        "totalPnl": -54.052745063150866,
+        "returnPct": -0.054052745063150866
+      },
+      "markets": [],
+      "error": null
+    }
+  ],
+  "modelEvaluations": [
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "fa0f3a9a3ad2e8e4d1a049f085a7758f33712309ede77b3734080d05cb7e05b4",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "2b697017123a03a9a7b5693c80f221e7380a1ab266f4a65d2fe9dc3757fb5869",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T08:13:49.304Z",
+      "completedAt": "2026-07-24T08:13:42.141Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "d117f9ed9ca5930e961b549fe98f67bd77462d4c38ed79d825eb9e73cd42661d",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "802e1df76eee3cd956bbd5e1cbcd8bed1832d4a7f30ea18e3c0a1d3244995114",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T07:43:39.284Z",
+      "completedAt": "2026-07-24T07:43:29.045Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "6a042fa7b41cea6100ac52d179cce9b810122fa7c34caac9c6f90c87b1d77230",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "55676061a9a5e2ceb32409c4d5f67364294a18560346c8ba2e1ba5f161c0a1c8",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T07:13:26.665Z",
+      "completedAt": "2026-07-24T07:13:09.640Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "096c4a50681f82b9c3e3cbfea83da053d5689f65e39e9dd61440abfd959a59ef",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "acb8180710dcdee0530d926481bda18f031cff07234eb1beab21dfc857864910",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T06:43:04.854Z",
+      "completedAt": "2026-07-24T06:42:53.250Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "aa8f441f82ff762389b265fa327bccf8a2f9be82d608b46946f53bc68ec9e896",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "6c70965cddc1fcec3be38e5d4f96cd5c7712a283e0127586feda5deac79da6a6",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T06:12:50.924Z",
+      "completedAt": "2026-07-24T06:12:37.977Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "1e796359178373df55d5710ee7d8e961dd3460fc3fd760d0e32868d49fe6a98f",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "8ddc170abac37fb37a1a7eef803ac00428dec04cd8b8110fdff5e04e54a8de34",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T05:42:32.655Z",
+      "completedAt": "2026-07-24T05:42:23.264Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "7e4d70d47fb46d1c7cca744ed045a44b8e65c30b615bce9e4ca1e7d3921e2fed",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "f5e8c28520e840dd9f0364ad59f48b52e01d795d4c16026d3fa845bdac20307a",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T05:12:19.001Z",
+      "completedAt": "2026-07-24T05:11:59.964Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "9bc8330ad558be9e559cc237579ae9812b3daa6f3e4ddb233130babc686dd874",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "a74f65a2f2a5c80700f7d785a8482911dd099a3c8202ebb3e111f4837adee18c",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T04:41:53.950Z",
+      "completedAt": "2026-07-24T04:41:48.868Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "416a1dac98901d3550e95bf7179212741f1347f495fc988bffa917746c8cb569",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "7aba8505f5fce1dad33e8687e9587e4349a4a9e2e96f1d9096e14742cf363cdd",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T04:11:43.229Z",
+      "completedAt": "2026-07-24T04:11:38.027Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "18a0c6bd-484c-4247-9a33-3b2e8f2ecfe2",
+      "modelVersion": "Polymarket x Hyperliquid Signal v18",
+      "status": "completed",
+      "datasetHash": "ea1a4b8a8ee672e8",
+      "configHash": "47d9bf2aa4ff010457a7eb728cae1fc4ed8fb33d6f22ac32c0b6fc99984258d5",
+      "codeRevision": "60401fb7f488bdc0",
+      "startedAt": "2026-07-24T04:04:05.911Z",
+      "completedAt": "2026-07-24T04:06:00.162Z",
+      "durationMs": 114251,
+      "qualityStatus": "inconclusive",
+      "methodology": "walk-forward-holdout",
+      "primaryHorizonHours": 24,
+      "selectedStrategy": "no-trade guard",
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 300,
+        "testEvents": 60,
+        "totalMarkets": 2700,
+        "testMarkets": 660,
+        "firstEndAt": "2024-03-01T00:00:00.000Z",
+        "lastEndAt": "2026-07-23T16:00:00.000Z",
+        "testExecutionFeatureCoverage": 1,
+        "testSynchronizedExecutionCoverage": 0
+      },
+      "result": {
+        "source": "selected-strategy",
+        "strategy": "no-trade guard",
+        "trades": 0,
+        "netReturnPct": 0,
+        "benchmarkReturnPct": 0,
+        "benchmarkLabel": "常時ロング",
+        "excessReturnPct": 0,
+        "winRate": null,
+        "maxDrawdownPct": 0,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": 10000,
+        "totalFees": 0,
+        "totalSpread": 0,
+        "totalSlippage": 0,
+        "totalFunding": 0
+      },
+      "validation": {
+        "strategyTrials": 19,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 3,
+        "totalGates": 15
+      },
+      "horizons": [
+        {
+          "horizonHours": 6,
+          "status": "inconclusive",
+          "totalEvents": 300,
+          "testEvents": 60,
+          "eligibleSignals": 0,
+          "trades": 0,
+          "netReturnPct": null,
+          "bestBenchmarkReturnPct": null,
+          "excessReturnPct": null,
+          "deflatedSharpeProbability": null,
+          "testExecutionFeatureCoverage": 1,
+          "testSynchronizedExecutionCoverage": 0,
+          "maximumExecutionTimingErrorMinutes": null
+        },
+        {
+          "horizonHours": 12,
+          "status": "inconclusive",
+          "totalEvents": 300,
+          "testEvents": 60,
+          "eligibleSignals": 0,
+          "trades": 0,
+          "netReturnPct": null,
+          "bestBenchmarkReturnPct": null,
+          "excessReturnPct": null,
+          "deflatedSharpeProbability": null,
+          "testExecutionFeatureCoverage": 1,
+          "testSynchronizedExecutionCoverage": 0,
+          "maximumExecutionTimingErrorMinutes": null
+        },
+        {
+          "horizonHours": 24,
+          "status": "inconclusive",
+          "totalEvents": 300,
+          "testEvents": 60,
+          "eligibleSignals": 0,
+          "trades": 0,
+          "netReturnPct": null,
+          "bestBenchmarkReturnPct": null,
+          "excessReturnPct": null,
+          "deflatedSharpeProbability": null,
+          "testExecutionFeatureCoverage": 1,
+          "testSynchronizedExecutionCoverage": 0,
+          "maximumExecutionTimingErrorMinutes": null
+        },
+        {
+          "horizonHours": 48,
+          "status": "inconclusive",
+          "totalEvents": 300,
+          "testEvents": 60,
+          "eligibleSignals": 0,
+          "trades": 0,
+          "netReturnPct": null,
+          "bestBenchmarkReturnPct": null,
+          "excessReturnPct": null,
+          "deflatedSharpeProbability": null,
+          "testExecutionFeatureCoverage": 1,
+          "testSynchronizedExecutionCoverage": 0,
+          "maximumExecutionTimingErrorMinutes": null
+        }
+      ],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "a2dddf94e73b9fffa57f275f07f0bae98dd15df06e1b47564bec1f66e6f21627",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "e338a53a01c09f942b54083663d79c1138f794a35738b29ed4684a720d6d3131",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T03:41:33.732Z",
+      "completedAt": "2026-07-24T03:41:26.493Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    },
+    {
+      "schemaVersion": "model-evaluation-summary-v1",
+      "id": "b7479e833409c5b817261f054215845c1ce8c7efabb8823d2f7798b237978244",
+      "modelVersion": "hyperliquid-microstructure-v1",
+      "status": "collecting",
+      "datasetHash": "3f7aa9014252143fdd1ac1e194f18308f66cd0c170cba1277dc73b723d6b10d0",
+      "configHash": "9e6728f7af04ea595e9da9c537e3450fc6daca1d422bb3729282a3fb0a992781",
+      "codeRevision": null,
+      "startedAt": "2026-07-24T03:11:25.075Z",
+      "completedAt": "2026-07-24T03:11:19.970Z",
+      "durationMs": 0,
+      "qualityStatus": "inconclusive",
+      "methodology": {
+        "split": "chronological 60% train / 20% validation / 20% untouched holdout",
+        "purge": "labels crossing a split boundary are removed",
+        "independence": "samples are spaced by the forecast horizon",
+        "selection": "model and threshold selected on validation only",
+        "costs": "executable bid/ask plus 0.045% taker fee per side and funding",
+        "models": [
+          "regularized-logistic",
+          "hist-gradient-boosting"
+        ],
+        "historicalData": "official requester-pays S3 is accepted only after object, time-range, book, row-count, and Parquet checksum audits"
+      },
+      "primaryHorizonHours": null,
+      "selectedStrategy": null,
+      "selectedFromValidation": false,
+      "dataset": {
+        "totalEvents": 0,
+        "testEvents": 0,
+        "totalMarkets": 0,
+        "testMarkets": 0,
+        "firstEndAt": null,
+        "lastEndAt": null,
+        "testExecutionFeatureCoverage": null,
+        "testSynchronizedExecutionCoverage": null
+      },
+      "result": {
+        "source": "unavailable",
+        "strategy": null,
+        "trades": 0,
+        "netReturnPct": null,
+        "benchmarkReturnPct": null,
+        "benchmarkLabel": null,
+        "excessReturnPct": null,
+        "winRate": null,
+        "maxDrawdownPct": null,
+        "confidenceInterval95": null,
+        "deflatedSharpeProbability": null,
+        "statisticallyPositive": false
+      },
+      "costs": {
+        "initialCapital": null,
+        "totalFees": null,
+        "totalSpread": null,
+        "totalSlippage": null,
+        "totalFunding": null
+      },
+      "validation": {
+        "strategyTrials": 0,
+        "walkForwardFolds": 0,
+        "profitableValidationFolds": 0,
+        "passedGates": 0,
+        "totalGates": 0
+      },
+      "horizons": [],
+      "error": null
+    }
+  ],
+  "dataQuality": {
+    "status": "recovered",
+    "source": "runtime",
+    "database": {
+      "status": "healthy",
+      "checkedAt": "2026-07-24T08:30:20.902Z",
+      "database": "PostgreSQL",
+      "message": "データベースへ接続できます",
+      "code": "OK"
+    },
+    "gaps": [
+      {
+        "startedAt": "2026-07-22T11:13:02.974Z",
+        "endedAt": "2026-07-23T09:29:32.167Z",
+        "scope": "Hyperliquid・Polymarket高頻度ティック",
+        "reason": "SQLite破損からPostgreSQLへ復旧。欠損期間は全バックテストから除外",
+        "status": "RESOLVED"
+      }
+    ]
+  }
+}
